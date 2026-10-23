@@ -34,19 +34,19 @@ concurrency:
 
 env:
   COVERAGE_MIN: "85"
-  GOLANGCI_LINT_VERSION: v2.14.0
+  GOLANGCI_LINT_VERSION: v2.15.0
   GOVULNCHECK: golang.org/x/vuln/cmd/govulncheck@v1.9.0
   GOLICENSES: github.com/google/go-licenses/v2@v2.0.1
   LICENSES_OK: Apache-2.0,MIT,BSD-2-Clause,BSD-3-Clause,ISC
-  PROMETHEUS_IMAGE: prom/prometheus:v3.15.0@sha256:efd719c99d83b060d9daefdcf00360461adf279f45ef5391f8d111892118753e
+  PROMETHEUS_IMAGE: prom/prometheus:v3.15.1@sha256:fa3302279710be2f21a8301ec17a8b4f2301fd829bd113839b3b6b02b6f191a2
   GITLEAKS_IMAGE: ghcr.io/gitleaks/gitleaks:v8.30.1@sha256:c00b6bd0aeb3071cbcb79009cb16a60dd9e0a7c60e2be9ab65d25e6bc8abbb7f
   SHELLCHECK_IMAGE: koalaman/shellcheck:v0.11.0@sha256:61862eba1fcf09a484ebcc6feea46f1782532571a34ed51fedf90dd25f925a8d
   SPECTRAL_IMAGE: stoplight/spectral:6.17.0@sha256:c8ffae6ee561b70e80402f1ea669e8b37c74fee48a3dbe2147b71359ed987239
   ACTIONLINT_IMAGE: rhysd/actionlint:1.7.12@sha256:b1934ee5f1c509618f2508e6eb47ee0d3520686341fec936f3b79331f9315667
   # The BuildKit that builds the images (setup-buildx-action pulls a floating tag otherwise).
-  BUILDKIT_IMAGE: moby/buildkit:v0.33.1@sha256:cec9f139f45e93c5c69c60f8b07cfad9f43f4ef6b6a6cd917527fea5ff2e3dea
+  BUILDKIT_IMAGE: moby/buildkit:v0.34.1@sha256:99368f3e46177c6405b9740e4461d91cee004128daeecca78d4ceac50ec1da5c
   # The Trivy release every trivy-action step installs (otherwise the action's default).
-  TRIVY_VERSION: v0.70.0
+  TRIVY_VERSION: v0.76.1
 
 jobs:
   go:

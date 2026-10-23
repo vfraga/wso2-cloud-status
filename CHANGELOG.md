@@ -25,6 +25,11 @@ section here. The public API has its own version, in `api/openapi.yaml`.
   read (`s-maxage`, a repeated directive) and two listeners on one port
   (ADR 0003).
 
+### Security
+
+- The statusd image is built on the current distroless base image, with
+  the Prometheus client library 1.25.0.
+
 ## [0.1.0] - 2026-10-23
 
 The first release. Public API version 1.0.0.

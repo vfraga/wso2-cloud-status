@@ -11,7 +11,7 @@ COVERAGE_MIN ?= 85
 GOVULNCHECK  := golang.org/x/vuln/cmd/govulncheck@v1.9.0
 GOLICENSES   := github.com/google/go-licenses/v2@v2.0.1
 LICENSES_OK  := Apache-2.0,MIT,BSD-2-Clause,BSD-3-Clause,ISC
-PROMETHEUS   := prom/prometheus:v3.15.0@sha256:efd719c99d83b060d9daefdcf00360461adf279f45ef5391f8d111892118753e
+PROMETHEUS   := prom/prometheus:v3.15.1@sha256:fa3302279710be2f21a8301ec17a8b4f2301fd829bd113839b3b6b02b6f191a2
 # The hadolint that hadolint/hadolint-action v3.5.0 (ci.yml) runs.
 HADOLINT     := ghcr.io/hadolint/hadolint:v2.15.1-debian@sha256:9a3944b7fddcb947d1ffd90829ac1a6e5c30479223358f249d8b96c7d0019e27
 SHELLCHECK   := koalaman/shellcheck:v0.11.0@sha256:61862eba1fcf09a484ebcc6feea46f1782532571a34ed51fedf90dd25f925a8d
