@@ -41,6 +41,11 @@ LABEL org.opencontainers.image.title="wso2-cloud-status-web" \
       org.opencontainers.image.revision="${REVISION}" \
       org.opencontainers.image.created="${CREATED}" \
       org.opencontainers.image.source="${SOURCE}"
+# Alpine's security fixes, applied at build time rather than waiting for the
+# base image to be rebuilt, and curl removed: nothing here uses it (the
+# healthcheck runs BusyBox wget), and it brings six libraries with it.
+USER 0
+RUN apk upgrade --no-cache && apk del --no-cache curl
 COPY docker/nginx.conf /etc/nginx/conf.d/default.conf
 COPY docker/security-headers.conf /etc/nginx/snippets/security-headers.conf
 COPY docker/api.conf /etc/nginx/api.conf

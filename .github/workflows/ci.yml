@@ -15,7 +15,7 @@ on:
     branches: [main]
   pull_request:
   schedule:
-    - cron: "17 3 * * *" # Nightly: live upstream smoke test and fresh vulnerability data.
+    - cron: "17 3 * * *" # Nightly: live upstream smoke test and the strict vulnerability scan (VULN_SEVERITY).
   workflow_dispatch:
   workflow_call: # release.yml runs CI on the tagged commit before it builds anything
 
@@ -47,6 +47,10 @@ env:
   BUILDKIT_IMAGE: moby/buildkit:v0.34.1@sha256:99368f3e46177c6405b9740e4461d91cee004128daeecca78d4ceac50ec1da5c
   # The Trivy release every trivy-action step installs (otherwise the action's default).
   TRIVY_VERSION: v0.76.1
+  # Vulnerability scans fail on fixable HIGH and CRITICAL findings. The nightly
+  # run fails on a fixable finding of any severity, so a fix published upstream
+  # shows within a day.
+  VULN_SEVERITY: ${{ github.event_name == 'schedule' && 'UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL' || 'HIGH,CRITICAL' }}
 
 jobs:
   go:
@@ -207,15 +211,25 @@ jobs:
         run: git ls-files -z '*.sh' | xargs -0 docker run --rm -v "$PWD:/mnt:ro" -w /mnt "$SHELLCHECK_IMAGE"
       - name: Workflows (actionlint)
         run: docker run --rm -v "$PWD:/repo:ro" -w /repo "$ACTIONLINT_IMAGE" -color
-      - name: Dependency vulnerabilities, licenses and misconfiguration (Trivy)
+      - name: Dependency vulnerabilities (Trivy)
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           version: ${{ env.TRIVY_VERSION }}
           scan-type: fs
           scan-ref: .
-          scanners: vuln,license,misconfig
-          severity: HIGH,CRITICAL
+          scanners: vuln
+          severity: ${{ env.VULN_SEVERITY }}
           ignore-unfixed: true
+          exit-code: "1"
+          trivyignores: .trivyignore.yaml
+      - name: Dependency licenses and misconfiguration (Trivy)
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          version: ${{ env.TRIVY_VERSION }}
+          scan-type: fs
+          scan-ref: .
+          scanners: license,misconfig
+          severity: HIGH,CRITICAL
           exit-code: "1"
           trivyignores: .trivyignore.yaml
       - name: Dependency review
@@ -291,7 +305,7 @@ jobs:
         with:
           version: ${{ env.TRIVY_VERSION }}
           image-ref: wso2-cloud-statusd:ci
-          severity: HIGH,CRITICAL
+          severity: ${{ env.VULN_SEVERITY }}
           ignore-unfixed: true
           exit-code: "1"
           trivyignores: .trivyignore.yaml
@@ -315,7 +329,7 @@ jobs:
         with:
           version: ${{ env.TRIVY_VERSION }}
           image-ref: wso2-cloud-status-web:ci
-          severity: HIGH,CRITICAL
+          severity: ${{ env.VULN_SEVERITY }}
           ignore-unfixed: true
           exit-code: "1"
           trivyignores: .trivyignore.yaml

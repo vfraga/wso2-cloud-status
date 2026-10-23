@@ -1,7 +1,9 @@
 # Version updates wait 7 days after a release (cooldown), so a compromised
 # release is more likely to be caught and pulled before it reaches a pull
 # request. Security updates are not delayed: Dependabot opens them as soon as
-# an advisory affects us. See docs/dependency-policy.md.
+# an advisory affects us. Base images have no advisories of their own, so the
+# two runtime images skip the cooldown and are checked daily: their rebuilds
+# carry the operating system's security fixes. Every pull request is reviewed.
 version: 2
 updates:
   - package-ecosystem: gomod
@@ -34,6 +36,7 @@ updates:
   - package-ecosystem: docker
     directories: ["/backend/go", "/frontend"]
     schedule:
-      interval: weekly
+      interval: daily
     cooldown:
       default-days: 7
+      exclude: ["distroless/static-debian13", "nginxinc/nginx-unprivileged"]

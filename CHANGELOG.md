@@ -27,6 +27,9 @@ section here. The public API has its own version, in `api/openapi.yaml`.
 
 ### Security
 
+- The frontend image applies Alpine's security updates when it is built,
+  instead of waiting for a new base image, and no longer contains curl or
+  the six libraries only curl used.
 - The statusd image is built on the current distroless base image, with
   the Prometheus client library 1.25.0.
 
