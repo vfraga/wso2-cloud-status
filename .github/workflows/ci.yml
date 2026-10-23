@@ -1,13 +1,13 @@
 # Every third-party action is pinned to a full commit SHA (tag in the
 # comment); Dependabot proposes updates. Tools run from images are pinned by
-# digest, and Trivy by version (env below); Dependabot does not see those, see
-# docs/dependency-policy.md. Jobs get the least permissions.
+# digest, and Trivy by version (env below); Dependabot does not see those, so
+# they are reviewed by hand, and make pins checks that the copies in the
+# Makefile and release.yml match. Jobs get the least permissions.
 #
 # Dependency review needs a public repository, or GitHub Code Security (part
 # of GitHub Advanced Security) on a private one; so does CodeQL
 # (codeql.yml). On a private repository without it, set the repository
-# variable ADVANCED_SECURITY to "off": both are then skipped with a warning,
-# and docs/dependency-policy.md names what covers them.
+# variable ADVANCED_SECURITY to "off": both are then skipped with a warning.
 name: CI
 
 on:
@@ -213,6 +213,8 @@ jobs:
         run: git ls-files -z '*.sh' | xargs -0 docker run --rm -v "$PWD:/mnt:ro" -w /mnt "$SHELLCHECK_IMAGE"
       - name: Workflows (actionlint)
         run: docker run --rm -v "$PWD:/repo:ro" -w /repo "$ACTIONLINT_IMAGE" -color
+      - name: Tool pins match ci.yml (Makefile, release.yml)
+        run: make pins
       - name: Dependency vulnerabilities, report only (Grype)
         continue-on-error: true
         run: scripts/grype-report.sh repo
@@ -246,7 +248,7 @@ jobs:
           # everywhere, because a dev package can leak into a bundle.
           fail-on-scopes: runtime, development
           allow-licenses: Apache-2.0, MIT, MIT-0, BSD-2-Clause, BSD-3-Clause, ISC, CC0-1.0, BlueOak-1.0.0
-          # Named exceptions (docs/dependency-policy.md): a font (OFL-1.1), and
+          # Named exceptions: a font (OFL-1.1), and
           # development-only tools that are never shipped: lint rules
           # (LGPL-3.0), accessibility testing and the CSS minifier (MPL-2.0),
           # and browser-support data (CC-BY-4.0).
@@ -276,7 +278,7 @@ jobs:
         run: >-
           echo "::warning title=Dependency review skipped::ADVANCED_SECURITY is off (a private repository
           without GitHub Code Security). Review the licence, maintenance and OpenSSF Scorecard of every new
-          or changed dependency by hand; see docs/dependency-policy.md."
+          or changed dependency by hand."
 
   container:
     name: Container (Dockerfile lint, build, image scan)

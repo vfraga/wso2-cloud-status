@@ -35,7 +35,7 @@ SHELL_SCRIPTS = $(shell git ls-files '*.sh' 2>/dev/null || find . -name '*.sh' -
 .DEFAULT_GOAL := help
 .PHONY: help fmt lint test cover vuln licenses rules contract contract-edge check-config live build run docker ci clean \
 	web-install web-check web-licenses web-e2e web-docker web-docker-selftest dockerfile-lint shellcheck api-lint \
-	headers workflow-lint gates-selftest verify \
+	headers workflow-lint pins gates-selftest verify \
 	synthetic synthetic-selftest
 
 help: ## List targets
@@ -129,9 +129,20 @@ headers: ## License headers on every source file, the check CI runs (Docker)
 workflow-lint: ## Lint the GitHub workflows with actionlint, as CI does (Docker)
 	docker run --rm -v "$$PWD:/repo:ro" -w /repo $(ACTIONLINT) -color
 
+pins: ## The tool versions copied from ci.yml, here and in release.yml, still match it
+	@status=0; \
+	for pin in '$(GOVULNCHECK)' '$(GOLICENSES)' '$(LICENSES_OK)' '$(PROMETHEUS)' '$(SHELLCHECK)' '$(SPECTRAL)' '$(ACTIONLINT)'; do \
+	  awk -v p=": $$pin" 'substr($$0, length($$0) - length(p) + 1) == p { found = 1 } END { exit !found }' .github/workflows/ci.yml \
+	    || { echo "Makefile pin not in ci.yml: $$pin"; status=1; }; \
+	done; \
+	while IFS= read -r line; do \
+	  grep -qxF -- "$$line" .github/workflows/ci.yml || { echo "release.yml pin not in ci.yml: $$line"; status=1; }; \
+	done < <(grep -E '^  (TRIVY_VERSION|BUILDKIT_IMAGE):' .github/workflows/release.yml); \
+	[[ $$status == 0 ]] && echo "pins match ci.yml"; exit $$status
+
 ci: lint cover vuln licenses check-config contract contract-edge synthetic-selftest gates-selftest ## The CI go job's gates, locally (the Docker gates are separate targets)
 
-verify: ci rules web-check web-licenses web-e2e web-docker-selftest dockerfile-lint api-lint shellcheck headers workflow-lint ## Every local gate (not CI's gitleaks, Trivy or statusd image smoke test); make -k verify reports every failure (needs Node and Docker)
+verify: ci rules web-check web-licenses web-e2e web-docker-selftest dockerfile-lint api-lint shellcheck headers workflow-lint pins ## Every local gate (not CI's gitleaks, Trivy or statusd image smoke test); make -k verify reports every failure (needs Node and Docker)
 
 clean: ## Remove build outputs
 	rm -rf bin $(GO_DIR)/coverage.out
