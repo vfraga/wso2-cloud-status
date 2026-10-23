@@ -51,6 +51,8 @@ env:
   # run fails on a fixable finding of any severity, so a fix published upstream
   # shows within a day.
   VULN_SEVERITY: ${{ github.event_name == 'schedule' && 'UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL' || 'HIGH,CRITICAL' }}
+  # Grype, a second vulnerability report next to Trivy; it never fails a job.
+  GRYPE_IMAGE: anchore/grype:v0.120.1@sha256:e4a44ef45d285b829ce6efe2642980329661bd2d18eab5fc539138d4adaebbbe
 
 jobs:
   go:
@@ -211,6 +213,9 @@ jobs:
         run: git ls-files -z '*.sh' | xargs -0 docker run --rm -v "$PWD:/mnt:ro" -w /mnt "$SHELLCHECK_IMAGE"
       - name: Workflows (actionlint)
         run: docker run --rm -v "$PWD:/repo:ro" -w /repo "$ACTIONLINT_IMAGE" -color
+      - name: Dependency vulnerabilities, report only (Grype)
+        continue-on-error: true
+        run: scripts/grype-report.sh repo
       - name: Dependency vulnerabilities (Trivy)
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
@@ -300,6 +305,9 @@ jobs:
           push: false
       - name: Image smoke test
         run: docker run --rm wso2-cloud-statusd:ci -version
+      - name: Image vulnerabilities, report only (Grype)
+        continue-on-error: true
+        run: scripts/grype-report.sh wso2-cloud-statusd:ci
       - name: Image vulnerabilities (Trivy)
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
@@ -324,6 +332,9 @@ jobs:
           push: false
       - name: Frontend image self-test (status, caching and security headers)
         run: scripts/ops/frontend-image-selftest.sh wso2-cloud-status-web:ci
+      - name: Frontend image vulnerabilities, report only (Grype)
+        continue-on-error: true
+        run: scripts/grype-report.sh wso2-cloud-status-web:ci
       - name: Frontend image vulnerabilities (Trivy)
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
