@@ -1,0 +1,137 @@
+# statusd configuration for local runs and tests. Production runs
+# config/statusd.production.yaml, which differs only in the origin lock (a
+# test fails otherwise): change both. Adding a product:
+# docs/adding-a-product.md. Check a file with: statusd -check-config <file>
+#
+# Products appear on the page in the order listed. Region keys are the
+# upstream's keys; ids are our slugs and part of the public API
+# (api/openapi.yaml, "Identifiers"). "description" is the optional subtitle.
+#
+# ${NAME} reads the environment variable NAME; an unset one fails
+# validation. Unquoted, the result reads as if written there, so it can set
+# a number (max_in_flight: ${MAX_IN_FLIGHT}); quoted, it stays text. Keep
+# secrets out of this file.
+
+server:
+  addr: ":8080"
+  # Metrics and probes; never route this port through the public ingress.
+  admin_addr: ":9090"
+  # Why these values, and the limits a test keeps: ADR 0003 amendments.
+  cache_control: "public, max-age=10, stale-while-revalidate=10, stale-if-error=300"
+  # 404s are cacheable so the CDN absorbs floods of random paths.
+  not_found_cache_control: "public, max-age=60"
+  allowed_origins: ["*"]
+  shutdown_timeout: 10s
+  # Requests beyond this concurrency get 503 + Retry-After instead of queueing.
+  max_in_flight: 1024
+  # The origin lock stays off here for local runs and tests;
+  # config/statusd.production.yaml turns it on with these lines.
+  # required_headers:
+  #   X-Azure-FDID: "${FRONT_DOOR_ID}"
+
+# Settings above (server) and below (reload) need a restart; everything else
+# reloads live.
+reload:
+  watch_interval: 10s
+
+polling:
+  components_interval: 30s
+  uptime_interval: 5m
+  incidents_interval: 30s
+  request_timeout: 5s
+  stale_after: 5m
+
+history:
+  days: 90
+
+backends:
+  cloudservices:
+    type: legacy-status-api
+    base_url: https://api.status.cloudservices.wso2.com
+    # The API sends zone-less timestamps in UTC: CSM converts its stored
+    # times to UTC (verified in its source, 2026-10-21) and the existing
+    # pages print them as UTC.
+    timezone: UTC
+  asgardeo:
+    type: legacy-status-api
+    base_url: https://api.status.asgardeo.io
+    timezone: UTC
+
+products:
+  - id: agent-platform
+    name: Agent Platform
+    description: Agent Manager
+    # The Agent Manager page lives on status.cloud.wso2.com today; it moves
+    # when this page takes over that host. AI Gateway and Agent ID have no
+    # status source yet.
+    page_url: https://status.cloud.wso2.com
+    sources:
+      - backend: cloudservices
+        cloud: agent-manager
+        regions:
+          - { key: "cp - us", id: us-control-plane, name: US Control Plane }
+          - { key: "dp - us", id: us-data-plane, name: US Data Plane }
+
+  - id: api-platform
+    name: API Platform
+    description: Bijira
+    page_url: https://status.bijira.dev
+    sources:
+      - backend: cloudservices
+        cloud: bijira
+        regions:
+          - { key: "cp - us", id: us-control-plane, name: US Control Plane }
+          - { key: "dp - us", id: us-data-plane, name: US Data Plane }
+          - { key: "cp - eu", id: eu-control-plane, name: EU Control Plane }
+          - { key: "dp - eu", id: eu-data-plane, name: EU Data Plane }
+
+  - id: integration-platform
+    name: Integration Platform
+    description: Devant
+    page_url: https://status.devant.dev
+    sources:
+      - backend: cloudservices
+        cloud: devant
+        regions:
+          - { key: "cp - us", id: us-control-plane, name: US Control Plane }
+          - { key: "dp - us", id: us-data-plane, name: US Data Plane }
+          - { key: "cp - eu", id: eu-control-plane, name: EU Control Plane }
+          - { key: "dp - eu", id: eu-data-plane, name: EU Data Plane }
+
+  - id: identity-platform
+    name: Identity Platform
+    description: Asgardeo
+    page_url: https://status.asgardeo.io
+    sources:
+      - backend: asgardeo
+        cloud: asgardeo
+        regions:
+          - { key: us, id: us, name: US }
+          - { key: eu, id: eu, name: EU }
+
+  - id: developer-platform
+    name: Developer Platform
+    description: Choreo
+    page_url: https://status.choreo.dev
+    sources:
+      - backend: cloudservices
+        cloud: choreo
+        regions:
+          - { key: cp, id: us-control-plane, name: US Control Plane }
+          - { key: "us - dp", id: us-data-plane, name: US Data Plane }
+          - { key: "eu - dp", id: eu-data-plane-us-managed, name: EU Data Plane (US-managed) }
+      - backend: cloudservices
+        cloud: choreo-eu
+        page_url: https://status.eu.choreo.dev
+        regions:
+          - { key: "eu - cp", id: eu-control-plane, name: EU Control Plane }
+          - { key: "eu - dp - eu", id: eu-data-plane, name: EU Data Plane }
+
+  - id: moesif
+    name: Moesif
+    page_url: https://status.moesif.com
+    sources:
+      - backend: cloudservices
+        cloud: moesif
+        regions:
+          - { key: us, id: us, name: US }

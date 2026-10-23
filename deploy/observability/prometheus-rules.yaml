@@ -1,0 +1,170 @@
+# Prometheus alerting rules for statusd. Validate: promtool check rules <file>
+groups:
+  - name: statusd
+    rules:
+      - alert: StatusdDown
+        expr: up{job="statusd"} == 0
+        for: 2m
+        labels: { severity: critical }
+        annotations:
+          runbook_url: docs/operations/runbook.md#statusddown
+          summary: "statusd {{ $labels.instance }} is down"
+          description: "statusd is not answering scrapes. The page still loads from the frontend container, but its API calls fail; Front Door may serve the last API copy for a few minutes."
+
+      # absent() is the only signal when the target itself goes away (scale
+      # to zero, a revision swap, a scrape configuration that lost it): up
+      # then has no series, so StatusdDown (up == 0) cannot fire. It fires
+      # only when every statusd target is gone.
+      - alert: StatusdTargetMissing
+        expr: absent(up{job="statusd"})
+        for: 5m
+        labels: { severity: critical }
+        annotations:
+          runbook_url: docs/operations/runbook.md#statusdtargetmissing
+          summary: "No statusd target has been scraped for 5 minutes"
+          description: "The scrape target is gone, so no other statusd alert can fire. The service may be scaled to zero or its revision changed without a scrape target."
+
+      - alert: StatusdSnapshotStale
+        expr: time() - statusd_snapshot_published_timestamp_seconds > 120
+        for: 2m
+        labels: { severity: critical }
+        annotations:
+          runbook_url: docs/operations/runbook.md#statusdsnapshotstale
+          summary: "statusd {{ $labels.instance }} stopped publishing"
+          description: "No snapshot for {{ $value | humanizeDuration }}; the aggregator may be stuck."
+
+      # The gauge starts at the time a source is bound, so a source that has
+      # never answered alerts too; a reload that changes a source keeps the
+      # fetch time of the data it still serves. The thresholds match the
+      # default staleness per kind (polling.stale_after, or three intervals
+      # when that is longer: 5 min for components and incidents, 15 min for
+      # uptime). They are fixed here while the intervals are configurable;
+      # change both together.
+      - alert: StatusdUpstreamFailing
+        expr: |
+          time() - statusd_upstream_last_success_timestamp_seconds{kind=~"components|incidents"} > 300
+            or
+          time() - statusd_upstream_last_success_timestamp_seconds{kind="uptime"} > 900
+        for: 1m
+        labels: { severity: warning }
+        annotations:
+          runbook_url: docs/operations/runbook.md#statusdupstreamfailing
+          summary: "Upstream {{ $labels.source }} has not returned {{ $labels.kind }} for {{ if eq $labels.kind \"uptime\" }}15{{ else }}5{{ end }} minutes"
+          description: >-
+            {{ if eq $labels.kind "components" }}Its regions now show 'unknown' on the status page.{{ else if eq $labels.kind "incidents" }}The page keeps its last known incidents, says when they were last updated, and shows the days since then as 'No data'.{{ else }}The page keeps its last known uptime figures and says when they were last updated.{{ end }}
+
+      # The page shows no status for most products. One shared upstream
+      # (today api.status.cloudservices.wso2.com serves five of the six), a
+      # gateway or token issuer, or statusd's own egress or DNS causes it;
+      # statusd keeps publishing, so no other critical alert fires.
+      # statusd_product_status{status="unknown"} is 1 for each product shown
+      # as unknown and 0 for the others, so its average is the share shown as
+      # unknown. Critical above half (4 or more of 6), where the external
+      # check fails too; warning for any. Products read unknown once their
+      # component data is stale (5 min with the shipped settings) unless an
+      # open incident sets their status, so these fire about 10 minutes after
+      # the sources stop answering, and 5 minutes after a start at which none
+      # answers. The warning stays while the critical one fires, so an outage
+      # that spreads never resolves an alert.
+      - alert: StatusdNoProductData
+        expr: avg by (instance) (statusd_product_status{status="unknown"}) > 0.5
+        for: 5m
+        labels: { severity: critical }
+        annotations:
+          runbook_url: docs/operations/runbook.md#statusdnoproductdata
+          summary: "statusd {{ $labels.instance }} shows no known status for {{ $value | humanizePercentage }} of its products"
+          description: "Most products read 'Status unavailable' on the page. Find out whether the upstream is down for everyone or only statusd cannot reach it (its egress or DNS), then tell customers through the other channels."
+      - alert: StatusdNoProductData
+        expr: avg by (instance) (statusd_product_status{status="unknown"}) > 0
+        for: 5m
+        labels: { severity: warning }
+        annotations:
+          runbook_url: docs/operations/runbook.md#statusdnoproductdata
+          summary: "statusd {{ $labels.instance }} shows no known status for {{ $value | humanizePercentage }} of its products"
+          description: "Some products read 'Status unavailable' on the page. Find out whether their upstream is down for everyone or only statusd cannot reach it (its egress or DNS)."
+
+      # A product whose page shows unknown regions or components while every
+      # one of its sources returns component statuses: the cause is the data,
+      # not a failing fetch (StatusdUpstreamFailing covers that), usually an
+      # upstream region key that no longer matches the configuration.
+      # statusd_product_source_info names each product's sources; a product
+      # with a stale component source is left to StatusdUpstreamFailing. The
+      # 300 s matches the components staleness used there.
+      - alert: StatusdDataIncomplete
+        expr: |
+          statusd_product_data_complete == 0
+            unless on (instance, product)
+          (
+            statusd_product_source_info
+              * on (instance, source) group_left ()
+            (time() - statusd_upstream_last_success_timestamp_seconds{kind="components"} > 300)
+          )
+        for: 15m
+        labels: { severity: warning }
+        annotations:
+          runbook_url: docs/operations/runbook.md#statusddataincomplete
+          summary: "{{ $labels.product }} has shown unknown statuses for 15 minutes while its sources answer"
+          description: "Its sources return component statuses, but some region or component reads unknown. Most likely an upstream region key no longer matches the configuration: see statusd_source_region_keys and the 'upstream region keys differ' log line."
+
+      # Probe routes are left out of both sides: a replica that cannot become
+      # ready (no upstream answered yet) answers GET /readyz with 503 by
+      # design, and when probes are its only traffic that would read as
+      # 100% errors. Shed requests have their own alert.
+      - alert: StatusdServerErrors
+        expr: |
+          sum by (instance) (rate(statusd_http_requests_total{code=~"5..", route!~"shed|GET /readyz|GET /healthz"}[5m]))
+            / sum by (instance) (rate(statusd_http_requests_total{route!~"GET /readyz|GET /healthz"}[5m])) > 0.01
+        for: 10m
+        labels: { severity: warning }
+        annotations:
+          runbook_url: docs/operations/runbook.md#statusdservererrors
+          summary: "statusd {{ $labels.instance }} answers more than 1% 5xx"
+
+      # 404 and 405 are excluded: they answer random paths and methods, and
+      # a flood of them says nothing about the page. What is left is mostly
+      # 403 from the origin lock (server.required_headers), which answers
+      # every request without the Front Door header; a wrong or rotated
+      # FRONT_DOOR_ID refuses every reader while nothing else alerts. Probe
+      # routes are left out, as for StatusdServerErrors: the ratio is of
+      # public requests.
+      - alert: StatusdClientErrors
+        expr: |
+          sum by (instance) (rate(statusd_http_requests_total{code=~"4..", code!~"404|405", route!~"GET /readyz|GET /healthz"}[5m]))
+            / sum by (instance) (rate(statusd_http_requests_total{route!~"GET /readyz|GET /healthz"}[5m])) > 0.05
+        for: 10m
+        labels: { severity: warning }
+        annotations:
+          runbook_url: docs/operations/runbook.md#statusdclienterrors
+          summary: "statusd {{ $labels.instance }} refuses more than 5% of requests with 4xx (not 404 or 405)"
+          description: "Most likely the origin lock answering 403: check that FRONT_DOOR_ID matches the Front Door profile the requests come through."
+
+      - alert: StatusdLatencyHigh
+        expr: |
+          histogram_quantile(0.99,
+            sum by (instance, le) (rate(statusd_http_request_duration_seconds_bucket{route!="shed"}[5m]))) > 0.1
+        for: 10m
+        labels: { severity: warning }
+        annotations:
+          runbook_url: docs/operations/runbook.md#statusdlatencyhigh
+          summary: "statusd {{ $labels.instance }} p99 latency above 100 ms"
+
+      - alert: StatusdShedding
+        expr: sum by (instance) (rate(statusd_http_requests_total{route="shed"}[5m])) > 0
+        for: 5m
+        labels: { severity: warning }
+        annotations:
+          runbook_url: docs/operations/runbook.md#statusdshedding
+          summary: "statusd {{ $labels.instance }} is shedding load"
+          description: "Traffic is reaching the origin past the CDN, or the deployment is undersized."
+
+      # Fires for as long as the file on disk is invalid, not only when a
+      # reload rejects it: the running configuration stays, but the next
+      # restart (the platform's or on-call's) would fail on every replica
+      # that reads the file. The watcher re-checks the file on every tick.
+      - alert: StatusdConfigReloadFailed
+        expr: statusd_config_file_valid == 0
+        labels: { severity: warning }
+        annotations:
+          runbook_url: docs/operations/runbook.md#statusdconfigreloadfailed
+          summary: "statusd {{ $labels.instance }} has an invalid configuration file"
+          description: "The previous configuration is still running, but a restart would fail with this file. See the service logs for the validation errors and fix the file before any restart."

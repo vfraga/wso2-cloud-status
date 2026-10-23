@@ -1,0 +1,633 @@
+# promtool test rules prometheus-rules.test.yaml
+rule_files:
+  - prometheus-rules.yaml
+evaluation_interval: 1m
+tests:
+  - name: a silent upstream alerts after 5 minutes for components and incidents, 15 for uptime
+    interval: 1m
+    input_series:
+      # Last success at t=0 for choreo (never refreshed: also what a source
+      # that never answered looks like, since the gauge starts at its
+      # binding), refreshed every minute for moesif.
+      - series: 'statusd_upstream_last_success_timestamp_seconds{instance="a", source="cloudservices/choreo", kind="components"}'
+        values: "0x20"
+      - series: 'statusd_upstream_last_success_timestamp_seconds{instance="a", source="cloudservices/choreo", kind="incidents"}'
+        values: "0x20"
+      - series: 'statusd_upstream_last_success_timestamp_seconds{instance="a", source="cloudservices/choreo", kind="uptime"}'
+        values: "0x20"
+      - series: 'statusd_upstream_last_success_timestamp_seconds{instance="a", source="cloudservices/moesif", kind="components"}'
+        values: "0+60x20"
+      - series: 'statusd_upstream_last_success_timestamp_seconds{instance="a", source="cloudservices/moesif", kind="uptime"}'
+        values: "0+60x20"
+    alert_rule_test:
+      - eval_time: 4m
+        alertname: StatusdUpstreamFailing
+        exp_alerts: []
+      - eval_time: 7m
+        alertname: StatusdUpstreamFailing
+        exp_alerts:
+          - exp_labels: { severity: warning, instance: a, source: cloudservices/choreo, kind: components }
+            exp_annotations:
+              runbook_url: docs/operations/runbook.md#statusdupstreamfailing
+              summary: "Upstream cloudservices/choreo has not returned components for 5 minutes"
+              description: "Its regions now show 'unknown' on the status page."
+          - exp_labels: { severity: warning, instance: a, source: cloudservices/choreo, kind: incidents }
+            exp_annotations:
+              runbook_url: docs/operations/runbook.md#statusdupstreamfailing
+              summary: "Upstream cloudservices/choreo has not returned incidents for 5 minutes"
+              description: "The page keeps its last known incidents, says when they were last updated, and shows the days since then as 'No data'."
+      - eval_time: 17m
+        alertname: StatusdUpstreamFailing
+        exp_alerts:
+          - exp_labels: { severity: warning, instance: a, source: cloudservices/choreo, kind: components }
+            exp_annotations:
+              runbook_url: docs/operations/runbook.md#statusdupstreamfailing
+              summary: "Upstream cloudservices/choreo has not returned components for 5 minutes"
+              description: "Its regions now show 'unknown' on the status page."
+          - exp_labels: { severity: warning, instance: a, source: cloudservices/choreo, kind: incidents }
+            exp_annotations:
+              runbook_url: docs/operations/runbook.md#statusdupstreamfailing
+              summary: "Upstream cloudservices/choreo has not returned incidents for 5 minutes"
+              description: "The page keeps its last known incidents, says when they were last updated, and shows the days since then as 'No data'."
+          - exp_labels: { severity: warning, instance: a, source: cloudservices/choreo, kind: uptime }
+            exp_annotations:
+              runbook_url: docs/operations/runbook.md#statusdupstreamfailing
+              summary: "Upstream cloudservices/choreo has not returned uptime for 15 minutes"
+              description: "The page keeps its last known uptime figures and says when they were last updated."
+
+  - name: most products unknown for 5 minutes is critical; any is a warning
+    interval: 1m
+    input_series:
+      # a: five of six unknown from t=0, the shared upstream failing. b:
+      # three of six (half is not most). c: two of six from t=0, two more
+      # from t=10m. d: none.
+      - series: 'statusd_product_status{instance="a", product="agent-platform", status="unknown"}'
+        values: "1x20"
+      - series: 'statusd_product_status{instance="a", product="api-platform", status="unknown"}'
+        values: "1x20"
+      - series: 'statusd_product_status{instance="a", product="integration-platform", status="unknown"}'
+        values: "1x20"
+      - series: 'statusd_product_status{instance="a", product="identity-platform", status="unknown"}'
+        values: "0x20"
+      - series: 'statusd_product_status{instance="a", product="developer-platform", status="unknown"}'
+        values: "1x20"
+      - series: 'statusd_product_status{instance="a", product="moesif", status="unknown"}'
+        values: "1x20"
+      - series: 'statusd_product_status{instance="b", product="agent-platform", status="unknown"}'
+        values: "1x20"
+      - series: 'statusd_product_status{instance="b", product="api-platform", status="unknown"}'
+        values: "1x20"
+      - series: 'statusd_product_status{instance="b", product="integration-platform", status="unknown"}'
+        values: "1x20"
+      - series: 'statusd_product_status{instance="b", product="identity-platform", status="unknown"}'
+        values: "0x20"
+      - series: 'statusd_product_status{instance="b", product="developer-platform", status="unknown"}'
+        values: "0x20"
+      - series: 'statusd_product_status{instance="b", product="moesif", status="unknown"}'
+        values: "0x20"
+      - series: 'statusd_product_status{instance="c", product="agent-platform", status="unknown"}'
+        values: "1x20"
+      - series: 'statusd_product_status{instance="c", product="api-platform", status="unknown"}'
+        values: "1x20"
+      - series: 'statusd_product_status{instance="c", product="integration-platform", status="unknown"}'
+        values: "0x9 1x10"
+      - series: 'statusd_product_status{instance="c", product="identity-platform", status="unknown"}'
+        values: "0x9 1x10"
+      - series: 'statusd_product_status{instance="c", product="developer-platform", status="unknown"}'
+        values: "0x20"
+      - series: 'statusd_product_status{instance="c", product="moesif", status="unknown"}'
+        values: "0x20"
+      - series: 'statusd_product_status{instance="d", product="agent-platform", status="unknown"}'
+        values: "0x20"
+      - series: 'statusd_product_status{instance="d", product="api-platform", status="unknown"}'
+        values: "0x20"
+      - series: 'statusd_product_status{instance="d", product="integration-platform", status="unknown"}'
+        values: "0x20"
+      - series: 'statusd_product_status{instance="d", product="identity-platform", status="unknown"}'
+        values: "0x20"
+      - series: 'statusd_product_status{instance="d", product="developer-platform", status="unknown"}'
+        values: "0x20"
+      - series: 'statusd_product_status{instance="d", product="moesif", status="unknown"}'
+        values: "0x20"
+    alert_rule_test:
+      - eval_time: 4m
+        alertname: StatusdNoProductData
+        exp_alerts: []
+      - eval_time: 6m
+        alertname: StatusdNoProductData
+        exp_alerts:
+          - exp_labels: { severity: critical, instance: a }
+            exp_annotations:
+              runbook_url: docs/operations/runbook.md#statusdnoproductdata
+              summary: "statusd a shows no known status for 83.33% of its products"
+              description: "Most products read 'Status unavailable' on the page. Find out whether the upstream is down for everyone or only statusd cannot reach it (its egress or DNS), then tell customers through the other channels."
+          - exp_labels: { severity: warning, instance: a }
+            exp_annotations:
+              runbook_url: docs/operations/runbook.md#statusdnoproductdata
+              summary: "statusd a shows no known status for 83.33% of its products"
+              description: "Some products read 'Status unavailable' on the page. Find out whether their upstream is down for everyone or only statusd cannot reach it (its egress or DNS)."
+          - exp_labels: { severity: warning, instance: b }
+            exp_annotations:
+              runbook_url: docs/operations/runbook.md#statusdnoproductdata
+              summary: "statusd b shows no known status for 50% of its products"
+              description: "Some products read 'Status unavailable' on the page. Find out whether their upstream is down for everyone or only statusd cannot reach it (its egress or DNS)."
+          - exp_labels: { severity: warning, instance: c }
+            exp_annotations:
+              runbook_url: docs/operations/runbook.md#statusdnoproductdata
+              summary: "statusd c shows no known status for 33.33% of its products"
+              description: "Some products read 'Status unavailable' on the page. Find out whether their upstream is down for everyone or only statusd cannot reach it (its egress or DNS)."
+      # c's third and fourth products went unknown at t=10m: critical once
+      # that lasted 5 minutes, and its warning kept firing meanwhile.
+      - eval_time: 12m
+        alertname: StatusdNoProductData
+        exp_alerts:
+          - exp_labels: { severity: critical, instance: a }
+            exp_annotations:
+              runbook_url: docs/operations/runbook.md#statusdnoproductdata
+              summary: "statusd a shows no known status for 83.33% of its products"
+              description: "Most products read 'Status unavailable' on the page. Find out whether the upstream is down for everyone or only statusd cannot reach it (its egress or DNS), then tell customers through the other channels."
+          - exp_labels: { severity: warning, instance: a }
+            exp_annotations:
+              runbook_url: docs/operations/runbook.md#statusdnoproductdata
+              summary: "statusd a shows no known status for 83.33% of its products"
+              description: "Some products read 'Status unavailable' on the page. Find out whether their upstream is down for everyone or only statusd cannot reach it (its egress or DNS)."
+          - exp_labels: { severity: warning, instance: b }
+            exp_annotations:
+              runbook_url: docs/operations/runbook.md#statusdnoproductdata
+              summary: "statusd b shows no known status for 50% of its products"
+              description: "Some products read 'Status unavailable' on the page. Find out whether their upstream is down for everyone or only statusd cannot reach it (its egress or DNS)."
+          - exp_labels: { severity: warning, instance: c }
+            exp_annotations:
+              runbook_url: docs/operations/runbook.md#statusdnoproductdata
+              summary: "statusd c shows no known status for 66.67% of its products"
+              description: "Some products read 'Status unavailable' on the page. Find out whether their upstream is down for everyone or only statusd cannot reach it (its egress or DNS)."
+      - eval_time: 15m
+        alertname: StatusdNoProductData
+        exp_alerts:
+          - exp_labels: { severity: critical, instance: a }
+            exp_annotations:
+              runbook_url: docs/operations/runbook.md#statusdnoproductdata
+              summary: "statusd a shows no known status for 83.33% of its products"
+              description: "Most products read 'Status unavailable' on the page. Find out whether the upstream is down for everyone or only statusd cannot reach it (its egress or DNS), then tell customers through the other channels."
+          - exp_labels: { severity: warning, instance: a }
+            exp_annotations:
+              runbook_url: docs/operations/runbook.md#statusdnoproductdata
+              summary: "statusd a shows no known status for 83.33% of its products"
+              description: "Some products read 'Status unavailable' on the page. Find out whether their upstream is down for everyone or only statusd cannot reach it (its egress or DNS)."
+          - exp_labels: { severity: warning, instance: b }
+            exp_annotations:
+              runbook_url: docs/operations/runbook.md#statusdnoproductdata
+              summary: "statusd b shows no known status for 50% of its products"
+              description: "Some products read 'Status unavailable' on the page. Find out whether their upstream is down for everyone or only statusd cannot reach it (its egress or DNS)."
+          - exp_labels: { severity: critical, instance: c }
+            exp_annotations:
+              runbook_url: docs/operations/runbook.md#statusdnoproductdata
+              summary: "statusd c shows no known status for 66.67% of its products"
+              description: "Most products read 'Status unavailable' on the page. Find out whether the upstream is down for everyone or only statusd cannot reach it (its egress or DNS), then tell customers through the other channels."
+          - exp_labels: { severity: warning, instance: c }
+            exp_annotations:
+              runbook_url: docs/operations/runbook.md#statusdnoproductdata
+              summary: "statusd c shows no known status for 66.67% of its products"
+              description: "Some products read 'Status unavailable' on the page. Find out whether their upstream is down for everyone or only statusd cannot reach it (its egress or DNS)."
+
+  - name: one product unknown for 5 minutes is a warning, not critical
+    interval: 1m
+    input_series:
+      - series: 'statusd_product_status{instance="a", product="agent-platform", status="unknown"}'
+        values: "0x10"
+      - series: 'statusd_product_status{instance="a", product="api-platform", status="unknown"}'
+        values: "0x10"
+      - series: 'statusd_product_status{instance="a", product="integration-platform", status="unknown"}'
+        values: "0x10"
+      - series: 'statusd_product_status{instance="a", product="identity-platform", status="unknown"}'
+        values: "0x10"
+      - series: 'statusd_product_status{instance="a", product="developer-platform", status="unknown"}'
+        values: "0x10"
+      - series: 'statusd_product_status{instance="a", product="moesif", status="unknown"}'
+        values: "1x10"
+    alert_rule_test:
+      - eval_time: 4m
+        alertname: StatusdNoProductData
+        exp_alerts: []
+      - eval_time: 6m
+        alertname: StatusdNoProductData
+        exp_alerts:
+          - exp_labels: { severity: warning, instance: a }
+            exp_annotations:
+              runbook_url: docs/operations/runbook.md#statusdnoproductdata
+              summary: "statusd a shows no known status for 16.67% of its products"
+              description: "Some products read 'Status unavailable' on the page. Find out whether their upstream is down for everyone or only statusd cannot reach it (its egress or DNS)."
+
+  - name: a product that shows a status again resolves the critical alert at once
+    interval: 1m
+    input_series:
+      - series: 'statusd_product_status{instance="a", product="api-platform", status="unknown"}'
+        values: "1x20"
+      - series: 'statusd_product_status{instance="a", product="moesif", status="unknown"}'
+        values: "1x10 0x10"
+    alert_rule_test:
+      - eval_time: 8m
+        alertname: StatusdNoProductData
+        exp_alerts:
+          - exp_labels: { severity: critical, instance: a }
+            exp_annotations:
+              runbook_url: docs/operations/runbook.md#statusdnoproductdata
+              summary: "statusd a shows no known status for 100% of its products"
+              description: "Most products read 'Status unavailable' on the page. Find out whether the upstream is down for everyone or only statusd cannot reach it (its egress or DNS), then tell customers through the other channels."
+          - exp_labels: { severity: warning, instance: a }
+            exp_annotations:
+              runbook_url: docs/operations/runbook.md#statusdnoproductdata
+              summary: "statusd a shows no known status for 100% of its products"
+              description: "Some products read 'Status unavailable' on the page. Find out whether their upstream is down for everyone or only statusd cannot reach it (its egress or DNS)."
+      - eval_time: 12m
+        alertname: StatusdNoProductData
+        exp_alerts:
+          - exp_labels: { severity: warning, instance: a }
+            exp_annotations:
+              runbook_url: docs/operations/runbook.md#statusdnoproductdata
+              summary: "statusd a shows no known status for 50% of its products"
+              description: "Some products read 'Status unavailable' on the page. Find out whether their upstream is down for everyone or only statusd cannot reach it (its egress or DNS)."
+
+  - name: a product incomplete for 15 minutes while its sources answer alerts
+    interval: 1m
+    input_series:
+      # identity-platform: incomplete from t=0, its only source fresh.
+      - series: 'statusd_product_data_complete{instance="a", product="identity-platform"}'
+        values: "0x30"
+      - series: 'statusd_product_source_info{instance="a", product="identity-platform", source="asgardeo/asgardeo"}'
+        values: "1x30"
+      - series: 'statusd_upstream_last_success_timestamp_seconds{instance="a", source="asgardeo/asgardeo", kind="components"}'
+        values: "0+60x30"
+      # developer-platform: incomplete, one of its two sources silent since
+      # t=0. That is StatusdUpstreamFailing's case, not this one.
+      - series: 'statusd_product_data_complete{instance="a", product="developer-platform"}'
+        values: "0x30"
+      - series: 'statusd_product_source_info{instance="a", product="developer-platform", source="cloudservices/choreo"}'
+        values: "1x30"
+      - series: 'statusd_product_source_info{instance="a", product="developer-platform", source="cloudservices/choreo-eu"}'
+        values: "1x30"
+      - series: 'statusd_upstream_last_success_timestamp_seconds{instance="a", source="cloudservices/choreo", kind="components"}'
+        values: "0+60x30"
+      - series: 'statusd_upstream_last_success_timestamp_seconds{instance="a", source="cloudservices/choreo-eu", kind="components"}'
+        values: "0x30"
+      # A stale incidents feed does not count: the rule looks at components.
+      - series: 'statusd_upstream_last_success_timestamp_seconds{instance="a", source="asgardeo/asgardeo", kind="incidents"}'
+        values: "0x30"
+      # moesif: complete.
+      - series: 'statusd_product_data_complete{instance="a", product="moesif"}'
+        values: "1x30"
+      - series: 'statusd_product_source_info{instance="a", product="moesif", source="cloudservices/moesif"}'
+        values: "1x30"
+      - series: 'statusd_upstream_last_success_timestamp_seconds{instance="a", source="cloudservices/moesif", kind="components"}'
+        values: "0+60x30"
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: StatusdDataIncomplete
+        exp_alerts: []
+      - eval_time: 20m
+        alertname: StatusdDataIncomplete
+        exp_alerts:
+          - exp_labels: { severity: warning, instance: a, product: identity-platform }
+            exp_annotations:
+              runbook_url: docs/operations/runbook.md#statusddataincomplete
+              summary: "identity-platform has shown unknown statuses for 15 minutes while its sources answer"
+              description: "Its sources return component statuses, but some region or component reads unknown. Most likely an upstream region key no longer matches the configuration: see statusd_source_region_keys and the 'upstream region keys differ' log line."
+
+  - name: a product that becomes complete again stops alerting
+    interval: 1m
+    input_series:
+      - series: 'statusd_product_data_complete{instance="a", product="moesif"}'
+        values: "0x20 1x10"
+      - series: 'statusd_product_source_info{instance="a", product="moesif", source="cloudservices/moesif"}'
+        values: "1x30"
+      - series: 'statusd_upstream_last_success_timestamp_seconds{instance="a", source="cloudservices/moesif", kind="components"}'
+        values: "0+60x30"
+    alert_rule_test:
+      - eval_time: 18m
+        alertname: StatusdDataIncomplete
+        exp_alerts:
+          - exp_labels: { severity: warning, instance: a, product: moesif }
+            exp_annotations:
+              runbook_url: docs/operations/runbook.md#statusddataincomplete
+              summary: "moesif has shown unknown statuses for 15 minutes while its sources answer"
+              description: "Its sources return component statuses, but some region or component reads unknown. Most likely an upstream region key no longer matches the configuration: see statusd_source_region_keys and the 'upstream region keys differ' log line."
+      - eval_time: 22m
+        alertname: StatusdDataIncomplete
+        exp_alerts: []
+
+  - name: a target down for two minutes alerts
+    interval: 1m
+    input_series:
+      - series: 'up{job="statusd", instance="a"}'
+        values: "1 1 0 0 0 0 0"
+      - series: 'up{job="statusd", instance="b"}'
+        values: "1x6"
+    alert_rule_test:
+      - eval_time: 3m
+        alertname: StatusdDown
+        exp_alerts: []
+      # Down from t=2m: firing exactly two minutes later.
+      - eval_time: 4m
+        alertname: StatusdDown
+        exp_alerts: &down
+          - exp_labels: { severity: critical, job: statusd, instance: a }
+            exp_annotations:
+              runbook_url: docs/operations/runbook.md#statusddown
+              summary: "statusd a is down"
+              description: "statusd is not answering scrapes. The page still loads from the frontend container, but its API calls fail; Front Door may serve the last API copy for a few minutes."
+      - eval_time: 5m
+        alertname: StatusdDown
+        exp_alerts: *down
+
+  - name: a scrape target that disappears alerts after 5 minutes, where StatusdDown cannot
+    interval: 1m
+    input_series:
+      # Scraped until t=2m, then gone (scale to zero, a revision swap): the
+      # series ends with a stale marker, so up == 0 never matches.
+      - series: 'up{job="statusd", instance="a"}'
+        values: "1 1 1 stale"
+      - series: 'up{job="other", instance="x"}'
+        values: "1x12"
+    alert_rule_test:
+      - eval_time: 2m
+        alertname: StatusdTargetMissing
+        exp_alerts: []
+      - eval_time: 7m
+        alertname: StatusdTargetMissing
+        exp_alerts: []
+      - eval_time: 9m
+        alertname: StatusdTargetMissing
+        exp_alerts:
+          - exp_labels: { severity: critical, job: statusd }
+            exp_annotations:
+              runbook_url: docs/operations/runbook.md#statusdtargetmissing
+              summary: "No statusd target has been scraped for 5 minutes"
+              description: "The scrape target is gone, so no other statusd alert can fire. The service may be scaled to zero or its revision changed without a scrape target."
+      - eval_time: 9m
+        alertname: StatusdDown
+        exp_alerts: []
+
+  - name: a target that is scraped, even while down, is not missing
+    interval: 1m
+    input_series:
+      - series: 'up{job="statusd", instance="a"}'
+        values: "0x12"
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: StatusdTargetMissing
+        exp_alerts: []
+
+  - name: an aggregator that stops publishing alerts
+    interval: 1m
+    input_series:
+      # Publishes every minute until t=3m, then stops.
+      - series: 'statusd_snapshot_published_timestamp_seconds{instance="a"}'
+        values: "0 60 120 180 180 180 180 180 180 180"
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: StatusdSnapshotStale
+        exp_alerts: []
+      # Over 120 s old from t=6m: still pending a minute later.
+      - eval_time: 7m
+        alertname: StatusdSnapshotStale
+        exp_alerts: []
+      - eval_time: 8m
+        alertname: StatusdSnapshotStale
+        exp_alerts:
+          - exp_labels: { severity: critical, instance: a }
+            exp_annotations:
+              runbook_url: docs/operations/runbook.md#statusdsnapshotstale
+              summary: "statusd a stopped publishing"
+              description: "No snapshot for 5m 0s; the aggregator may be stuck."
+
+  - name: more than 1% server errors for ten minutes alerts; shed requests do not count
+    interval: 1m
+    input_series:
+      - series: 'statusd_http_requests_total{instance="a", route="GET /api/v1/summary", code="200"}'
+        values: "0+100x30"
+      - series: 'statusd_http_requests_total{instance="a", route="GET /api/v1/summary", code="500"}'
+        values: "0+5x30"
+      - series: 'statusd_http_requests_total{instance="b", route="GET /api/v1/summary", code="200"}'
+        values: "0+100x30"
+      - series: 'statusd_http_requests_total{instance="b", route="shed", code="503"}'
+        values: "0+50x30"
+    alert_rule_test:
+      - eval_time: 8m
+        alertname: StatusdServerErrors
+        exp_alerts: []
+      - eval_time: 20m
+        alertname: StatusdServerErrors
+        exp_alerts:
+          - exp_labels: { severity: warning, instance: a }
+            exp_annotations:
+              runbook_url: docs/operations/runbook.md#statusdservererrors
+              summary: "statusd a answers more than 1% 5xx"
+
+  # A replica that cannot become ready answers its readiness probe with 503
+  # for as long as no upstream has answered; that is not a server error.
+  - name: readiness probe 503s alone do not alert
+    interval: 1m
+    input_series:
+      - series: 'statusd_http_requests_total{instance="a", route="GET /readyz", code="503"}'
+        values: "0+6x30"
+      - series: 'statusd_http_requests_total{instance="a", route="GET /healthz", code="200"}'
+        values: "0+6x30"
+    alert_rule_test:
+      - eval_time: 20m
+        alertname: StatusdServerErrors
+        exp_alerts: []
+
+  - name: probe traffic does not dilute the server error ratio
+    interval: 1m
+    input_series:
+      # 2 of every 102 public requests fail (2%); with the probes counted it
+      # would be 2 of 202 (under 1%).
+      - series: 'statusd_http_requests_total{instance="a", route="GET /api/v1/summary", code="200"}'
+        values: "0+100x30"
+      - series: 'statusd_http_requests_total{instance="a", route="GET /api/v1/summary", code="500"}'
+        values: "0+2x30"
+      - series: 'statusd_http_requests_total{instance="a", route="GET /readyz", code="200"}'
+        values: "0+100x30"
+    alert_rule_test:
+      - eval_time: 20m
+        alertname: StatusdServerErrors
+        exp_alerts:
+          - exp_labels: { severity: warning, instance: a }
+            exp_annotations:
+              runbook_url: docs/operations/runbook.md#statusdservererrors
+              summary: "statusd a answers more than 1% 5xx"
+
+  # The numerator side of the probe exclusion: probe 503s next to healthy
+  # public traffic. Counted, 6 of every 100 public requests would read as 6%.
+  - name: readiness probe 503s next to healthy traffic do not alert
+    interval: 1m
+    input_series:
+      - series: 'statusd_http_requests_total{instance="a", route="GET /api/v1/summary", code="200"}'
+        values: "0+100x30"
+      - series: 'statusd_http_requests_total{instance="a", route="GET /readyz", code="503"}'
+        values: "0+6x30"
+    alert_rule_test:
+      - eval_time: 20m
+        alertname: StatusdServerErrors
+        exp_alerts: []
+
+  - name: probe traffic does not dilute the client error ratio
+    interval: 1m
+    input_series:
+      # 10 of every 110 public requests are refused (9%); with the probes
+      # counted it would be 10 of 410 (under 5%).
+      - series: 'statusd_http_requests_total{instance="a", route="GET /api/v1/summary", code="200"}'
+        values: "0+100x30"
+      - series: 'statusd_http_requests_total{instance="a", route="unmatched", code="403"}'
+        values: "0+10x30"
+      - series: 'statusd_http_requests_total{instance="a", route="GET /readyz", code="200"}'
+        values: "0+150x30"
+      - series: 'statusd_http_requests_total{instance="a", route="GET /healthz", code="200"}'
+        values: "0+150x30"
+    alert_rule_test:
+      - eval_time: 20m
+        alertname: StatusdClientErrors
+        exp_alerts:
+          - exp_labels: { severity: warning, instance: a }
+            exp_annotations:
+              runbook_url: docs/operations/runbook.md#statusdclienterrors
+              summary: "statusd a refuses more than 5% of requests with 4xx (not 404 or 405)"
+              description: "Most likely the origin lock answering 403: check that FRONT_DOOR_ID matches the Front Door profile the requests come through."
+
+  # The numerator side: the origin lock exempts the probes, so they should
+  # never answer 4xx; if one does, it says nothing about public readers.
+  - name: probe 4xx do not count as client errors
+    interval: 1m
+    input_series:
+      - series: 'statusd_http_requests_total{instance="a", route="GET /api/v1/summary", code="200"}'
+        values: "0+100x30"
+      - series: 'statusd_http_requests_total{instance="a", route="GET /healthz", code="403"}'
+        values: "0+20x30"
+    alert_rule_test:
+      - eval_time: 20m
+        alertname: StatusdClientErrors
+        exp_alerts: []
+
+  - name: more than 5% 4xx other than 404 and 405 for ten minutes alerts
+    interval: 1m
+    input_series:
+      # a: the origin lock refuses 10 of every 110 requests (9%).
+      - series: 'statusd_http_requests_total{instance="a", route="GET /api/v1/summary", code="200"}'
+        values: "0+100x30"
+      - series: 'statusd_http_requests_total{instance="a", route="unmatched", code="403"}'
+        values: "0+10x30"
+      # b: random paths and methods only (404, 405), a third of the traffic.
+      - series: 'statusd_http_requests_total{instance="b", route="GET /api/v1/summary", code="200"}'
+        values: "0+100x30"
+      - series: 'statusd_http_requests_total{instance="b", route="unmatched", code="404"}'
+        values: "0+40x30"
+      - series: 'statusd_http_requests_total{instance="b", route="unmatched", code="405"}'
+        values: "0+10x30"
+      # c: a few refusals (2 of every 102, under 2%).
+      - series: 'statusd_http_requests_total{instance="c", route="GET /api/v1/summary", code="200"}'
+        values: "0+100x30"
+      - series: 'statusd_http_requests_total{instance="c", route="unmatched", code="403"}'
+        values: "0+2x30"
+    alert_rule_test:
+      - eval_time: 8m
+        alertname: StatusdClientErrors
+        exp_alerts: []
+      - eval_time: 20m
+        alertname: StatusdClientErrors
+        exp_alerts:
+          - exp_labels: { severity: warning, instance: a }
+            exp_annotations:
+              runbook_url: docs/operations/runbook.md#statusdclienterrors
+              summary: "statusd a refuses more than 5% of requests with 4xx (not 404 or 405)"
+              description: "Most likely the origin lock answering 403: check that FRONT_DOOR_ID matches the Front Door profile the requests come through."
+
+  - name: a p99 above 100 ms for ten minutes alerts
+    interval: 1m
+    input_series:
+      # a: 99 of every 100 requests take 100 to 250 ms. b: all under 5 ms.
+      # c: 2 of every 100 take 100 to 250 ms, a p99 of about 175 ms.
+      - series: 'statusd_http_request_duration_seconds_bucket{instance="a", route="GET /api/v1/summary", le="0.005"}'
+        values: "0+1x30"
+      - series: 'statusd_http_request_duration_seconds_bucket{instance="a", route="GET /api/v1/summary", le="0.1"}'
+        values: "0+1x30"
+      - series: 'statusd_http_request_duration_seconds_bucket{instance="a", route="GET /api/v1/summary", le="0.25"}'
+        values: "0+100x30"
+      - series: 'statusd_http_request_duration_seconds_bucket{instance="a", route="GET /api/v1/summary", le="+Inf"}'
+        values: "0+100x30"
+      - series: 'statusd_http_request_duration_seconds_bucket{instance="b", route="GET /api/v1/summary", le="0.005"}'
+        values: "0+100x30"
+      - series: 'statusd_http_request_duration_seconds_bucket{instance="b", route="GET /api/v1/summary", le="0.1"}'
+        values: "0+100x30"
+      - series: 'statusd_http_request_duration_seconds_bucket{instance="b", route="GET /api/v1/summary", le="0.25"}'
+        values: "0+100x30"
+      - series: 'statusd_http_request_duration_seconds_bucket{instance="b", route="GET /api/v1/summary", le="+Inf"}'
+        values: "0+100x30"
+      - series: 'statusd_http_request_duration_seconds_bucket{instance="c", route="GET /api/v1/summary", le="0.005"}'
+        values: "0+0x30"
+      - series: 'statusd_http_request_duration_seconds_bucket{instance="c", route="GET /api/v1/summary", le="0.1"}'
+        values: "0+98x30"
+      - series: 'statusd_http_request_duration_seconds_bucket{instance="c", route="GET /api/v1/summary", le="0.25"}'
+        values: "0+100x30"
+      - series: 'statusd_http_request_duration_seconds_bucket{instance="c", route="GET /api/v1/summary", le="+Inf"}'
+        values: "0+100x30"
+    alert_rule_test:
+      - eval_time: 8m
+        alertname: StatusdLatencyHigh
+        exp_alerts: []
+      - eval_time: 20m
+        alertname: StatusdLatencyHigh
+        exp_alerts:
+          - exp_labels: { severity: warning, instance: a }
+            exp_annotations:
+              runbook_url: docs/operations/runbook.md#statusdlatencyhigh
+              summary: "statusd a p99 latency above 100 ms"
+          - exp_labels: { severity: warning, instance: c }
+            exp_annotations:
+              runbook_url: docs/operations/runbook.md#statusdlatencyhigh
+              summary: "statusd c p99 latency above 100 ms"
+
+  - name: shedding for five minutes alerts
+    interval: 1m
+    input_series:
+      - series: 'statusd_http_requests_total{instance="a", route="shed", code="503"}'
+        values: "0+10x10"
+    alert_rule_test:
+      - eval_time: 3m
+        alertname: StatusdShedding
+        exp_alerts: []
+      - eval_time: 10m
+        alertname: StatusdShedding
+        exp_alerts:
+          - exp_labels: { severity: warning, instance: a }
+            exp_annotations:
+              runbook_url: docs/operations/runbook.md#statusdshedding
+              summary: "statusd a is shedding load"
+              description: "Traffic is reaching the origin past the CDN, or the deployment is undersized."
+
+  - name: an invalid configuration file alerts until it is fixed
+    interval: 1m
+    input_series:
+      # Valid, invalid from t=2m for 40 minutes, then fixed at t=42m.
+      - series: 'statusd_config_file_valid{instance="a"}'
+        values: "1 1 0x39 1 1 1"
+      - series: 'statusd_config_file_valid{instance="b"}'
+        values: "1x45"
+    alert_rule_test:
+      - eval_time: 1m
+        alertname: StatusdConfigReloadFailed
+        exp_alerts: []
+      - eval_time: 2m
+        alertname: StatusdConfigReloadFailed
+        exp_alerts: &invalid
+          - exp_labels: { severity: warning, instance: a }
+            exp_annotations:
+              runbook_url: docs/operations/runbook.md#statusdconfigreloadfailed
+              summary: "statusd a has an invalid configuration file"
+              description: "The previous configuration is still running, but a restart would fail with this file. See the service logs for the validation errors and fix the file before any restart."
+      # Still firing long after the reload that rejected it.
+      - eval_time: 40m
+        alertname: StatusdConfigReloadFailed
+        exp_alerts: *invalid
+      - eval_time: 43m
+        alertname: StatusdConfigReloadFailed
+        exp_alerts: []

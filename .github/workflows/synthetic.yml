@@ -1,0 +1,99 @@
+# External synthetic check of the public status page (scripts/ops/
+# synthetic-check.sh), every 5 minutes from GitHub-hosted runners: outside our
+# Azure subscription and region, though GitHub runs them on Azure too. It
+# sees what alerts on statusd's own metrics cannot: DNS, TLS, Front Door,
+# WAF, the origin lock and the frontend origin (the page and the scripts it
+# loads). Off until the repository variable SYNTHETIC_BASE_URL is set. Its
+# settings, secrets and paging: docs/operations/runbook.md, "External
+# synthetic check" and "Turning it on". Every third-party action is pinned to
+# a full commit SHA, as in ci.yml.
+name: Synthetic check
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+    inputs:
+      base_url:
+        description: Base URL to check instead of vars.SYNTHETIC_BASE_URL (manual runs never page)
+        required: false
+        type: string
+
+permissions: {}
+
+defaults:
+  run:
+    shell: bash # bash -eo pipefail: a piped command fails the step when any part fails
+
+concurrency:
+  group: synthetic
+  cancel-in-progress: false
+
+jobs:
+  check:
+    name: Page and API reachable and fresh
+    if: vars.SYNTHETIC_BASE_URL != '' || (github.event_name == 'workflow_dispatch' && inputs.base_url != '')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    # Holds the paging secrets; deployment branches: main only.
+    environment: synthetic
+    permissions:
+      contents: read
+      actions: read # earlier scheduled runs and their artifacts, so a failure episode pages once
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # Two attempts 30 seconds apart, so one network blip between the runner
+      # and the edge does not page anyone. The step limit keeps a hanging edge
+      # from timing out the job, which would skip the paging step.
+      - name: Check the page and the API
+        id: check
+        timeout-minutes: 5
+        env:
+          STATUS_BASE_URL: ${{ inputs.base_url || vars.SYNTHETIC_BASE_URL }}
+          # Empty unless set: the script's default is the page's staleness, which a test pins.
+          MAX_AGE_SECONDS: ${{ vars.SYNTHETIC_MAX_AGE_SECONDS }}
+          PRODUCT_ID: ${{ vars.SYNTHETIC_PRODUCT_ID }}
+        run: |
+          out="$RUNNER_TEMP/synthetic.out"
+          if sh scripts/ops/synthetic-check.sh | tee "$out"; then
+            exit 0
+          fi
+          echo "First attempt failed; retrying in 30 seconds."
+          sleep 30
+          sh scripts/ops/synthetic-check.sh | tee "$out"
+      # Scheduled runs only; manual runs never page. continue-on-error keeps
+      # the run's conclusion equal to the check's result, which is what the
+      # next run reads to tell a new failure episode from an ongoing one.
+      - name: Page, recovery message and heartbeat
+        id: notify
+        if: always() && github.event_name == 'schedule'
+        continue-on-error: true
+        timeout-minutes: 3
+        env:
+          RESULT: ${{ steps.check.outcome == 'success' && 'pass' || 'fail' }}
+          PAGING_WEBHOOK: ${{ secrets.SYNTHETIC_PAGING_WEBHOOK }}
+          HEARTBEAT_URL: ${{ secrets.SYNTHETIC_HEARTBEAT_URL }}
+          STATUS_BASE_URL: ${{ vars.SYNTHETIC_BASE_URL }}
+          CHECK_OUTPUT: ${{ runner.temp }}/synthetic.out
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          RUNBOOK_URL: ${{ vars.SYNTHETIC_RUNBOOK_URL }}
+          WORKFLOW: synthetic.yml
+          CURRENT_RUN_ID: ${{ github.run_id }}
+          PAGED_FILE: ${{ runner.temp }}/synthetic-paged.txt
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: sh scripts/ops/synthetic-notify.sh run "$RESULT"
+      # The mark that this failure episode has paged: a delivered page, or
+      # the previous run's mark carried on. The next failing run stays quiet
+      # only when it finds it, so a page that was not delivered is sent again.
+      - name: Mark the failure episode as paged
+        if: always() && steps.notify.outputs.paged == 'true'
+        continue-on-error: true
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: synthetic-paged
+          path: ${{ runner.temp }}/synthetic-paged.txt
+          if-no-files-found: error
+          retention-days: 1

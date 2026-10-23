@@ -1,0 +1,22 @@
+/bin/
+coverage.out
+*.test
+.DS_Store
+node_modules/
+dist/
+.env
+.env.*
+!.env.example
+coverage/
+test-results/
+playwright-report/
+*.tsbuildinfo
+
+# Local only, never pushed: internal documents, the tooling that renders
+# them, and Claude Code's instructions and settings.
+/docs/
+/tools/
+/scripts/docs/
+/CLAUDE.md
+/CLAUDE.local.md
+/.claude/

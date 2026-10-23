@@ -1,0 +1,5 @@
+**
+!backend/go/**
+!config/statusd.yaml
+!config/statusd.production.yaml
+backend/go/coverage.out

@@ -1,0 +1,20 @@
+# Who reviews what. The teams below are placeholders: replace them with the
+# real GitHub teams of the service owner and of SRE at the handover, then
+# require code-owner review in the branch protection of main. Until then
+# GitHub shows these owners as unknown and requests no review. The last
+# matching line wins.
+
+*                               @wso2/status-page-maintainers
+
+# What SRE runs and is paged for: configuration, alerts, the runbook and
+# the operations documents, the external check.
+/config/                        @wso2/status-page-maintainers @wso2/status-page-sre
+/deploy/observability/          @wso2/status-page-maintainers @wso2/status-page-sre
+/scripts/ops/                   @wso2/status-page-maintainers @wso2/status-page-sre
+
+# What builds, signs and ships the images, and what the images serve.
+/.github/                       @wso2/status-page-maintainers @wso2/status-page-sre
+/backend/go/Dockerfile          @wso2/status-page-maintainers @wso2/status-page-sre
+/frontend/Dockerfile            @wso2/status-page-maintainers @wso2/status-page-sre
+/frontend/docker/               @wso2/status-page-maintainers @wso2/status-page-sre
+/SECURITY.md                    @wso2/status-page-maintainers @wso2/status-page-sre

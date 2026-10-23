@@ -1,0 +1,49 @@
+{
+  "2026-5": {
+    "incidents": []
+  },
+  "2026-6": {
+    "incidents": []
+  },
+  "2026-7": {
+    "incidents": []
+  },
+  "2026-8": {
+    "incidents": []
+  },
+  "2026-9": {
+    "incidents": [
+      {
+        "id": "211af99f478bcb5083b064d3426d43a6",
+        "begin": "2026-09-05 23:02:00",
+        "end": "2026-09-06 00:56:00",
+        "type": "Degraded",
+        "status": "Resolved",
+        "short_description": "Degradation within API Platform Console, Developer Portal and Other UI",
+        "expanded": false
+      }
+    ]
+  },
+  "@@month:ago:0m@@": {
+    "incidents": [
+      {
+        "id": "e2e-active-1",
+        "begin": "@@ago:90m@@",
+        "end": null,
+        "type": "Degraded",
+        "status": "Investigating",
+        "short_description": "Elevated latency for API proxy invocation in the EU data plane",
+        "expanded": false
+      },
+      {
+        "id": "e2e-resolved-1",
+        "begin": "@@ago:50h@@",
+        "end": "@@ago:48h@@",
+        "type": "Outage",
+        "status": "Resolved",
+        "short_description": "Console sign-in failures",
+        "expanded": false
+      }
+    ]
+  }
+}

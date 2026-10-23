@@ -1,0 +1,577 @@
+openapi: 3.1.0
+info:
+  title: WSO2 Cloud Status API
+  version: 1.0.0
+  summary: Read-only status of the WSO2 Cloud products.
+  description: |
+    Public, unauthenticated, read-only API behind the WSO2 Cloud status page.
+
+    The service must pass the contract tests in tests/contract, which
+    validate live responses against this document.
+
+    Compatibility: versions within /api/v1 only add. Clients must ignore
+    properties they do not know; the schemas here are closed only so the
+    contract tests catch an implementation that sends more than this
+    version documents. The same holds for enumerations: clients must treat
+    a value they do not know (a status, an impact) as "unknown", and adding
+    a value is a minor version change, like adding a property.
+
+    Identifiers: product ids and the region ids the configuration names are
+    stable, so clients may store them and match on them. Removing or
+    renaming one follows a deprecation notice; it never happens silently.
+    A region the configuration does not name yet is listed under a derived
+    id (see RegionId), which can change when the region is named.
+
+    Caching: responses carry a strong ETag, Last-Modified and Cache-Control.
+    Clients should poll with If-None-Match (or If-Modified-Since, which is
+    what Azure Front Door uses to revalidate); an unchanged body answers 304
+    with no payload. Last-Modified is when the body last changed, not when
+    it was last checked. Every change moves it forward by at least a second,
+    so two changes within one second still revalidate, but a response never
+    sends it later than its Date: in that second it can repeat the previous
+    value, and If-Modified-Since with that value still returns the newer
+    body. While the service publishes and no status changes, a body changes
+    once a minute, when "generated_at" moves (see Freshness): a cache that
+    revalidates gets a full 200 once a minute, and does not depend on how it
+    merges a 304's headers into its copy, while a client polling within the
+    minute gets 304s. A change of a status, an incident or a "stale" flag
+    changes the body at once. ETag and Last-Modified therefore change every
+    minute; compare the status fields to detect a change.
+    Every response the service writes, errors included, carries
+    Cache-Control; 404s are cacheable so a CDN absorbs floods of random paths.
+    The exception is a request the HTTP server rejects before the service
+    sees it (400 for a malformed request, 431 for oversized headers).
+
+    Overload: beyond the configured concurrency the service answers 503 with
+    Retry-After instead of queueing.
+
+    Freshness travels in the body. "generated_at" is when the service built
+    the snapshot the response comes from: an old value means a frozen
+    service or an old cached copy, whatever the rest of the body says, and
+    one silent source does not age it. Each product's "checked_at" gives,
+    per kind of data (components, incidents, uptime), the oldest last
+    successful fetch among the product's sources, and "stale" says which
+    kinds are past their staleness (see Staleness). "Checked" is when the
+    service last read the data from its source successfully, not when the
+    data last changed: a component checked a minute ago may have been
+    operational for weeks. "generated_at" and "checked_at" are RFC 3339 in
+    UTC, floored to the minute, which is precise enough for a page that
+    reports data older than 5 minutes. "checked_at" moves forward once a
+    minute, together with "generated_at", so fetches that land at different
+    seconds do not change a body again within the minute (see Caching); it
+    can trail the latest fetch by up to a minute, and it moves at once when
+    the product's "stale" flags change. Incident times ("started_at",
+    "resolved_at") keep the source's precision, in seconds. Clients measure
+    ages against the server's clock: the Date header plus Age, which
+    cross-origin clients may read (Access-Control-Expose-Headers), rather
+    than the visitor's clock.
+
+    Staleness is measured per kind of upstream data. Each kind may be
+    polling.stale_after old, or three of its polling intervals when that is
+    longer (5 minutes for components and incidents, 15 minutes for uptime
+    with the shipped settings). A source that has never answered for a kind
+    is stale for that kind at once, and that kind's "checked_at" is null.
+    Stale components: the source's regions and their components report
+    "unknown" instead of their last known status. Stale incidents or
+    uptime: the last known data stays (an open incident still raises the
+    product status) and the product's "outdated" is true. Stale incidents
+    also end the product's daily history at the last successful fetch (see
+    Day).
+  contact:
+    name: WSO2 Cloud status page maintainers
+    url: https://status.cloud.wso2.com
+  license:
+    name: Apache-2.0
+    identifier: Apache-2.0
+servers:
+  - url: https://status.cloud.wso2.com
+    description: Production (planned)
+  - url: http://localhost:8080
+    description: Local development
+tags:
+  - name: status
+    description: Product, region and component status.
+  - name: incidents
+    description: Declared incidents and their history.
+  - name: probes
+    description: Liveness and readiness.
+
+paths:
+  /api/v1/summary:
+    get:
+      operationId: getSummary
+      summary: Overall status, one row per product, and active incidents.
+      description: The summary page in one request, including each product's daily history.
+      tags: [status]
+      parameters:
+        - $ref: "#/components/parameters/IfNoneMatch"
+        - $ref: "#/components/parameters/IfModifiedSince"
+      responses:
+        "200":
+          description: Current summary.
+          headers:
+            ETag: { $ref: "#/components/headers/ETag" }
+            Last-Modified: { $ref: "#/components/headers/LastModified" }
+            Cache-Control: { $ref: "#/components/headers/CacheControl" }
+            X-Request-ID: { $ref: "#/components/headers/RequestID" }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Summary" }
+        "304": { $ref: "#/components/responses/NotModified" }
+        "503": { $ref: "#/components/responses/Unavailable" }
+
+  /api/v1/products/{id}:
+    get:
+      operationId: getProduct
+      summary: One product with region, component group and uptime detail.
+      description: Everything the product's own status page shows, from the same data the summary uses.
+      tags: [status]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Product id, as listed in the summary. Stable (see Identifiers above).
+          schema: { $ref: "#/components/schemas/Slug" }
+        - $ref: "#/components/parameters/IfNoneMatch"
+        - $ref: "#/components/parameters/IfModifiedSince"
+      responses:
+        "200":
+          description: Product detail.
+          headers:
+            ETag: { $ref: "#/components/headers/ETag" }
+            Last-Modified: { $ref: "#/components/headers/LastModified" }
+            Cache-Control: { $ref: "#/components/headers/CacheControl" }
+            X-Request-ID: { $ref: "#/components/headers/RequestID" }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ProductDetail" }
+        "304": { $ref: "#/components/responses/NotModified" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "503": { $ref: "#/components/responses/Unavailable" }
+
+  /api/v1/incidents:
+    get:
+      operationId: listIncidents
+      summary: Incidents across all products, newest first.
+      description: >-
+        Every active incident plus every incident that overlaps the history
+        window (it started in the window, or ended after the window began),
+        so every id a product's history lists is here.
+      tags: [incidents]
+      parameters:
+        - $ref: "#/components/parameters/IfNoneMatch"
+        - $ref: "#/components/parameters/IfModifiedSince"
+      responses:
+        "200":
+          description: Incident list.
+          headers:
+            ETag: { $ref: "#/components/headers/ETag" }
+            Last-Modified: { $ref: "#/components/headers/LastModified" }
+            Cache-Control: { $ref: "#/components/headers/CacheControl" }
+            X-Request-ID: { $ref: "#/components/headers/RequestID" }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/IncidentList" }
+        "304": { $ref: "#/components/responses/NotModified" }
+        "503": { $ref: "#/components/responses/Unavailable" }
+
+  /healthz:
+    get:
+      operationId: getHealth
+      summary: Liveness probe.
+      description: 200 while the process is serving.
+      tags: [probes]
+      responses:
+        "200":
+          description: Alive.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Probe" }
+
+  /readyz:
+    get:
+      operationId: getReadiness
+      summary: Readiness probe.
+      description: 200 once at least one source has answered; 503 before that.
+      tags: [probes]
+      responses:
+        "200":
+          description: Ready.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Probe" }
+        "503":
+          description: Not ready yet.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Probe" }
+
+components:
+  parameters:
+    IfNoneMatch:
+      name: If-None-Match
+      in: header
+      required: false
+      description: ETag from a previous response; a match answers 304. Takes precedence over If-Modified-Since.
+      schema: { type: string }
+    IfModifiedSince:
+      name: If-Modified-Since
+      in: header
+      required: false
+      description: Last-Modified from a previous response; answers 304 when the body has not changed since.
+      schema: { type: string }
+
+  headers:
+    ETag:
+      description: Strong validator of the response body.
+      schema: { type: string }
+    LastModified:
+      description: >-
+        When the body last changed (HTTP date), never later than the
+        response's Date. Every body carries "generated_at", so this advances
+        once a minute while the service publishes, even when no status
+        changes; compare the status fields, not validators, to detect a
+        change (see Caching above).
+      schema: { type: string }
+    RetryAfter:
+      description: Seconds to wait before retrying.
+      schema: { type: integer, minimum: 1 }
+    CacheControl:
+      description: Caching policy for browsers and the CDN.
+      schema: { type: string }
+    RequestID:
+      description: Request correlation id; a well-formed incoming X-Request-ID is echoed.
+      schema: { type: string }
+
+  responses:
+    NotModified:
+      description: The body has not changed since the supplied ETag.
+    NotFound:
+      description: No such resource. Cacheable briefly.
+      headers:
+        Cache-Control: { $ref: "#/components/headers/CacheControl" }
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/Problem" }
+    Unavailable:
+      description: No data has been loaded yet, or the service is shedding load (then with Retry-After).
+      headers:
+        Retry-After: { $ref: "#/components/headers/RetryAfter" }
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/Problem" }
+
+  schemas:
+    Slug:
+      type: string
+      pattern: "^[a-z0-9]+(-[a-z0-9]+)*$"
+
+    Status:
+      type: string
+      description: >-
+        Severity order: operational < maintenance < degraded < outage.
+        "unknown" means the data is missing or stale, never that the
+        service is healthy. A minor version may add values: clients must
+        treat a value they do not know as "unknown".
+      enum: [unknown, operational, maintenance, degraded, outage]
+
+    Uptime:
+      type: object
+      additionalProperties: false
+      required: [window, percent]
+      properties:
+        window:
+          type: string
+          description: Trailing window, for example 7d, 30d, 90d or 12mo.
+        percent: { type: number, minimum: 0, maximum: 100 }
+
+    Component:
+      type: object
+      additionalProperties: false
+      required: [name, status]
+      properties:
+        name: { type: string }
+        description: { type: string }
+        status: { $ref: "#/components/schemas/Status" }
+        message: { type: string }
+        uptime:
+          type: array
+          items: { $ref: "#/components/schemas/Uptime" }
+
+    Group:
+      type: object
+      additionalProperties: false
+      required: [name, status, components]
+      properties:
+        name: { type: string }
+        status: { $ref: "#/components/schemas/Status" }
+        components:
+          type: array
+          items: { $ref: "#/components/schemas/Component" }
+
+    RegionId:
+      description: >-
+        Unique within the product, and stable when the configuration names
+        the region (see Identifiers above). A region the configuration does
+        not name is listed under its upstream key, with an id derived from
+        it: the key's slug ("region" when it has no letter or digit), or,
+        when that slug is already a region id or shared by another such key,
+        the slug plus "-" and the first 8 hex digits of the key's SHA-256.
+        A derived id can change when the region is named.
+      allOf:
+        - $ref: "#/components/schemas/Slug"
+
+    RegionSummary:
+      type: object
+      additionalProperties: false
+      required: [id, name, status, page_url]
+      properties:
+        id: { $ref: "#/components/schemas/RegionId" }
+        name: { type: string }
+        status: { $ref: "#/components/schemas/Status" }
+        page_url: { type: string, format: uri }
+
+    RegionDetail:
+      type: object
+      additionalProperties: false
+      required: [id, name, status, uptime, groups, page_url]
+      properties:
+        id: { $ref: "#/components/schemas/RegionId" }
+        name: { type: string }
+        status: { $ref: "#/components/schemas/Status" }
+        uptime:
+          type: array
+          items: { $ref: "#/components/schemas/Uptime" }
+        groups:
+          type: array
+          items: { $ref: "#/components/schemas/Group" }
+        page_url: { type: string, format: uri }
+
+    Day:
+      type: object
+      additionalProperties: false
+      required: [date, status]
+      description: >-
+        One UTC calendar day. Status is the most severe impact among the
+        incidents overlapping the day, an unknown impact counting as
+        degraded, and operational when none do. It is "unknown" before
+        incident history coverage begins, and on every day while any of the
+        product's sources has never returned its incidents. While the
+        product's incidents are stale (its "stale.incidents" is true), the
+        history ends at the product's "checked_at.incidents": days after
+        that day are "unknown" and list no incidents, and that day itself
+        (partly covered) takes the impact of the incidents known for it, or
+        "unknown" when none are. The history is derived again at every
+        build, so these days fill in once the source answers again.
+      properties:
+        date: { type: string, format: date }
+        status: { $ref: "#/components/schemas/Status" }
+        minutes:
+          type: object
+          description: >-
+            Minutes of each impact during the day, keyed by status (an
+            unknown impact counts as degraded). An open incident counts up
+            to "generated_at", or to "checked_at.incidents" while
+            "stale.incidents" is true, so its minutes grow once a minute and
+            never past the data; one that started within that minute is
+            listed with 0 minutes.
+          propertyNames: { $ref: "#/components/schemas/Status" }
+          additionalProperties: { type: integer, minimum: 0 }
+        incident_ids:
+          type: array
+          items: { type: string }
+
+    Incident:
+      type: object
+      additionalProperties: false
+      description: >-
+        One incident of one product. Records the sources hold for the same
+        product with the same title, impact and state (open or resolved),
+        whose starts are at most 60 seconds apart and whose ends are too
+        (two open records end together), directly or through other such
+        records, are one incident, listed once under the smallest of their
+        ids; the history's incident_ids refer to that
+        id only, and each is in the incident list.
+      required: [id, product_id, title, impact, state, started_at, resolved_at]
+      properties:
+        id: { type: string }
+        product_id: { $ref: "#/components/schemas/Slug" }
+        title: { type: string }
+        impact:
+          $ref: "#/components/schemas/Status"
+          description: >-
+            "unknown" when the source reports a type this API does not
+            define. Such an incident counts as degraded in the product
+            status and the daily history.
+        state:
+          type: string
+          description: Upstream lifecycle state, lowercased (for example "resolved").
+        started_at: { type: string, format: date-time }
+        resolved_at:
+          type: [string, "null"]
+          format: date-time
+          description: Null while the incident is active.
+
+    ProductSummary:
+      type: object
+      required: [id, name, page_url, status, affected_regions, data_complete, outdated, checked_at, stale, regions, history]
+      properties:
+        id: { $ref: "#/components/schemas/Slug" }
+        name: { type: string }
+        description: { type: string }
+        page_url: { type: string, format: uri }
+        status:
+          $ref: "#/components/schemas/Status"
+          description: >-
+            The most severe known status among the product's regions and the
+            impacts of its active incidents (an unknown impact counting as
+            degraded).
+        affected_regions:
+          type: integer
+          minimum: 0
+          description: Regions whose status is maintenance, degraded or outage.
+        data_complete:
+          type: boolean
+          description: >-
+            False when the status of any region, or of any component in it,
+            is unknown.
+        outdated:
+          type: boolean
+          description: >-
+            True when "stale.incidents" or "stale.uptime" is true. The last
+            known incidents and uptime are still shown. Component staleness
+            is shown as "unknown" statuses instead.
+        checked_at: { $ref: "#/components/schemas/CheckedAt" }
+        stale: { $ref: "#/components/schemas/Stale" }
+        regions:
+          type: array
+          items: { $ref: "#/components/schemas/RegionSummary" }
+        history:
+          type: array
+          items: { $ref: "#/components/schemas/Day" }
+
+    ProductDetail:
+      allOf:
+        - $ref: "#/components/schemas/ProductSummary"
+        - type: object
+          required: [generated_at, region_details, incidents]
+          properties:
+            generated_at: { $ref: "#/components/schemas/GeneratedAt" }
+            region_details:
+              type: array
+              items: { $ref: "#/components/schemas/RegionDetail" }
+            incidents:
+              type: array
+              items: { $ref: "#/components/schemas/Incident" }
+      unevaluatedProperties: false
+
+    Summary:
+      type: object
+      additionalProperties: false
+      required: [status, data_complete, generated_at, products, active_incidents]
+      properties:
+        status:
+          $ref: "#/components/schemas/Status"
+          description: >-
+            The overall status, failing closed: "unknown" when data_complete
+            is false and no product is in maintenance, degraded or outage;
+            otherwise the most severe known product status. The status page
+            shows this value as its headline.
+        data_complete:
+          type: boolean
+          description: >-
+            True when every product has data_complete true and a known
+            status. False when the status of any product, region or
+            component is unknown.
+        generated_at: { $ref: "#/components/schemas/GeneratedAt" }
+        products:
+          type: array
+          items:
+            $ref: "#/components/schemas/ProductSummary"
+            unevaluatedProperties: false
+        active_incidents:
+          type: array
+          items: { $ref: "#/components/schemas/Incident" }
+
+    IncidentList:
+      type: object
+      additionalProperties: false
+      required: [generated_at, incidents]
+      properties:
+        generated_at: { $ref: "#/components/schemas/GeneratedAt" }
+        incidents:
+          type: array
+          items: { $ref: "#/components/schemas/Incident" }
+
+    GeneratedAt:
+      type: string
+      format: date-time
+      pattern: "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:00Z$"
+      description: >-
+        When the service built the snapshot this body comes from, in UTC,
+        floored to the minute (see Freshness above). Every body of one
+        snapshot carries the same value.
+
+    CheckTime:
+      type: [string, "null"]
+      format: date-time
+      pattern: "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:00Z$"
+      description: >-
+        The oldest last successful fetch of one kind of data among the
+        product's sources, in UTC, floored to the minute; null while any of
+        them has never answered for that kind. A fetch is successful when
+        the source answered with data; this is not when the data last
+        changed. It moves forward once a minute, with "generated_at", or at
+        once when the product's "stale" flags change, so it can trail the
+        latest fetch by up to a minute.
+
+    CheckedAt:
+      type: object
+      additionalProperties: false
+      required: [components, incidents, uptime]
+      description: >-
+        Per kind of data, when the product's data was last read from its
+        sources (see Freshness above).
+      properties:
+        components: { $ref: "#/components/schemas/CheckTime" }
+        incidents: { $ref: "#/components/schemas/CheckTime" }
+        uptime: { $ref: "#/components/schemas/CheckTime" }
+
+    Stale:
+      type: object
+      additionalProperties: false
+      required: [components, incidents, uptime]
+      description: >-
+        Per kind of data, true when any of the product's sources has never
+        answered for it, or last answered longer ago than its staleness
+        (see Staleness above). A null in "checked_at" always comes with
+        true here.
+      properties:
+        components:
+          type: boolean
+          description: The product's regions from such a source read "unknown".
+        incidents:
+          type: boolean
+          description: >-
+            The last known incidents are shown and the daily history ends at
+            "checked_at.incidents" (see Day).
+        uptime:
+          type: boolean
+          description: The last known uptime figures are shown.
+
+    Probe:
+      type: object
+      additionalProperties: false
+      required: [status]
+      properties:
+        status: { type: string }
+
+    Problem:
+      type: object
+      description: RFC 9457 problem details.
+      required: [type, title, status]
+      properties:
+        type: { type: string }
+        title: { type: string }
+        status: { type: integer }
+        detail: { type: string }

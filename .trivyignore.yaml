@@ -1,0 +1,16 @@
+# Accepted risks for the Trivy scans in CI (docs/dependency-policy.md).
+#
+# Every entry is time-boxed and approved in a pull request:
+#
+#   vulnerabilities:
+#     - id: CVE-2026-12345
+#       purls:
+#         - pkg:npm/example@1.2.3
+#       statement: Not reachable from our code; the fix lands in 1.2.4.
+#       expired_at: 2026-12-31
+#
+# When expired_at passes, the entry stops applying and the build fails
+# again. Keep the lists empty when nothing is accepted.
+vulnerabilities: []
+misconfigurations: []
+licenses: []

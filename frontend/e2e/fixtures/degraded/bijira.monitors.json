@@ -1,0 +1,380 @@
+{
+  "cp - eu": [
+    {
+      "display_name": "Login",
+      "subgroups": [
+        {
+          "description": "Login functionality to API Platform Console via Asgardeo",
+          "display_name": "API Platform Login",
+          "status": 0,
+          "availability": [
+            { "availability": "100", "duration": "Last 30 days" },
+            { "availability": "100", "duration": "Last 90 days" }
+          ],
+          "message": ""
+        }
+      ]
+    },
+    {
+      "display_name": "Development",
+      "subgroups": [
+        {
+          "description": "Create API Proxies",
+          "display_name": "API Proxy Creation",
+          "status": 0,
+          "availability": [
+            { "availability": "100", "duration": "Last 30 days" },
+            { "availability": "100", "duration": "Last 90 days" }
+          ],
+          "message": ""
+        },
+        {
+          "description": "Publish API Proxies to Developer Portal",
+          "display_name": "Dev. Portal Publishing",
+          "status": 0,
+          "availability": [
+            { "availability": "100", "duration": "Last 30 days" },
+            { "availability": "100", "duration": "Last 90 days" }
+          ],
+          "message": ""
+        }
+      ]
+    },
+    {
+      "display_name": "Consumption",
+      "subgroups": [
+        {
+          "description": "Create Applications in Developer Portal",
+          "display_name": "Application Creation",
+          "status": 0,
+          "availability": [
+            { "availability": "100", "duration": "Last 30 days" },
+            { "availability": "100", "duration": "Last 90 days" }
+          ],
+          "message": ""
+        },
+        {
+          "description": " Login functionality for Developer Portal via Asgardeo",
+          "display_name": "Dev. Portal Login",
+          "status": 0,
+          "availability": [
+            { "availability": "100", "duration": "Last 30 days" },
+            { "availability": "100", "duration": "Last 90 days" }
+          ],
+          "message": ""
+        }
+      ]
+    },
+    {
+      "display_name": "Insights",
+      "subgroups": [
+        {
+          "description": "View Analytics of API Invocations",
+          "display_name": "API Insights",
+          "status": 0,
+          "availability": [
+            { "availability": "100", "duration": "Last 30 days" },
+            { "availability": "100", "duration": "Last 90 days" }
+          ],
+          "message": ""
+        },
+        {
+          "description": "View API Governance compliance",
+          "display_name": "Compliance",
+          "status": 0,
+          "availability": [
+            { "availability": "100", "duration": "Last 30 days" },
+            { "availability": "100", "duration": "Last 90 days" }
+          ],
+          "message": ""
+        }
+      ]
+    }
+  ],
+  "cp - us": [
+    {
+      "display_name": "Login",
+      "subgroups": [
+        {
+          "description": "Login functionality to API Platform Console via Asgardeo",
+          "display_name": "API Platform Login",
+          "status": 0,
+          "availability": [
+            { "availability": "100", "duration": "Last 30 days" },
+            { "availability": "100", "duration": "Last 90 days" }
+          ],
+          "message": ""
+        }
+      ]
+    },
+    {
+      "display_name": "Development",
+      "subgroups": [
+        {
+          "description": "Create API Proxies",
+          "display_name": "API Proxy Creation",
+          "status": 0,
+          "availability": [
+            { "availability": "100", "duration": "Last 30 days" },
+            { "availability": "100", "duration": "Last 90 days" }
+          ],
+          "message": ""
+        },
+        {
+          "description": "Publish API Proxies to Developer Portal",
+          "display_name": "Dev. Portal Publishing",
+          "status": 0,
+          "availability": [
+            { "availability": "100", "duration": "Last 30 days" },
+            { "availability": "100", "duration": "Last 90 days" }
+          ],
+          "message": ""
+        }
+      ]
+    },
+    {
+      "display_name": "Consumption",
+      "subgroups": [
+        {
+          "description": "Create Applications in Developer Portal",
+          "display_name": "Application Creation",
+          "status": 0,
+          "availability": [
+            { "availability": "100", "duration": "Last 30 days" },
+            { "availability": "100", "duration": "Last 90 days" }
+          ],
+          "message": ""
+        },
+        {
+          "description": " Login functionality for Developer Portal via Asgardeo",
+          "display_name": "Dev. Portal Login",
+          "status": 0,
+          "availability": [
+            { "availability": "100", "duration": "Last 30 days" },
+            { "availability": "100", "duration": "Last 90 days" }
+          ],
+          "message": ""
+        }
+      ]
+    },
+    {
+      "display_name": "Insights",
+      "subgroups": [
+        {
+          "description": "View Analytics of API Invocations",
+          "display_name": "API Insights",
+          "status": 0,
+          "availability": [
+            { "availability": "100", "duration": "Last 30 days" },
+            { "availability": "100", "duration": "Last 90 days" }
+          ],
+          "message": ""
+        },
+        {
+          "description": "View API Governance compliance",
+          "display_name": "Compliance",
+          "status": 0,
+          "availability": [
+            { "availability": "100", "duration": "Last 30 days" },
+            { "availability": "100", "duration": "Last 90 days" }
+          ],
+          "message": ""
+        }
+      ]
+    }
+  ],
+  "dp - eu": [
+    {
+      "display_name": "Runtime",
+      "subgroups": [
+        {
+          "description": "Invoke API Proxies",
+          "display_name": "API Proxy Invocation",
+          "status": 2,
+          "availability": [
+            { "availability": "100", "duration": "Last 30 days" },
+            { "availability": "100", "duration": "Last 90 days" }
+          ],
+          "message": "Elevated latency on API proxy invocation in the EU data plane."
+        },
+        {
+          "description": "API token management",
+          "display_name": "API Token Mgmt",
+          "status": 0,
+          "availability": [
+            { "availability": "100", "duration": "Last 30 days" },
+            { "availability": "100", "duration": "Last 90 days" }
+          ],
+          "message": ""
+        }
+      ]
+    },
+    {
+      "display_name": "Deployment",
+      "subgroups": [
+        {
+          "description": "Deploy API Proxies to the Gateway",
+          "display_name": "API Proxy Deployment",
+          "status": 0,
+          "availability": [
+            { "availability": "100", "duration": "Last 30 days" },
+            { "availability": "100", "duration": "Last 90 days" }
+          ],
+          "message": ""
+        },
+        {
+          "description": "Promote a deployment from one environment to another",
+          "display_name": "API Proxy Promotion",
+          "status": 0,
+          "availability": [
+            { "availability": "100", "duration": "Last 30 days" },
+            { "availability": "100", "duration": "Last 90 days" }
+          ],
+          "message": ""
+        },
+        {
+          "description": "Update/Create Configurations for API Proxies",
+          "display_name": "Configuration Mgmt",
+          "status": 0,
+          "availability": [
+            { "availability": "100", "duration": "Last 30 days" },
+            { "availability": "100", "duration": "Last 90 days" }
+          ],
+          "message": ""
+        },
+        {
+          "description": "Test a deployed API Proxies",
+          "display_name": "Developer Testing",
+          "status": 0,
+          "availability": [
+            { "availability": "100", "duration": "Last 30 days" },
+            { "availability": "100", "duration": "Last 90 days" }
+          ],
+          "message": ""
+        }
+      ]
+    },
+    {
+      "display_name": "Observability",
+      "subgroups": [
+        {
+          "description": "View logs of deployed API Proxies",
+          "display_name": "Logs",
+          "status": 0,
+          "availability": [
+            { "availability": "100", "duration": "Last 30 days" },
+            { "availability": "100", "duration": "Last 90 days" }
+          ],
+          "message": ""
+        },
+        {
+          "description": "View metrics of deployed API Proxies",
+          "display_name": "Metrics",
+          "status": 0,
+          "availability": [
+            { "availability": "100", "duration": "Last 30 days" },
+            { "availability": "100", "duration": "Last 90 days" }
+          ],
+          "message": ""
+        }
+      ]
+    }
+  ],
+  "dp - us": [
+    {
+      "display_name": "Runtime",
+      "subgroups": [
+        {
+          "description": "Invoke API Proxies",
+          "display_name": "API Proxy Invocation",
+          "status": 0,
+          "availability": [
+            { "availability": "100", "duration": "Last 30 days" },
+            { "availability": "100", "duration": "Last 90 days" }
+          ],
+          "message": ""
+        },
+        {
+          "description": "API token management",
+          "display_name": "API Token Mgmt",
+          "status": 0,
+          "availability": [
+            { "availability": "100", "duration": "Last 30 days" },
+            { "availability": "100", "duration": "Last 90 days" }
+          ],
+          "message": ""
+        }
+      ]
+    },
+    {
+      "display_name": "Deployment",
+      "subgroups": [
+        {
+          "description": "Deploy API Proxies to the Gateway",
+          "display_name": "API Proxy Deployment",
+          "status": 0,
+          "availability": [
+            { "availability": "100", "duration": "Last 30 days" },
+            { "availability": "100", "duration": "Last 90 days" }
+          ],
+          "message": ""
+        },
+        {
+          "description": "Promote a deployment from one environment to another",
+          "display_name": "API Proxy Promotion",
+          "status": 0,
+          "availability": [
+            { "availability": "100", "duration": "Last 30 days" },
+            { "availability": "100", "duration": "Last 90 days" }
+          ],
+          "message": ""
+        },
+        {
+          "description": "Update/Create Configurations for API Proxies",
+          "display_name": "Configuration Mgmt",
+          "status": 0,
+          "availability": [
+            { "availability": "100", "duration": "Last 30 days" },
+            { "availability": "100", "duration": "Last 90 days" }
+          ],
+          "message": ""
+        },
+        {
+          "description": "Test a deployed API Proxies",
+          "display_name": "Developer Testing",
+          "status": 0,
+          "availability": [
+            { "availability": "100", "duration": "Last 30 days" },
+            { "availability": "100", "duration": "Last 90 days" }
+          ],
+          "message": ""
+        }
+      ]
+    },
+    {
+      "display_name": "Observability",
+      "subgroups": [
+        {
+          "description": "View logs of deployed API Proxies",
+          "display_name": "Logs",
+          "status": 0,
+          "availability": [
+            { "availability": "100", "duration": "Last 30 days" },
+            { "availability": "100", "duration": "Last 90 days" }
+          ],
+          "message": ""
+        },
+        {
+          "description": "View metrics of deployed API Proxies",
+          "display_name": "Metrics",
+          "status": 0,
+          "availability": [
+            { "availability": "100", "duration": "Last 30 days" },
+            { "availability": "100", "duration": "Last 90 days" }
+          ],
+          "message": ""
+        }
+      ]
+    }
+  ]
+}

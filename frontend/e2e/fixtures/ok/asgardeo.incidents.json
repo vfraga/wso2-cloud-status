@@ -1,0 +1,18 @@
+{
+  "2026-5": {
+    "incidents": []
+  },
+  "@@month:ago:10d@@": {
+    "incidents": [
+      {
+        "id": "e2e-resolved-1",
+        "begin": "@@ago:10d@@",
+        "end": "@@ago:9d@@",
+        "type": "Outage",
+        "status": "Resolved",
+        "short_description": "Sign-in errors in the EU region",
+        "expanded": false
+      }
+    ]
+  }
+}

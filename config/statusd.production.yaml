@@ -1,0 +1,119 @@
+# statusd configuration for production: config/statusd.yaml with the origin
+# lock on. Every other setting must stay equal to config/statusd.yaml (a test
+# in backend/go/internal/config fails otherwise), so change both files
+# together; that file's comments explain the settings.
+#
+# Check a change before delivery, with FRONT_DOOR_ID set (any value for the
+# check): statusd -check-config config/statusd.production.yaml
+
+server:
+  addr: ":8080"
+  admin_addr: ":9090"
+  cache_control: "public, max-age=10, stale-while-revalidate=10, stale-if-error=300"
+  not_found_cache_control: "public, max-age=60"
+  allowed_origins: ["*"]
+  shutdown_timeout: 10s
+  max_in_flight: 1024
+  # The origin lock: Azure Front Door sends its profile id in X-Azure-FDID;
+  # every other request to the public port gets 403.
+  required_headers:
+    X-Azure-FDID: "${FRONT_DOOR_ID}"
+
+reload:
+  watch_interval: 10s
+
+polling:
+  components_interval: 30s
+  uptime_interval: 5m
+  incidents_interval: 30s
+  request_timeout: 5s
+  stale_after: 5m
+
+history:
+  days: 90
+
+backends:
+  cloudservices:
+    type: legacy-status-api
+    base_url: https://api.status.cloudservices.wso2.com
+    timezone: UTC
+  asgardeo:
+    type: legacy-status-api
+    base_url: https://api.status.asgardeo.io
+    timezone: UTC
+
+products:
+  - id: agent-platform
+    name: Agent Platform
+    description: Agent Manager
+    page_url: https://status.cloud.wso2.com
+    sources:
+      - backend: cloudservices
+        cloud: agent-manager
+        regions:
+          - { key: "cp - us", id: us-control-plane, name: US Control Plane }
+          - { key: "dp - us", id: us-data-plane, name: US Data Plane }
+
+  - id: api-platform
+    name: API Platform
+    description: Bijira
+    page_url: https://status.bijira.dev
+    sources:
+      - backend: cloudservices
+        cloud: bijira
+        regions:
+          - { key: "cp - us", id: us-control-plane, name: US Control Plane }
+          - { key: "dp - us", id: us-data-plane, name: US Data Plane }
+          - { key: "cp - eu", id: eu-control-plane, name: EU Control Plane }
+          - { key: "dp - eu", id: eu-data-plane, name: EU Data Plane }
+
+  - id: integration-platform
+    name: Integration Platform
+    description: Devant
+    page_url: https://status.devant.dev
+    sources:
+      - backend: cloudservices
+        cloud: devant
+        regions:
+          - { key: "cp - us", id: us-control-plane, name: US Control Plane }
+          - { key: "dp - us", id: us-data-plane, name: US Data Plane }
+          - { key: "cp - eu", id: eu-control-plane, name: EU Control Plane }
+          - { key: "dp - eu", id: eu-data-plane, name: EU Data Plane }
+
+  - id: identity-platform
+    name: Identity Platform
+    description: Asgardeo
+    page_url: https://status.asgardeo.io
+    sources:
+      - backend: asgardeo
+        cloud: asgardeo
+        regions:
+          - { key: us, id: us, name: US }
+          - { key: eu, id: eu, name: EU }
+
+  - id: developer-platform
+    name: Developer Platform
+    description: Choreo
+    page_url: https://status.choreo.dev
+    sources:
+      - backend: cloudservices
+        cloud: choreo
+        regions:
+          - { key: cp, id: us-control-plane, name: US Control Plane }
+          - { key: "us - dp", id: us-data-plane, name: US Data Plane }
+          - { key: "eu - dp", id: eu-data-plane-us-managed, name: EU Data Plane (US-managed) }
+      - backend: cloudservices
+        cloud: choreo-eu
+        page_url: https://status.eu.choreo.dev
+        regions:
+          - { key: "eu - cp", id: eu-control-plane, name: EU Control Plane }
+          - { key: "eu - dp - eu", id: eu-data-plane, name: EU Data Plane }
+
+  - id: moesif
+    name: Moesif
+    page_url: https://status.moesif.com
+    sources:
+      - backend: cloudservices
+        cloud: moesif
+        regions:
+          - { key: us, id: us, name: US }

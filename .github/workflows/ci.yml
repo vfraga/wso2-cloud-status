@@ -1,0 +1,336 @@
+# Every third-party action is pinned to a full commit SHA (tag in the
+# comment); Dependabot proposes updates. Tools run from images are pinned by
+# digest, and Trivy by version (env below); Dependabot does not see those, see
+# docs/dependency-policy.md. Jobs get the least permissions.
+#
+# Dependency review needs a public repository, or GitHub Code Security (part
+# of GitHub Advanced Security) on a private one; so does CodeQL
+# (codeql.yml). On a private repository without it, set the repository
+# variable ADVANCED_SECURITY to "off": both are then skipped with a warning,
+# and docs/dependency-policy.md names what covers them.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    - cron: "17 3 * * *" # Nightly: live upstream smoke test and fresh vulnerability data.
+  workflow_dispatch:
+  workflow_call: # release.yml runs CI on the tagged commit before it builds anything
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    # bash -eo pipefail: a piped command (the coverage gate into tee, for
+    # example) fails the step when any part of it fails.
+    shell: bash
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  COVERAGE_MIN: "85"
+  GOLANGCI_LINT_VERSION: v2.14.0
+  GOVULNCHECK: golang.org/x/vuln/cmd/govulncheck@v1.9.0
+  GOLICENSES: github.com/google/go-licenses/v2@v2.0.1
+  LICENSES_OK: Apache-2.0,MIT,BSD-2-Clause,BSD-3-Clause,ISC
+  PROMETHEUS_IMAGE: prom/prometheus:v3.15.0@sha256:efd719c99d83b060d9daefdcf00360461adf279f45ef5391f8d111892118753e
+  GITLEAKS_IMAGE: ghcr.io/gitleaks/gitleaks:v8.30.1@sha256:c00b6bd0aeb3071cbcb79009cb16a60dd9e0a7c60e2be9ab65d25e6bc8abbb7f
+  SHELLCHECK_IMAGE: koalaman/shellcheck:v0.11.0@sha256:61862eba1fcf09a484ebcc6feea46f1782532571a34ed51fedf90dd25f925a8d
+  SPECTRAL_IMAGE: stoplight/spectral:6.17.0@sha256:c8ffae6ee561b70e80402f1ea669e8b37c74fee48a3dbe2147b71359ed987239
+  ACTIONLINT_IMAGE: rhysd/actionlint:1.7.12@sha256:b1934ee5f1c509618f2508e6eb47ee0d3520686341fec936f3b79331f9315667
+  # The BuildKit that builds the images (setup-buildx-action pulls a floating tag otherwise).
+  BUILDKIT_IMAGE: moby/buildkit:v0.33.1@sha256:cec9f139f45e93c5c69c60f8b07cfad9f43f4ef6b6a6cd917527fea5ff2e3dea
+  # The Trivy release every trivy-action step installs (otherwise the action's default).
+  TRIVY_VERSION: v0.70.0
+
+jobs:
+  go:
+    name: Go (lint, tests, coverage, vulnerabilities, contract)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: backend/go/go.mod
+          cache-dependency-path: |
+            backend/go/go.sum
+            tests/contract/go.sum
+      - name: Lint backend (complexity, security, license headers)
+        uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
+        with:
+          version: ${{ env.GOLANGCI_LINT_VERSION }}
+          working-directory: backend/go
+      - name: Lint contract tests
+        uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
+        with:
+          version: ${{ env.GOLANGCI_LINT_VERSION }}
+          working-directory: tests/contract
+          args: --config ../../backend/go/.golangci.yml
+      - name: Unit and integration tests (race detector)
+        working-directory: backend/go
+        run: go test -race -count=1 -covermode=atomic -coverprofile=coverage.out ./...
+      - name: Coverage gate
+        working-directory: backend/go
+        run: ../../scripts/coverage-gate.sh coverage.out "$COVERAGE_MIN" | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Known vulnerabilities (govulncheck)
+        working-directory: backend/go
+        run: go run "$GOVULNCHECK" ./...
+      - name: Licence allow-list (go-licenses)
+        working-directory: backend/go
+        run: go run "$GOLICENSES" check ./... --ignore github.com/wso2/wso2-cloud-status --allowed_licenses="$LICENSES_OK"
+      - name: Schema validator self-test
+        working-directory: tests/contract
+        run: go test -count=1 -run Schema ./...
+      - name: Contract tests (OpenAPI schema, roll-up invariants, HTTP semantics)
+        run: |
+          make build
+          scripts/contract.sh ./bin/statusd
+      - name: Contract tests, edge-case upstream data
+        run: CONTRACT_SCENARIO=edge scripts/contract.sh ./bin/statusd
+      - name: Every configuration file, as a start would read it (statusd -check-config)
+        env:
+          # Every ${NAME} the files use must be set; a placeholder will do.
+          FRONT_DOOR_ID: 00000000-0000-0000-0000-000000000000
+        run: for f in config/*.yaml; do ./bin/statusd -check-config "$f"; done
+      - name: External synthetic check self-test (passing and failing cases)
+        run: scripts/ops/synthetic-selftest.sh
+      - name: Gate scripts self-test (licences, coverage)
+        run: scripts/gates-selftest.sh
+      # Reports only. Skipped under act, whose artifact server a Rancher
+      # Desktop job container cannot reach.
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: ${{ !env.ACT }}
+        with:
+          name: go-coverage
+          path: backend/go/coverage.out
+          retention-days: 14
+
+  frontend:
+    name: Frontend (lint, types, tests, build, audit, end-to-end)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: frontend/.nvmrc
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: backend/go/go.mod
+          cache-dependency-path: |
+            backend/go/go.sum
+            tests/contract/go.sum
+      - name: Licence allow-list for the packages the frontend ships
+        run: ../scripts/npm-licenses.sh package-lock.json
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run typecheck
+      - name: Unit and component tests (coverage thresholds enforced)
+        run: npm test
+      - run: npm run build
+      - name: Known vulnerabilities
+        run: npm audit --audit-level=high
+      - name: End-to-end tests against the real backend
+        run: |
+          npx playwright install --with-deps chromium
+          npm run e2e
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: ${{ always() && !env.ACT }} # reports only; skipped under act, as go-coverage
+        with:
+          name: frontend-reports
+          path: |
+            frontend/coverage
+            frontend/test-results
+          retention-days: 14
+
+  api:
+    name: OpenAPI lint
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # The Spectral CLI image, pinned by digest, rather than spectral-action,
+      # which builds its own image from floating tags on every run.
+      - name: Spectral
+        run: docker run --rm -v "$PWD:/w:ro" -w /w "$SPECTRAL_IMAGE" lint api/openapi.yaml --ruleset .spectral.yaml
+
+  rules:
+    name: Alert rules (promtool check and unit tests)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Check and test rules
+        run: |
+          docker run --rm --entrypoint promtool -v "$PWD/deploy/observability:/r:ro" -w /r "$PROMETHEUS_IMAGE" check rules prometheus-rules.yaml
+          docker run --rm --entrypoint promtool -v "$PWD/deploy/observability:/r:ro" -w /r "$PROMETHEUS_IMAGE" test rules prometheus-rules.test.yaml
+
+  compliance:
+    name: Compliance (license headers, secrets, dependency licenses)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: License headers
+        uses: apache/skywalking-eyes/header@a196742f472feaffafea537ce5a2a4c3c53a8de4 # v0.9.0
+        with:
+          config: .licenserc.yaml
+          mode: check
+      - name: Secret scan, full history (gitleaks)
+        run: >-
+          docker run --rm -v "$PWD:/repo"
+          -e GIT_CONFIG_COUNT=1 -e GIT_CONFIG_KEY_0=safe.directory -e GIT_CONFIG_VALUE_0='*'
+          "$GITLEAKS_IMAGE" git /repo --redact --no-banner --exit-code 1
+      - name: Shell scripts (shellcheck)
+        run: git ls-files -z '*.sh' | xargs -0 docker run --rm -v "$PWD:/mnt:ro" -w /mnt "$SHELLCHECK_IMAGE"
+      - name: Workflows (actionlint)
+        run: docker run --rm -v "$PWD:/repo:ro" -w /repo "$ACTIONLINT_IMAGE" -color
+      - name: Dependency vulnerabilities, licenses and misconfiguration (Trivy)
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          version: ${{ env.TRIVY_VERSION }}
+          scan-type: fs
+          scan-ref: .
+          scanners: vuln,license,misconfig
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: "1"
+          trivyignores: .trivyignore.yaml
+      - name: Dependency review
+        if: github.event_name == 'pull_request' && vars.ADVANCED_SECURITY != 'off'
+        uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
+        with:
+          fail-on-severity: high
+          # Development dependencies too: the policy rejects strong copyleft
+          # everywhere, because a dev package can leak into a bundle.
+          fail-on-scopes: runtime, development
+          allow-licenses: Apache-2.0, MIT, MIT-0, BSD-2-Clause, BSD-3-Clause, ISC, CC0-1.0, BlueOak-1.0.0
+          # Named exceptions (docs/dependency-policy.md): a font (OFL-1.1), and
+          # development-only tools that are never shipped: lint rules
+          # (LGPL-3.0), accessibility testing and the CSS minifier (MPL-2.0),
+          # and browser-support data (CC-BY-4.0).
+          allow-dependencies-licenses: >-
+            pkg:npm/%40fontsource-variable/inter,
+            pkg:npm/eslint-plugin-sonarjs,
+            pkg:npm/%40sonarsource/analyzer-commons-configurations,
+            pkg:npm/axe-core,
+            pkg:npm/%40axe-core/playwright,
+            pkg:npm/lightningcss,
+            pkg:npm/lightningcss-android-arm64,
+            pkg:npm/lightningcss-darwin-arm64,
+            pkg:npm/lightningcss-darwin-x64,
+            pkg:npm/lightningcss-freebsd-x64,
+            pkg:npm/lightningcss-linux-arm-gnueabihf,
+            pkg:npm/lightningcss-linux-arm64-gnu,
+            pkg:npm/lightningcss-linux-arm64-musl,
+            pkg:npm/lightningcss-linux-x64-gnu,
+            pkg:npm/lightningcss-linux-x64-musl,
+            pkg:npm/lightningcss-win32-arm64-msvc,
+            pkg:npm/lightningcss-win32-x64-msvc,
+            pkg:npm/caniuse-lite
+          show-openssf-scorecard: true
+          warn-on-openssf-scorecard-level: 3
+      - name: Dependency review is off
+        if: github.event_name == 'pull_request' && vars.ADVANCED_SECURITY == 'off'
+        run: >-
+          echo "::warning title=Dependency review skipped::ADVANCED_SECURITY is off (a private repository
+          without GitHub Code Security). Review the licence, maintenance and OpenSSF Scorecard of every new
+          or changed dependency by hand; see docs/dependency-policy.md."
+
+  container:
+    name: Container (Dockerfile lint, build, image scan)
+    needs: go
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: hadolint/hadolint-action@06be81baf89a55ffd0e24b8f04a4185738dd3387 # v3.5.0
+        with:
+          dockerfile: backend/go/Dockerfile
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+        with:
+          driver-opts: image=${{ env.BUILDKIT_IMAGE }}
+      - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: backend/go/Dockerfile
+          build-args: |
+            VERSION=${{ github.sha }}
+            REVISION=${{ github.sha }}
+          tags: wso2-cloud-statusd:ci
+          load: true
+          push: false
+      - name: Image smoke test
+        run: docker run --rm wso2-cloud-statusd:ci -version
+      - name: Image vulnerabilities (Trivy)
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          version: ${{ env.TRIVY_VERSION }}
+          image-ref: wso2-cloud-statusd:ci
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: "1"
+          trivyignores: .trivyignore.yaml
+      - uses: hadolint/hadolint-action@06be81baf89a55ffd0e24b8f04a4185738dd3387 # v3.5.0
+        with:
+          dockerfile: frontend/Dockerfile
+      - name: Build the frontend image
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: frontend
+          build-args: |
+            VERSION=${{ github.sha }}
+            REVISION=${{ github.sha }}
+          tags: wso2-cloud-status-web:ci
+          load: true
+          push: false
+      - name: Frontend image self-test (status, caching and security headers)
+        run: scripts/ops/frontend-image-selftest.sh wso2-cloud-status-web:ci
+      - name: Frontend image vulnerabilities (Trivy)
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          version: ${{ env.TRIVY_VERSION }}
+          image-ref: wso2-cloud-status-web:ci
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: "1"
+          trivyignores: .trivyignore.yaml
+
+  live:
+    name: Live upstream smoke test
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: backend/go/go.mod
+          cache-dependency-path: backend/go/go.sum
+      - run: make live
