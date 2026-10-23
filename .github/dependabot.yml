@@ -33,6 +33,14 @@ updates:
     groups:
       npm-minor-and-patch:
         update-types: [minor, patch]
+    ignore:
+      # @wso2/oxygen-ui requires one exact React version: React moves with it,
+      # in the same pull request.
+      - dependency-name: "react"
+      - dependency-name: "react-dom"
+      # The frontend runs on Node 24 (frontend/.nvmrc); a new major is a decision.
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major"]
   - package-ecosystem: docker
     directories: ["/backend/go", "/frontend"]
     schedule:
@@ -40,3 +48,6 @@ updates:
     cooldown:
       default-days: 7
       exclude: ["distroless/static-debian13", "nginxinc/nginx-unprivileged"]
+    ignore:
+      - dependency-name: "node"
+        update-types: ["version-update:semver-major"]
