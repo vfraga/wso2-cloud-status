@@ -13,7 +13,7 @@
 # web-docker and the release workflow set them. CREATED also dates
 # /.well-known/security.txt: it expires a year later (the build time when
 # CREATED is empty).
-FROM node:24.22.0-alpine@sha256:44fce696f38ba8c987c4db89954051000bbd05ffd8d8659ba15ed4a8602e937f AS build
+FROM node:26.12.0-alpine@sha256:6f08a523443ddedf52941874c203475b0ad503e859ad70cb26ab8be9a517dbd5 AS build
 WORKDIR /app
 COPY package.json package-lock.json .npmrc ./
 RUN npm ci
