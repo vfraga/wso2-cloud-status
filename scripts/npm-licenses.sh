@@ -22,9 +22,8 @@
 # Reads LOCKFILE (default frontend/package-lock.json, lockfile version 2 or
 # 3) and checks every package that is not development-only (npm marks those
 # "dev": true; optional and devOptional packages count as shipped). Each
-# must declare a licence on the shipped-code allow-list of
-# docs/dependency-policy.md, or be a named exception below with exactly that
-# licence. An SPDX expression passes when it is one allowed licence,
+# must declare a licence on the shipped-code allow-list below, or be a
+# named exception below with exactly that licence. An SPDX expression passes when it is one allowed licence,
 # alternatives joined by OR of which one is allowed, or licences joined by AND
 # that are all allowed, with or without parentheses around the whole. An
 # expression that mixes AND and OR, a WITH clause or "SEE LICENSE IN" needs a
@@ -79,7 +78,7 @@ report="$(jq -r --argjson allowed "$allowed" --argjson exceptions "$exceptions" 
 total="$(grep -c '' <<<"$report" || true)"
 failed="$(grep '^fail ' <<<"$report" || true)"
 if [[ -n "$failed" ]]; then
-  echo "npm-licenses: shipped packages outside the allow-list (docs/dependency-policy.md):" >&2
+  echo "npm-licenses: shipped packages outside the allow-list:" >&2
   awk '{ sub(/^fail /, "  "); print }' <<<"$failed" >&2
   echo "npm-licenses: $(grep -c '' <<<"$failed") of $total shipped packages fail" >&2
   exit 1

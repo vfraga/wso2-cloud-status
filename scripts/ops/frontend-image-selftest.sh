@@ -271,8 +271,8 @@ done
 verdict "Docker HEALTHCHECK reports healthy" "Docker HEALTHCHECK reports \"$health\", want healthy" [ "$health" = healthy ]
 
 # A deployment with nothing in front of the page to route /api (the Choreo
-# demo, docs/operations/hosting.md) replaces /etc/nginx/api.conf. The file is
-# copied in rather than mounted, so this runs the same under act.
+# demo) replaces /etc/nginx/api.conf. The file is copied in rather than
+# mounted, so this runs the same under act.
 mkdir "$work/api"
 printf 'location /api/ {\n    return 200 "replaced\\n";\n}\n' >"$work/api/api.conf"
 docker create --name "$name-api" -p "127.0.0.1:$((port + 1)):8080" "$image" >/dev/null

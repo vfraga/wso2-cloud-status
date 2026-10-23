@@ -1,8 +1,8 @@
 # CodeQL in CI is licensed for open-source code on a public repository, or
 # with GitHub Code Security (GitHub Advanced Security) on a private one. On a
 # private repository without it, set the repository variable
-# ADVANCED_SECURITY to "off" and this job is skipped; see
-# docs/dependency-policy.md for what still runs.
+# ADVANCED_SECURITY to "off" and this job is skipped; nothing else in CI
+# does its data-flow analysis.
 name: CodeQL
 
 on:

@@ -1,4 +1,4 @@
-# Accepted risks for the Trivy scans in CI (docs/dependency-policy.md).
+# Accepted risks for the Trivy scans in CI.
 #
 # Every entry is time-boxed and approved in a pull request:
 #

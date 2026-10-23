@@ -3,10 +3,9 @@
 # Azure subscription and region, though GitHub runs them on Azure too. It
 # sees what alerts on statusd's own metrics cannot: DNS, TLS, Front Door,
 # WAF, the origin lock and the frontend origin (the page and the scripts it
-# loads). Off until the repository variable SYNTHETIC_BASE_URL is set. Its
-# settings, secrets and paging: docs/operations/runbook.md, "External
-# synthetic check" and "Turning it on". Every third-party action is pinned to
-# a full commit SHA, as in ci.yml.
+# loads). Off until the repository variable SYNTHETIC_BASE_URL is set, and it
+# pages no one until the secret SYNTHETIC_PAGING_WEBHOOK is set too. Every
+# third-party action is pinned to a full commit SHA, as in ci.yml.
 name: Synthetic check
 
 on:

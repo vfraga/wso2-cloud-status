@@ -1,7 +1,9 @@
 # statusd configuration for local runs and tests. Production runs
 # config/statusd.production.yaml, which differs only in the origin lock (a
-# test fails otherwise): change both. Adding a product:
-# docs/adding-a-product.md. Check a file with: statusd -check-config <file>
+# test fails otherwise): change both. A new product also goes in
+# frontend/src/lib/fallbackProducts.ts, frontend/index.html and
+# testdata/upstream; tests fail until they agree. Check a file with:
+# statusd -check-config <file>
 #
 # Products appear on the page in the order listed. Region keys are the
 # upstream's keys; ids are our slugs and part of the public API

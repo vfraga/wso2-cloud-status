@@ -183,7 +183,7 @@ run() {
   case $action in
     page)
       if post "$(printf 'Status page synthetic check failed for %s\n%s\nRunbook: %s\nRun: %s\nNo further message while it keeps failing; one when a scheduled run passes again.' \
-        "$target" "$(failures)" "${RUNBOOK_URL:-docs/operations/runbook.md#external-synthetic-check}" "${RUN_URL:-}")"; then
+        "$target" "$(failures)" "${RUNBOOK_URL:-not set (vars.SYNTHETIC_RUNBOOK_URL)}" "${RUN_URL:-}")"; then
         [ "$delivered" = false ] || mark
       else
         status=1

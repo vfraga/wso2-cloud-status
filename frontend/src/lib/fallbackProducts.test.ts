@@ -108,7 +108,7 @@ describe("fallback product links", () => {
 
   // The end-to-end specs take the catalogue from e2e/helpers.ts. A spec that
   // names every product, or counts them with a number, is a second copy that
-  // adding a product breaks (docs/adding-a-product.md says no test needs it).
+  // adding a product breaks (adding one needs no test change).
   it("stay the only copy the end-to-end specs read", () => {
     const specs = resolve(here, "../../e2e/specs");
     const count = new RegExp(`toHaveCount\\(${String(FALLBACK_PRODUCTS.length)}\\b`);

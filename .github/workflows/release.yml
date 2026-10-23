@@ -4,9 +4,8 @@
 # attests their build provenance and their CycloneDX SBOMs, and only then
 # gives them the version tag. A run that fails leaves no version behind and
 # can be run again. A GitHub release follows with the CHANGELOG.md section,
-# both SBOMs and the image digests. Deploy by digest: docs/operations/
-# runbook.md, "Releasing and rolling back", has the verification and
-# rollback commands.
+# both SBOMs and the image digests. Deploy by digest, after checking the
+# signature (cosign verify) and the attestations (gh attestation verify).
 #
 # Off until the repository variable REGISTRY is set: until then every tag
 # push skips every job. Settings:
@@ -281,6 +280,6 @@ jobs:
             # \140 is a backquote: each reference is set as code.
             printf -- '- \140%s/wso2-cloud-statusd@%s\140\n' "$REGISTRY" "$STATUSD_DIGEST"
             printf -- '- \140%s/wso2-cloud-status-web@%s\140\n' "$REGISTRY" "$WEB_DIGEST"
-            printf '\nBoth are scanned, signed keyless by this workflow, with build provenance and the attached CycloneDX SBOMs attested; verify them before deploying (docs/operations/runbook.md, "Releasing and rolling back").\n'
+            printf '\nBoth are scanned, signed keyless by this workflow, with build provenance and the attached CycloneDX SBOMs attested; check both (cosign verify, gh attestation verify) before deploying, and deploy by digest.\n'
           } >"$notes"
           gh release create "$TAG" --verify-tag --title "$TAG" --notes-file "$notes" sbom/statusd.cdx.json sbom/web.cdx.json

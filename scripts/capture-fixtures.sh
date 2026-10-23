@@ -24,7 +24,7 @@
 #
 # The cloud asgardeo is read from api.status.asgardeo.io, every other one
 # from api.status.cloudservices.wso2.com. Keep the list below in step with
-# the clouds in config/statusd.yaml (docs/adding-a-product.md).
+# the clouds in config/statusd.yaml.
 #
 # Each cloud's three files are replaced only when all three answered. The
 # tests expect what the committed files hold: every product operational,
