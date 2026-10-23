@@ -10,8 +10,8 @@
   "dependencies": {
     "@wso2/oxygen-ui": "0.16.0",
     "@wso2/oxygen-ui-icons-react": "0.16.0",
-    "react": "19.2.3",
-    "react-dom": "19.2.3"
+    "react": "19.3.1",
+    "react-dom": "19.3.1"
   },
   "devDependencies": {
     "@axe-core/playwright": "4.14.0",
