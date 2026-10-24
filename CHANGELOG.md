@@ -83,22 +83,20 @@ section here. The public API has its own version, in `api/openapi.yaml`.
   file.
 - While a product's incident feed is stale, an open incident's daily
   minutes stop at `checked_at.incidents` instead of running to
-  `generated_at` (ADR 0009).
+  `generated_at`.
 - The page stops the product rows and Past incidents where the earlier of
   the summary and the incident list stopped, and the tab title no longer
   keeps the last status after a rendering error.
 - An incident record without an id, or with an id another record in the
   same response has, fails the incident fetch instead of hiding the other
-  record; a record with an end time is resolved whatever its status word
-  (ADR 0005).
+  record; a record with an end time is resolved whatever its status word.
 - The page no longer moves as its data arrives (a cumulative layout shift
   of 0.37 to 0.86 on the home page, now 0): until the status answers it
   shows a placeholder at least as tall as the window, Past incidents holds
   its days while the list loads, and the fallback shown before the app
   starts no longer moves the page.
 - `statusd -check-config` rejects cache directives the cache limits do not
-  read (`s-maxage`, a repeated directive) and two listeners on one port
-  (ADR 0003).
+  read (`s-maxage`, a repeated directive) and two listeners on one port.
 
 ### Security
 
@@ -114,9 +112,10 @@ section here. The public API has its own version, in `api/openapi.yaml`.
 - The statusd image is built on the current distroless base image, with
   the Prometheus client library 1.25.0.
 
-## [0.1.0] - 2026-10-23
+## [0.1.0] - not released
 
-The first release. Public API version 1.0.0.
+The first version. Nothing is published yet: no image, tag or GitHub
+release. Public API version 1.0.0.
 
 ### Added
 
@@ -130,7 +129,7 @@ The first release. Public API version 1.0.0.
   whether that is past its budget (`stale`) and whether its incidents or
   uptime are outdated (`outdated`). The summary `status` fails closed: it
   is `unknown` when data is missing and no problem is known. Clients ignore
-  properties they do not know (ADR 0004, ADR 0006, ADR 0009).
+  properties they do not know.
 - The product catalogue lives in the configuration and reloads without a
   restart; `statusd -check-config <file>` rejects a file the service could
   not serve correctly. `config/statusd.production.yaml` turns on the origin
@@ -140,7 +139,7 @@ The first release. Public API version 1.0.0.
   nginx with a Content Security Policy, Strict-Transport-Security and
   `/.well-known/security.txt`. Missing data never reads as healthy, and
   data is never shown as more current than it is.
-- Alert rules with unit tests and a runbook section for each, including
+- Alert rules with unit tests, including
   StatusdNoProductData (critical when 4 or more of 6 products have no known
   status, warning when any has none), and an external check of the page
   and API every 5 minutes from GitHub's runners that pages once per failure

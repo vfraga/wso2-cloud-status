@@ -34,5 +34,6 @@ shows goes to the same address.
 
 ## Supported versions
 
-The latest release in `CHANGELOG.md`, and `main`. A fix ships as a new
-release; earlier releases are not patched.
+`main`, until a first release is published; from then on, the latest
+release in `CHANGELOG.md` and `main`. A fix ships as a new release; earlier
+releases are not patched.
