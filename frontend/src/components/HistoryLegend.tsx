@@ -65,17 +65,21 @@ const tipSx = {
 /**
  * One colour and its name. Its description opens on hover, on keyboard focus
  * and on a tap, can be hovered, and closes on Escape (WCAG 1.4.13); a screen
- * reader hears it as the entry's description. A tap keeps it open until the
- * reader taps elsewhere or focus moves on: the tooltip's own touch timer would
- * close it before it can be read.
+ * reader hears it as the entry's description. A tap opens it at once and
+ * keeps it open until the reader taps elsewhere or presses Escape: nothing
+ * else a touch screen sends (the tooltip's own touch timer, emulated mouse
+ * events, a blur) closes it before it can be read.
  */
 function Entry({ status }: { status: Status }) {
   const [open, setOpen] = useState(false);
+  const byTouch = useRef(false);
   const entry = useRef<HTMLSpanElement>(null);
   useEffect(() => {
     if (!open) return undefined;
     const away = (event: PointerEvent): void => {
-      if (!entry.current?.contains(event.target as Node)) setOpen(false);
+      if (entry.current?.contains(event.target as Node)) return;
+      byTouch.current = false;
+      setOpen(false);
     };
     document.addEventListener("pointerdown", away);
     return () => {
@@ -91,9 +95,11 @@ function Entry({ status }: { status: Status }) {
         setOpen(true);
       }}
       onClose={(event) => {
-        if (event.type !== "touchend") setOpen(false);
+        if (byTouch.current && event.type !== "keydown") return;
+        byTouch.current = false;
+        setOpen(false);
       }}
-      enterTouchDelay={0}
+      disableTouchListener
       placement="top"
       slotProps={{ tooltip: { sx: tipSx } }}
     >
@@ -103,6 +109,10 @@ function Entry({ status }: { status: Status }) {
         tabIndex={0}
         direction="row"
         useFlexGap
+        onPointerDown={(event) => {
+          byTouch.current = event.pointerType === "touch";
+          if (byTouch.current) setOpen(true);
+        }}
         sx={{ alignItems: "center", gap: 0.75, cursor: "help" }}
       >
         <Swatch status={status} />
