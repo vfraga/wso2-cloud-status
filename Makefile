@@ -35,7 +35,7 @@ SHELL_SCRIPTS = $(shell git ls-files '*.sh' 2>/dev/null || find . -name '*.sh' -
 .DEFAULT_GOAL := help
 .PHONY: help fmt lint test cover vuln licenses rules contract contract-edge check-config live build run docker ci clean \
 	web-install web-check web-licenses web-e2e web-docker web-docker-selftest dockerfile-lint shellcheck api-lint \
-	headers workflow-lint pins gates-selftest verify \
+	headers workflow-lint workflow-cache pins gates-selftest verify \
 	synthetic synthetic-selftest
 
 help: ## List targets
@@ -129,7 +129,48 @@ headers: ## License headers on every source file, the check CI runs (Docker)
 workflow-lint: ## Lint the GitHub workflows with actionlint, as CI does (Docker)
 	docker run --rm -v "$$PWD:/repo:ro" -w /repo $(ACTIONLINT) -color
 
-pins: ## The tool versions copied from ci.yml, here and in release.yml, still match it
+# A job that holds secrets or id-token: write must not restore an Actions
+# cache, which any job on main can write. Each action below caches unless the
+# step turns it off; actions/cache always does.
+workflow-cache: ## No workflow job with secrets or id-token: write uses an action with its cache on
+	@awk ' \
+	  function end_step(  on) { \
+	    if (action == "") return; \
+	    if (action ~ /^actions\/cache(\/|$$)/) on = 1; \
+	    else if (action == "aquasecurity/trivy-action" || action == "actions/setup-go") on = w["cache"] != "false"; \
+	    else if (action == "actions/setup-node") on = w["package-manager-cache"] != "false" || w["cache"] != ""; \
+	    else if (action == "golangci/golangci-lint-action") on = w["skip-cache"] != "true"; \
+	    else if (action == "docker/build-push-action") on = w["cache-from"] != ""; \
+	    if (on) found = found FILENAME ": job " job " uses " action " with its cache on\n"; \
+	    action = ""; inwith = 0; split("", w); \
+	  } \
+	  function end_job() { \
+	    end_step(); \
+	    if (privileged && found != "") { printf "%s", found; bad = 1 } \
+	    job = ""; privileged = 0; found = ""; \
+	  } \
+	  FNR == 1 { end_job(); injobs = 0 } \
+	  { line = $$0; sub(/[ \t]+#.*$$/, "", line) } \
+	  line ~ /^jobs:/ { injobs = 1; next } \
+	  line ~ /^[^ ]/ { end_job(); injobs = 0; next } \
+	  !injobs { next } \
+	  line ~ /^  [^ ]/ { end_job(); job = line; sub(/^ +/, "", job); sub(/:.*/, "", job); next } \
+	  line ~ /secrets\.|secrets: *inherit|id-token: *write/ { privileged = 1 } \
+	  line ~ /^      - / { end_step() } \
+	  line ~ /^      (- |  )uses:/ { action = line; sub(/^ *(- )?uses: */, "", action); sub(/@.*/, "", action); next } \
+	  line ~ /^      (- |  )with:/ { inwith = 1; next } \
+	  line ~ /^        [^ ]/ { inwith = 0 } \
+	  inwith && line ~ /^          [a-z-]+:/ { \
+	    key = line; sub(/^ +/, "", key); sub(/:.*/, "", key); \
+	    value = line; sub(/^ *[a-z-]+: */, "", value); gsub(/["\047]/, "", value); w[key] = value; \
+	  } \
+	  END { \
+	    end_job(); \
+	    if (bad) exit 1; \
+	    print "no job with secrets or id-token: write uses an action with its cache on"; \
+	  }' .github/workflows/*.yml
+
+pins: workflow-cache ## The tool versions copied from ci.yml, here and in release.yml, still match it; no privileged job uses a cache
 	@status=0; \
 	for pin in '$(GOVULNCHECK)' '$(GOLICENSES)' '$(LICENSES_OK)' '$(PROMETHEUS)' '$(SHELLCHECK)' '$(SPECTRAL)' '$(ACTIONLINT)'; do \
 	  awk -v p=": $$pin" 'substr($$0, length($$0) - length(p) + 1) == p { found = 1 } END { exit !found }' .github/workflows/ci.yml \
