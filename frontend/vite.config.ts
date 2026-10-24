@@ -20,6 +20,7 @@ import react from "@vitejs/plugin-react";
 import { readFileSync } from "node:fs";
 import { defineConfig } from "vite";
 import { externalizeFonts } from "./build/externalize-fonts.ts";
+import { preloadApi } from "./build/preload-api.ts";
 import { stubAliases } from "./build/stubs.ts";
 
 const proxy = {
@@ -40,7 +41,7 @@ const csp = /set \$csp "([^"]+)";/.exec(
 if (csp === undefined) throw new Error("docker/nginx.conf sets no $csp");
 
 export default defineConfig({
-  plugins: [react(), externalizeFonts()],
+  plugins: [react(), externalizeFonts(), preloadApi()],
   resolve: { alias: stubAliases },
   server: { proxy },
   preview: { proxy, headers: { "Content-Security-Policy": csp } },

@@ -16,19 +16,15 @@
  * under the License.
  */
 
+import { INCIDENTS_PATH, productPath, SUMMARY_PATH } from "../api/endpoints";
 import { parseIncidentList, parseProductDetail, parseSummary } from "../api/parse";
 import { config } from "../config";
 import { usePolled } from "./usePolled";
 
-export const useSummary = () =>
-  usePolled("/api/v1/summary", parseSummary, config.summaryIntervalMs);
+export const useSummary = () => usePolled(SUMMARY_PATH, parseSummary, config.summaryIntervalMs);
 
 export const useIncidents = () =>
-  usePolled("/api/v1/incidents", parseIncidentList, config.incidentsIntervalMs);
+  usePolled(INCIDENTS_PATH, parseIncidentList, config.incidentsIntervalMs);
 
 export const useProduct = (id: string) =>
-  usePolled(
-    `/api/v1/products/${encodeURIComponent(id)}`,
-    parseProductDetail,
-    config.productIntervalMs,
-  );
+  usePolled(productPath(id), parseProductDetail, config.productIntervalMs);

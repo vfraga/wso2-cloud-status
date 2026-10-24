@@ -556,6 +556,30 @@ test.describe("all operational", () => {
     });
   }
 
+  test("the home page's API requests start with the HTML, and each is made once", async ({
+    page,
+  }) => {
+    const requests: string[] = [];
+    page.on("request", (request) => {
+      const { pathname } = new URL(request.url());
+      if (pathname.startsWith("/api/")) requests.push(pathname);
+    });
+    await ready(page);
+    await expect(page.getByText("Loading past incidents.")).toHaveCount(0);
+    // The build preloads them, so they do not wait for the scripts...
+    const preloaded = await page
+      .locator('link[rel="preload"][as="fetch"]')
+      .evaluateAll((links) =>
+        links.map((link) => new URL((link as HTMLLinkElement).href).pathname),
+      );
+    expect(preloaded).toEqual(["/api/v1/summary", "/api/v1/incidents"]);
+    // ...and the first poll of each takes the preloaded response.
+    expect(requests.toSorted((a, b) => a.localeCompare(b))).toEqual([
+      "/api/v1/incidents",
+      "/api/v1/summary",
+    ]);
+  });
+
   test("a normal load never shows the built-in fallback", async ({ page }) => {
     await ready(page);
     await expect(page.getByText("If the current status does not appear")).toHaveCount(0);

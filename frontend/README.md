@@ -111,6 +111,10 @@ pack's paths unchanged.
   (React, MUI, Oxygen, about 180 kB gzip; cached long-term) and a small
   `rolldown-runtime` (under 1 kB). The image compresses each file once at
   level 9 and nginx sends the `.gz` copy (`gzip_static`).
+- `build/preload-api.ts` adds a preload for `/api/v1/summary` and
+  `/api/v1/incidents` (paths and base URL from `src/api/endpoints.ts`), so the
+  home page's first requests start with the scripts rather than after them;
+  the first poll of each takes the preloaded response.
 - `node scripts/transfer.mjs <url>` lists what a page requests on its first load,
   with each file's gzip size (raw for fonts) and the total; the proposal's
   first-load figure comes from it. It needs Playwright's Chromium
