@@ -165,22 +165,28 @@ func (h *handler) serve(w http.ResponseWriter, r *http.Request, key string) {
 		problem(w, http.StatusNotFound, h.notFoundCache, "Not found", "No product exists with this id.")
 		return
 	}
+	// The plain and gzip bodies are two representations, each with its own
+	// strong ETag (RFC 9110 section 8.8.3.3); If-None-Match is compared with
+	// the selected one's tag only.
+	body, etag := enc.body, enc.etag
+	gzipped := acceptsGzip(fieldValue(r.Header, "Accept-Encoding"))
+	if gzipped {
+		body, etag = enc.gz, enc.gzETag
+	}
 	now := h.store.now()
 	hdr := w.Header()
 	hdr.Set("Content-Type", "application/json")
 	hdr.Set("Cache-Control", h.cacheControl)
-	hdr.Set("ETag", enc.etag)
+	hdr.Set("ETag", etag)
 	hdr.Set("Date", now.UTC().Format(http.TimeFormat))
 	hdr.Set("Last-Modified", sentLastModified(enc, now).Format(http.TimeFormat))
 	hdr.Add("Vary", "Accept-Encoding")
-	if notModified(r, enc) {
+	if notModified(r, etag, enc.modified) {
 		w.WriteHeader(http.StatusNotModified)
 		return
 	}
-	body := enc.body
-	if acceptsGzip(fieldValue(r.Header, "Accept-Encoding")) {
+	if gzipped {
 		hdr.Set("Content-Encoding", "gzip")
-		body = enc.gz
 	}
 	hdr.Set("Content-Length", strconv.Itoa(len(body)))
 	w.WriteHeader(http.StatusOK)
@@ -190,13 +196,14 @@ func (h *handler) serve(w http.ResponseWriter, r *http.Request, key string) {
 }
 
 // notModified evaluates conditional headers in RFC 9110 order:
-// If-None-Match when present, otherwise If-Modified-Since.
-func notModified(r *http.Request, enc *encoded) bool {
+// If-None-Match when present, otherwise If-Modified-Since. etag is the
+// selected representation's tag; modified is when the body last changed.
+func notModified(r *http.Request, etag string, modified time.Time) bool {
 	if inm := fieldValue(r.Header, "If-None-Match"); inm != "" {
-		return etagMatches(inm, enc.etag)
+		return etagMatches(inm, etag)
 	}
 	ims, err := http.ParseTime(r.Header.Get("If-Modified-Since"))
-	return err == nil && !enc.modified.After(ims)
+	return err == nil && !modified.After(ims)
 }
 
 // fieldValue combines every line of a list-based request header into one

@@ -32,6 +32,8 @@ info:
     none.
 
     Caching: responses carry a strong ETag, Last-Modified and Cache-Control.
+    The plain and gzip bodies are two representations with distinct ETags;
+    If-None-Match matches only the tag of the one the request selects.
     Clients should poll with If-None-Match (or If-Modified-Since, which is
     what Azure Front Door uses to revalidate); an unchanged body answers 304
     with no payload. Last-Modified is when the body last changed, not when
@@ -221,7 +223,7 @@ components:
       name: If-None-Match
       in: header
       required: false
-      description: ETag from a previous response; a match answers 304. Takes precedence over If-Modified-Since.
+      description: ETag from a previous response with the same Accept-Encoding; a match with the selected representation's ETag answers 304. Takes precedence over If-Modified-Since.
       schema: { type: string }
     IfModifiedSince:
       name: If-Modified-Since
@@ -232,7 +234,9 @@ components:
 
   headers:
     ETag:
-      description: Strong validator of the response body.
+      description: >-
+        Strong validator of the representation sent: the plain and gzip
+        bodies have distinct ETags.
       schema: { type: string }
     LastModified:
       description: >-

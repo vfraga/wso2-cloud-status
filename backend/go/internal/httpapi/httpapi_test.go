@@ -143,6 +143,28 @@ func TestGzip(t *testing.T) {
 	if !bytes.Equal(unzipped, plain) {
 		t.Fatal("gzip body differs from the plain body")
 	}
+
+	// Each representation has its own strong ETag, and If-None-Match matches
+	// only the selected one's.
+	plainTag := do(h, http.MethodGet, "/api/v1/summary", nil).Header().Get("ETag")
+	gzipTag := rec.Header().Get("ETag")
+	if plainTag == "" || gzipTag == plainTag || strings.HasPrefix(gzipTag, "W/") {
+		t.Fatalf("plain ETag %s, gzip ETag %s: want two distinct strong tags", plainTag, gzipTag)
+	}
+	for _, c := range []struct {
+		name, accept, inm, etag string
+		code                    int
+	}{
+		{"gzip, its own tag", "gzip", gzipTag, gzipTag, http.StatusNotModified},
+		{"gzip, the plain tag", "gzip", plainTag, gzipTag, http.StatusOK},
+		{"plain, its own tag", "identity", plainTag, plainTag, http.StatusNotModified},
+		{"plain, the gzip tag", "identity", gzipTag, plainTag, http.StatusOK},
+	} {
+		got := do(h, http.MethodGet, "/api/v1/summary", map[string]string{"Accept-Encoding": c.accept, "If-None-Match": c.inm})
+		if got.Code != c.code || got.Header().Get("ETag") != c.etag {
+			t.Errorf("%s: %d with ETag %s, want %d with %s", c.name, got.Code, got.Header().Get("ETag"), c.code, c.etag)
+		}
+	}
 }
 
 // acceptEncodingCases is the table the handler and the contract tests share.

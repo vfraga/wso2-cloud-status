@@ -31,11 +31,13 @@ import (
 )
 
 // encoded is one response body, encoded and compressed once per build
-// instead of once per request.
+// instead of once per request. Each body has its own strong ETag: the plain
+// body's hash, and for the gzip body the same with "-gz" appended.
 type encoded struct {
-	body []byte
-	gz   []byte
-	etag string
+	body   []byte
+	gz     []byte
+	etag   string
+	gzETag string
 	// modified is when this body last changed; it increases with every
 	// change, so two changes within one second can take it past the clock
 	// (lastModified). Azure Front Door revalidates with If-Modified-Since
@@ -149,5 +151,6 @@ func encode(v any) (*encoded, error) {
 		return nil, err
 	}
 	sum := sha256.Sum256(body)
-	return &encoded{body: body, gz: buf.Bytes(), etag: `"` + hex.EncodeToString(sum[:12]) + `"`}, nil
+	hash := hex.EncodeToString(sum[:12])
+	return &encoded{body: body, gz: buf.Bytes(), etag: `"` + hash + `"`, gzETag: `"` + hash + `-gz"`}, nil
 }

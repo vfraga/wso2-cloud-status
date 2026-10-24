@@ -589,13 +589,14 @@ func TestHTTPSemantics(t *testing.T) {
 }
 
 // checkConditionalAndGzip: the validators of one response answer 304 when
-// sent back, and the gzip body is the plain body compressed.
+// sent back, and the gzip body is the plain body compressed. The plain
+// requests go through rawClient, which sends no Accept-Encoding.
 func checkConditionalAndGzip(t *testing.T, summaryURL string, found *problems) {
 	t.Helper()
-	plain := call(t, http.MethodGet, summaryURL, nil)
+	plain := sendLines(t, summaryURL, "If-None-Match", nil)
 	etag := plain.header.Get("ETag")
 	for _, inm := range []string{etag, "W/" + etag} {
-		if r := call(t, http.MethodGet, summaryURL, map[string]string{"If-None-Match": inm}); r.code != http.StatusNotModified || len(r.body) != 0 {
+		if r := sendLines(t, summaryURL, "If-None-Match", []string{inm}); r.code != http.StatusNotModified || len(r.body) != 0 {
 			found.add("If-None-Match %q: %d with %d bytes, want 304 and no body", inm, r.code, len(r.body))
 		}
 	}
@@ -695,6 +696,37 @@ func TestAcceptEncoding(t *testing.T) {
 			t.Errorf("Accept-Encoding %q: body is not a JSON object", c.Header)
 		}
 	}
+	summaryURL := base + "/api/v1/summary"
+	whileUnchanged(t, summaryURL, func(found *problems) { checkETagPerEncoding(t, base, found) })
+}
+
+// checkETagPerEncoding: the plain and gzip bodies are two representations
+// with distinct strong ETags (RFC 9110 section 8.8.3.3), and If-None-Match
+// answers 304 only with the selected representation's tag.
+func checkETagPerEncoding(t *testing.T, base string, found *problems) {
+	t.Helper()
+	const path = "/api/v1/summary"
+	plainTag := probe{method: http.MethodGet, path: path}.send(t, base).header.Get("ETag")
+	gzipTag := probe{method: http.MethodGet, path: path, headers: map[string]string{"Accept-Encoding": "gzip"}}.send(t, base).header.Get("ETag")
+	if plainTag == "" || gzipTag == plainTag || strings.HasPrefix(gzipTag, "W/") || strings.HasPrefix(plainTag, "W/") {
+		found.add("plain ETag %s, gzip ETag %s: want two distinct strong tags", plainTag, gzipTag)
+		return
+	}
+	cases := []struct {
+		accept, inm string
+		code        int
+	}{
+		{"gzip", gzipTag, http.StatusNotModified},
+		{"gzip", plainTag, http.StatusOK},
+		{"identity", plainTag, http.StatusNotModified},
+		{"identity", gzipTag, http.StatusOK},
+	}
+	for _, c := range cases {
+		p := probe{method: http.MethodGet, path: path, headers: map[string]string{"Accept-Encoding": c.accept, "If-None-Match": c.inm}}
+		if r := p.send(t, base); r.code != c.code {
+			found.add("%s: %d, want %d", p, r.code, c.code)
+		}
+	}
 }
 
 // TestRepeatedHeaderLines: a list header sent as several lines means the
@@ -709,7 +741,8 @@ func TestRepeatedHeaderLines(t *testing.T) {
 
 func checkRepeatedHeaderLines(t *testing.T, summaryURL string, found *problems) {
 	t.Helper()
-	etag := call(t, http.MethodGet, summaryURL, nil).header.Get("ETag")
+	// sendLines sends no Accept-Encoding, so the plain body's tag applies.
+	etag := sendLines(t, summaryURL, "Accept-Encoding", nil).header.Get("ETag")
 	cases := []struct {
 		header string
 		lines  []string
