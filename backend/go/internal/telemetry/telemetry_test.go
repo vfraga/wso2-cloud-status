@@ -20,6 +20,8 @@ import (
 	"errors"
 	"io"
 	"net/http/httptest"
+	"os"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -217,5 +219,79 @@ func TestDataSeries(t *testing.T) {
 	if !strings.Contains(body, `statusd_product_data_complete{product="developer-platform"} 1`) ||
 		strings.Contains(body, `source="cloudservices/choreo-eu"`) || strings.Contains(body, `product="moesif"`) {
 		t.Errorf("after the changes and removals:\n%s", body)
+	}
+}
+
+var (
+	// ruleSelector is a statusd metric name in the rule files, with its label
+	// matchers when it has them.
+	ruleSelector = regexp.MustCompile(`(statusd_[a-z_]+)(\{[^}]*\})?`)
+	quoted       = regexp.MustCompile(`"(?:[^"\\]|\\.)*"`)
+	matcherKey   = regexp.MustCompile(`([a-zA-Z_][a-zA-Z0-9_]*)\s*(?:=~|!~|!=|=)`)
+)
+
+// TestAlertRulesMatchTheExporter: every statusd metric the alert rules and
+// their unit tests name, and every label they match on, is one the exporter
+// produces. promtool's tests feed series named after the rules, so a renamed
+// metric or label would otherwise leave an alert that never fires with every
+// gate green. instance and job come from the scrape, and le from a
+// histogram's _bucket series.
+func TestAlertRulesMatchTheExporter(t *testing.T) {
+	t.Parallel()
+	m := New("1.2.3")
+	m.ObserveRequest("GET /api/v1/summary", 200, time.Millisecond)
+	m.FetchDone("cloudservices/choreo", aggregator.KindComponents, time.Millisecond, nil)
+	m.SourceBound("cloudservices/choreo", map[aggregator.Kind]time.Time{aggregator.KindUptime: time.Unix(1_800_000_000, 0)})
+	m.Published(time.Unix(1_800_000_000, 0))
+	m.ConfigReloaded("applied")
+	m.ConfigFileValid(true)
+	m.OriginLock(true)
+	m.ProductStatus("moesif", domain.StatusOperational)
+	m.ProductData("moesif", true, []string{"cloudservices/moesif"})
+	m.SourceRegionKeys("cloudservices/moesif", 0, 0)
+	families, err := m.registry.Gather()
+	if err != nil {
+		t.Fatal(err)
+	}
+	exported := map[string]map[string]bool{}
+	for _, f := range families {
+		labels := map[string]bool{"instance": true, "job": true}
+		for _, metric := range f.GetMetric() {
+			for _, l := range metric.GetLabel() {
+				labels[l.GetName()] = true
+			}
+		}
+		exported[f.GetName()] = labels
+	}
+
+	named := 0
+	for _, file := range []string{"prometheus-rules.yaml", "prometheus-rules.test.yaml"} {
+		raw, err := os.ReadFile("../../../../deploy/observability/" + file)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, sel := range ruleSelector.FindAllStringSubmatch(string(raw), -1) {
+			name, family := sel[1], sel[1]
+			labels, ok := exported[family]
+			for _, suffix := range []string{"_bucket", "_sum", "_count"} {
+				if !ok && strings.HasSuffix(name, suffix) {
+					family = strings.TrimSuffix(name, suffix)
+					labels, ok = exported[family]
+				}
+			}
+			if !ok {
+				t.Errorf("%s names %s, which the exporter does not produce", file, name)
+				continue
+			}
+			named++
+			for _, key := range matcherKey.FindAllStringSubmatch(quoted.ReplaceAllString(sel[2], `""`), -1) {
+				if !labels[key[1]] && (key[1] != "le" || name != family+"_bucket") {
+					t.Errorf("%s matches %s on the label %q, which the exporter does not produce", file, name, key[1])
+				}
+			}
+		}
+	}
+	if named == 0 {
+		t.Fatal("found no statusd metric in the rule files")
 	}
 }
