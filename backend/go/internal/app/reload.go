@@ -24,9 +24,6 @@ import (
 	"log/slog"
 	"os"
 	"time"
-
-	"github.com/wso2/wso2-cloud-status/backend/go/internal/aggregator"
-	"github.com/wso2/wso2-cloud-status/backend/go/internal/config"
 )
 
 // ReloadObserver records configuration reload outcomes, and whether the
@@ -91,7 +88,7 @@ func (a *App) watchConfig(ctx context.Context) {
 func (a *App) checkFile(ctx context.Context, readErr error, wasValid bool) bool {
 	err := readErr
 	if err == nil {
-		_, _, err = a.load()
+		_, _, err = load(a.configPath, a.getenv, a.registry, a.env)
 	}
 	valid := err == nil
 	a.reloadObs.ConfigFileValid(valid)
@@ -106,31 +103,38 @@ func (a *App) checkFile(ctx context.Context, readErr error, wasValid bool) bool 
 	return valid
 }
 
-// reloadAndReport reloads, reports the outcome and the file's validity, and
-// returns whether it applied.
+// reloadAndReport reloads, reports the outcome and whether the file would
+// start the service, and returns the latter.
 func (a *App) reloadAndReport(ctx context.Context, trigger string) bool {
-	if err := a.Reload(ctx); err != nil {
+	err := a.Reload(ctx)
+	valid := err == nil || errors.Is(err, errNeedsRestart)
+	a.reloadObs.ConfigFileValid(valid)
+	if err != nil {
 		a.reloadObs.ConfigReloaded(reloadFailed)
-		a.reloadObs.ConfigFileValid(false)
 		a.log.ErrorContext(ctx, "configuration reload rejected; keeping the running configuration",
 			slog.String("trigger", trigger), slog.Any("error", err))
-		return false
+		return valid
 	}
 	a.reloadObs.ConfigReloaded(reloadApplied)
-	a.reloadObs.ConfigFileValid(true)
 	a.log.InfoContext(ctx, "configuration reloaded", slog.String("trigger", trigger),
 		slog.Int("products", len(a.cfg.Products)))
 	return true
 }
 
-// Reload loads the configuration file and applies it. Server and reload
-// settings need a restart; changes to them are reported and ignored. The
-// environment overrides (PORT) apply as they did at startup.
+// errNeedsRestart marks a file that a restart would apply but a reload
+// cannot.
+var errNeedsRestart = errors.New("app: the file needs a restart")
+
+// Reload loads the configuration file (load) and applies it. Server and
+// reload settings need a restart; changes to them are reported and the
+// running values kept. A file whose other settings are invalid with those
+// running values is rejected whole. The environment overrides (PORT) apply
+// as they did at startup.
 func (a *App) Reload(ctx context.Context) error {
 	if a.configPath == "" {
 		return errors.New("app: reload is not enabled")
 	}
-	next, bindings, err := a.load()
+	next, bindings, err := load(a.configPath, a.getenv, a.registry, a.env)
 	if err != nil {
 		return err
 	}
@@ -138,30 +142,16 @@ func (a *App) Reload(ctx context.Context) error {
 		a.log.WarnContext(ctx, "these settings take effect on restart only; keeping the running values",
 			slog.Any("sections", changed))
 		next.Server, next.Reload = a.cfg.Server, a.cfg.Reload
+		if err := next.Validate(); err != nil {
+			return fmt.Errorf("%w: it is invalid with the running %v settings, which change only on restart: %w",
+				errNeedsRestart, changed, err)
+		}
 	}
 	if err := a.agg.Apply(ctx, next, bindings); err != nil {
 		return fmt.Errorf("app: apply: %w", err)
 	}
 	a.cfg = next
 	return nil
-}
-
-// load reads the configuration file and builds its sources the way a start
-// does: validation, the environment overrides and every adapter. It changes
-// nothing.
-func (a *App) load() (*config.Config, map[string]aggregator.Binding, error) {
-	next, err := config.Load(a.configPath)
-	if err != nil {
-		return nil, nil, err
-	}
-	if err := next.ApplyEnvOverrides(a.getenv); err != nil {
-		return nil, nil, err
-	}
-	bindings, err := buildBindings(next, a.registry, a.env)
-	if err != nil {
-		return nil, nil, err
-	}
-	return next, bindings, nil
 }
 
 func fileHash(path string) ([sha256.Size]byte, error) {

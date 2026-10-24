@@ -19,6 +19,7 @@ package app
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"maps"
 	"net/http"
@@ -40,21 +41,32 @@ func DefaultRegistry() *source.Registry {
 }
 
 // buildBindings creates one source per product source reference, through
-// the backend's adapter.
+// the backend's adapter, and reports every backend its adapter refuses. A
+// reference to a backend that does not exist gets no source; validation
+// reports it.
 func buildBindings(cfg *config.Config, reg *source.Registry, env source.Env) (map[string]aggregator.Binding, error) {
 	providers := make(map[string]source.Provider, len(cfg.Backends))
+	var errs []error
 	for _, name := range slices.Sorted(maps.Keys(cfg.Backends)) {
 		p, err := reg.Provider(name, cfg.Backends[name], env)
 		if err != nil {
-			return nil, err
+			errs = append(errs, err)
+			continue
 		}
 		providers[name] = p
+	}
+	if len(errs) > 0 {
+		return nil, errors.Join(errs...)
 	}
 	bindings := map[string]aggregator.Binding{}
 	for _, p := range cfg.Products {
 		for _, ref := range p.Sources {
+			provider, ok := providers[ref.Backend]
+			if !ok {
+				continue
+			}
 			bindings[aggregator.SourceKey(ref)] = aggregator.Binding{
-				Source:      providers[ref.Backend].Source(ref.Cloud),
+				Source:      provider.Source(ref.Cloud),
 				Fingerprint: fingerprint(cfg.Backends[ref.Backend], ref.Cloud),
 			}
 		}

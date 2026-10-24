@@ -24,13 +24,14 @@
 //
 // -check-config does everything a start does with the file except bind the
 // ports and poll: it reads it, expands ${NAME} from the environment, applies
-// PORT, validates, and builds every source through its adapter. Set every
+// PORT, builds every source through its adapter, and validates. Set every
 // variable the file references (a placeholder value is enough). Exit codes:
-// 0 the file would start the service, 1 it would not (the reasons go to
+// 0 the file would start the service, 1 it would not (every reason goes to
 // stderr), 2 the command line is wrong.
 //
-// Serving exits 2 when the configuration is rejected at startup and 1 when
-// the service fails to start or stops with an error.
+// Serving exits 2 when the configuration is rejected at startup, logging
+// "configuration rejected" with every problem, and 1 when it cannot bind
+// its ports or stops with an error.
 package main
 
 import (
@@ -88,16 +89,10 @@ func run(args []string, stdout, stderr io.Writer) int {
 	}
 }
 
-// checkConfig loads the file as a start would and assembles the service,
-// which performs no I/O: no port is bound and no source is polled.
+// checkConfig loads the file as a start does (load); no port is bound and
+// no source is polled.
 func checkConfig(path string, getenv func(string) string, stdout, stderr io.Writer) int {
-	cfg, err := config.Load(path)
-	if err == nil {
-		err = cfg.ApplyEnvOverrides(getenv)
-	}
-	if err == nil {
-		_, err = app.New(cfg, slog.New(slog.DiscardHandler), version)
-	}
+	cfg, _, err := load(path, getenv, slog.New(slog.DiscardHandler))
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "%s is invalid: %v\n", path, err)
 		return checkInvalid
@@ -117,23 +112,14 @@ func serve(configPath string, stdout io.Writer) int {
 		log.Warn("ignoring STATUSD_LOG_LEVEL", slog.Any("error", levelErr))
 	}
 
-	cfg, err := config.Load(configPath)
+	_, a, err := load(configPath, os.Getenv, log)
 	if err != nil {
 		log.Error("configuration rejected", slog.Any("error", err))
-		return 2
-	}
-	if err := cfg.ApplyEnvOverrides(os.Getenv); err != nil {
-		log.Error("configuration rejected after applying PORT", slog.Any("error", err))
 		return 2
 	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	a, err := app.New(cfg, log, version)
-	if err != nil {
-		log.Error("startup failed", slog.Any("error", err))
-		return 1
-	}
 	hup := make(chan os.Signal, 1)
 	signal.Notify(hup, syscall.SIGHUP)
 	defer signal.Stop(hup)
@@ -143,6 +129,21 @@ func serve(configPath string, stdout io.Writer) int {
 		return 1
 	}
 	return 0
+}
+
+// load reads the configuration file (app.Load) and assembles the service
+// from it, which performs no I/O. A start and -check-config both use it, so
+// every error is a problem with the file or the environment it reads.
+func load(path string, getenv func(string) string, log *slog.Logger) (*config.Config, *app.App, error) {
+	cfg, err := app.Load(path, getenv)
+	if err != nil {
+		return nil, nil, err
+	}
+	a, err := app.New(cfg, log, version)
+	if err != nil {
+		return nil, nil, err
+	}
+	return cfg, a, nil
 }
 
 func envOr(key, fallback string) string {

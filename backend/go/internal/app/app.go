@@ -60,6 +60,30 @@ type App struct {
 	hup        <-chan os.Signal
 }
 
+// Load reads the configuration file at path with the default adapters, as
+// a start, -check-config and every reload do (load).
+func Load(path string, getenv func(string) string) (*config.Config, error) {
+	cfg, _, err := load(path, getenv, DefaultRegistry(), source.Env{HTTPClient: upstreamClient()})
+	return cfg, err
+}
+
+// load reads the configuration file at path and expands ${NAME}, applies
+// the environment overrides (PORT), builds every source through its
+// backend's adapter and validates the result, reporting every problem at
+// once. It performs no I/O besides reading the file.
+func load(path string, getenv func(string) string, reg *source.Registry, env source.Env) (*config.Config, map[string]aggregator.Binding, error) {
+	cfg, err := config.Read(path)
+	if err != nil {
+		return nil, nil, err
+	}
+	cfg.ApplyEnvOverrides(getenv)
+	bindings, adapterErr := buildBindings(cfg, reg, env)
+	if err := errors.Join(cfg.Validate(), adapterErr); err != nil {
+		return nil, nil, err
+	}
+	return cfg, bindings, nil
+}
+
 // New assembles the service with the default adapters. It performs no I/O.
 func New(cfg *config.Config, log *slog.Logger, version string) (*App, error) {
 	return NewWithRegistry(cfg, log, version, DefaultRegistry())

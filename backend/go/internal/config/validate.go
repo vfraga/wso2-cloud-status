@@ -64,7 +64,7 @@ func (c *Config) validateServer(e *errs) {
 	s := c.Server
 	for _, a := range []struct{ name, addr string }{{"server.addr", s.Addr}, {"server.admin_addr", s.AdminAddr}} {
 		if !validAddr(a.addr) {
-			e.addf("%s must be host:port with a port from 0 to 65535, got %q", a.name, a.addr)
+			e.addf("%s must be host:port with an IP address or no host and a port from 0 to 65535, got %q", a.name, a.addr)
 		}
 	}
 	if listenersClash(s.Addr, s.AdminAddr) {
@@ -83,16 +83,18 @@ func (c *Config) validateServer(e *errs) {
 }
 
 // listenersClash reports whether two listen addresses take the same port:
-// the same port number, other than 0 (any free port), on the same host or
-// with either on every interface.
+// the same port number, other than 0 (any free port), on the same IP
+// address (::ffff:127.0.0.1 is 127.0.0.1) or with either on every
+// interface. validAddr has made every host empty or an IP address.
 func listenersClash(a, b string) bool {
 	hostA, portA, okA := splitListen(a)
 	hostB, portB, okB := splitListen(b)
 	if !okA || !okB || portA != portB || portA == 0 {
 		return false
 	}
-	everywhere := func(host string) bool { return host == "" || host == "0.0.0.0" || host == "::" }
-	return hostA == hostB || everywhere(hostA) || everywhere(hostB)
+	ipA, ipB := net.ParseIP(hostA), net.ParseIP(hostB)
+	everywhere := func(host string, ip net.IP) bool { return host == "" || ip.IsUnspecified() }
+	return everywhere(hostA, ipA) || everywhere(hostB, ipB) || (ipA != nil && ipA.Equal(ipB))
 }
 
 // splitListen splits a listen address into its host and port number.
@@ -180,11 +182,14 @@ func validHeaderValue(v string) bool {
 	return v != "" && strings.TrimSpace(v) == v && !strings.ContainsFunc(v, unicode.IsControl)
 }
 
-// validAddr reports whether addr is host:port with a port from 0 to 65535,
-// so a value that would fail at Listen fails validation instead.
+// validAddr reports whether addr is host:port with a port from 0 to 65535
+// and a host that is empty (every interface) or an IP address, so a value
+// that would fail at Listen fails validation instead. A host name is
+// refused: it may not resolve where the service starts, and only an address
+// can be compared with the other listener's (listenersClash).
 func validAddr(addr string) bool {
-	_, port, ok := splitListen(addr)
-	return ok && port >= 0 && port <= 65535
+	host, port, ok := splitListen(addr)
+	return ok && port >= 0 && port <= 65535 && (host == "" || net.ParseIP(host) != nil)
 }
 
 func (c *Config) validatePolling(e *errs) {
@@ -224,6 +229,11 @@ func (c *Config) validateBackends(e *errs) {
 	}
 	for _, name := range slices.Sorted(maps.Keys(c.Backends)) {
 		b := c.Backends[name]
+		// A source is keyed "backend/cloud"; with no "/" in the backend
+		// name, two sources cannot share a key.
+		if !slug.MatchString(name) {
+			e.addf("backends: name %q must be a lowercase slug", name)
+		}
 		if !isHTTPURL(b.BaseURL) {
 			e.addf("backends.%s.base_url must be an absolute http(s) URL, got %q", name, b.BaseURL)
 		}

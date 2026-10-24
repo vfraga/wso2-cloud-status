@@ -148,11 +148,24 @@ func Slugify(s string) string {
 
 // Load reads, defaults and validates the configuration at path.
 func Load(path string) (*Config, error) {
+	cfg, err := Read(path)
+	if err != nil {
+		return nil, err
+	}
+	if err := cfg.Validate(); err != nil {
+		return nil, err
+	}
+	return cfg, nil
+}
+
+// Read reads and defaults the configuration at path without validating it,
+// for a caller that changes it (ApplyEnvOverrides) before validating.
+func Read(path string) (*Config, error) {
 	raw, err := os.ReadFile(path) //nolint:gosec // The path comes from the operator, not from a request.
 	if err != nil {
 		return nil, fmt.Errorf("config: read %s: %w", path, err)
 	}
-	return Parse(raw)
+	return decode(raw)
 }
 
 // envRef matches ${NAME}; a bare $ is left alone.
@@ -219,10 +232,22 @@ func walkValues(n *yaml.Node, visit func(*yaml.Node)) {
 	}
 }
 
-// Parse expands ${NAME} references, decodes YAML strictly (unknown keys are
-// errors), applies defaults and validates. Every validation problem is
+// Parse decodes raw (decode) and validates it. Every validation problem is
 // reported, not only the first.
 func Parse(raw []byte) (*Config, error) {
+	cfg, err := decode(raw)
+	if err != nil {
+		return nil, err
+	}
+	if err := cfg.Validate(); err != nil {
+		return nil, err
+	}
+	return cfg, nil
+}
+
+// decode expands ${NAME} references, decodes YAML strictly (unknown keys are
+// errors) and applies defaults.
+func decode(raw []byte) (*Config, error) {
 	raw, err := expandEnv(raw)
 	if err != nil {
 		return nil, err
@@ -234,9 +259,6 @@ func Parse(raw []byte) (*Config, error) {
 		return nil, fmt.Errorf("config: decode: %w", err)
 	}
 	cfg.applyDefaults()
-	if err := cfg.Validate(); err != nil {
-		return nil, err
-	}
 	return &cfg, nil
 }
 
@@ -278,17 +300,14 @@ func (c *Config) RestartRequired(next *Config) []string {
 
 // ApplyEnvOverrides applies the settings the platform passes in the
 // environment: PORT (Azure App Service, Cloud Run, Choreo) replaces the
-// public listener's port. It validates again, because the new address may
-// collide with the admin address. The service applies it at startup and on
-// every reload, so a reload never mistakes the override for a change that
-// needs a restart.
-func (c *Config) ApplyEnvOverrides(getenv func(string) string) error {
-	port := getenv("PORT")
-	if port == "" {
-		return nil
+// public listener's port. Validate afterwards: the new address may collide
+// with the admin address. The service applies it at startup and on every
+// reload, so a reload never mistakes the override for a change that needs a
+// restart.
+func (c *Config) ApplyEnvOverrides(getenv func(string) string) {
+	if port := getenv("PORT"); port != "" {
+		c.Server.Addr = net.JoinHostPort("", port)
 	}
-	c.Server.Addr = net.JoinHostPort("", port)
-	return c.Validate()
 }
 
 func setDefault[T comparable](field *T, value T) {

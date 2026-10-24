@@ -19,6 +19,7 @@ package app
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -330,9 +331,7 @@ func TestReloadKeepsThePortOverride(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := cfg.ApplyEnvOverrides(getenv); err != nil {
-		t.Fatal(err)
-	}
+	cfg.ApplyEnvOverrides(getenv)
 	var logs strings.Builder
 	a, err := New(cfg, slog.New(slog.NewTextHandler(&logs, nil)), "test")
 	if err != nil {
@@ -345,6 +344,58 @@ func TestReloadKeepsThePortOverride(t *testing.T) {
 	}
 	if a.cfg.Server.Addr != ":18299" || strings.Contains(logs.String(), "restart only") {
 		t.Fatalf("addr %q after reload; logs:\n%s", a.cfg.Server.Addr, logs.String())
+	}
+}
+
+// TestReloadRejectsRestartOnlyConflicts: a file that changes the server
+// section and polling together is valid on its own, but its polling is
+// invalid with the running server section, which only a restart replaces.
+// The reload is rejected with the reason logged, the running configuration
+// stays, and the file still reads as one a restart would apply.
+func TestReloadRejectsRestartOnlyConflicts(t *testing.T) {
+	t.Parallel()
+	path := filepath.Join(t.TempDir(), "statusd.yaml")
+	text := configText(t, upstream(t).URL)
+	if err := os.WriteFile(path, []byte(text), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := config.Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var logs lockedBuffer
+	a, err := New(cfg, slog.New(slog.NewTextHandler(&logs, nil)), "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	seen := &validity{}
+	a.reloadObs = seen
+	a.EnableReload(path, nil)
+
+	if !strings.Contains(text, "stale-if-error=300") || !strings.Contains(text, "stale_after: 5m") {
+		t.Fatal("the shipped config no longer has the cache and staleness values this test edits")
+	}
+	changed := strings.Replace(text, "stale-if-error=300", "stale-if-error=120", 1)
+	changed = strings.Replace(changed, "stale_after: 5m", "stale_after: 2m", 1)
+	if err := os.WriteFile(path, []byte(changed), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := config.Load(path); err != nil {
+		t.Fatalf("the new file must be valid on its own: %v", err)
+	}
+	if err := a.Reload(t.Context()); !errors.Is(err, errNeedsRestart) {
+		t.Fatalf("Reload = %v, want it rejected as needing a restart", err)
+	}
+	if valid := a.reloadAndReport(t.Context(), "signal"); !valid {
+		t.Fatal("the file reads as invalid, but a restart would apply it")
+	}
+	if a.cfg != cfg || a.cfg.Polling.StaleAfter != 5*time.Minute {
+		t.Fatalf("the running configuration changed: stale_after %s", a.cfg.Polling.StaleAfter)
+	}
+	seen.await(t, 0, 1, true)
+	if out := logs.String(); !strings.Contains(out, "configuration reload rejected") ||
+		!strings.Contains(out, "invalid with the running [server] settings") || !strings.Contains(out, "stale-if-error must be at most") {
+		t.Fatalf("the log does not say why the reload was rejected:\n%s", out)
 	}
 }
 

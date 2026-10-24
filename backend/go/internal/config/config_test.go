@@ -50,7 +50,8 @@ func TestShippedConfigIsValid(t *testing.T) {
 // TestProductionConfig: the production file turns the origin lock on with
 // the Front Door id from the environment, refuses to load without it, and
 // differs from config/statusd.yaml in nothing else, so the catalogue cannot
-// drift between the two.
+// drift between the two. Both poll components and incidents every 30 s and
+// uptime every 5 min, the cadence the page is specified with.
 func TestProductionConfig(t *testing.T) {
 	t.Setenv("FRONT_DOOR_ID", "00000000-0000-0000-0000-000000000001")
 	prod, err := Load(productionConfig)
@@ -66,6 +67,13 @@ func TestProductionConfig(t *testing.T) {
 	}
 	if len(shipped.Server.RequiredHeaders) != 0 {
 		t.Fatalf("config/statusd.yaml must keep the origin lock off for local runs, has %v", shipped.Server.RequiredHeaders)
+	}
+	for name, cfg := range map[string]*Config{repoConfig: shipped, productionConfig: prod} {
+		p := cfg.Polling
+		if p.ComponentsInterval != 30*time.Second || p.IncidentsInterval != 30*time.Second || p.UptimeInterval != 5*time.Minute {
+			t.Errorf("%s polls components every %s, incidents every %s and uptime every %s; want 30s, 30s and 5m",
+				name, p.ComponentsInterval, p.IncidentsInterval, p.UptimeInterval)
+		}
 	}
 	prod.Server.RequiredHeaders = nil
 	if !reflect.DeepEqual(prod, shipped) {
@@ -250,20 +258,20 @@ func TestApplyEnvOverrides(t *testing.T) {
 		}
 	}
 	cfg, _ := Parse([]byte(minimal))
-	if err := cfg.ApplyEnvOverrides(env("")); err != nil || cfg.Server.Addr != ":8080" {
-		t.Fatalf("no PORT: addr %q, err %v", cfg.Server.Addr, err)
+	if cfg.ApplyEnvOverrides(env("")); cfg.Server.Addr != ":8080" {
+		t.Fatalf("no PORT: addr %q", cfg.Server.Addr)
 	}
-	if err := cfg.ApplyEnvOverrides(env("8123")); err != nil || cfg.Server.Addr != ":8123" {
-		t.Fatalf("PORT=8123: addr %q, err %v", cfg.Server.Addr, err)
+	if cfg.ApplyEnvOverrides(env("8123")); cfg.Server.Addr != ":8123" || cfg.Validate() != nil {
+		t.Fatalf("PORT=8123: addr %q, err %v", cfg.Server.Addr, cfg.Validate())
 	}
 	// Applied to every load, the override never reads as a restart-only change.
 	again, _ := Parse([]byte(minimal))
-	if err := again.ApplyEnvOverrides(env("8123")); err != nil || len(cfg.RestartRequired(again)) != 0 {
-		t.Fatalf("reloaded with the same PORT: %v, err %v", cfg.RestartRequired(again), err)
+	if again.ApplyEnvOverrides(env("8123")); len(cfg.RestartRequired(again)) != 0 {
+		t.Fatalf("reloaded with the same PORT: %v", cfg.RestartRequired(again))
 	}
 	clash, _ := Parse([]byte(minimal))
-	if err := clash.ApplyEnvOverrides(env("9090")); err == nil || !strings.Contains(err.Error(), "must differ") {
-		t.Fatalf("PORT on the admin port: err = %v", err)
+	if clash.ApplyEnvOverrides(env("9090")); clash.Validate() == nil || !strings.Contains(clash.Validate().Error(), "must differ") {
+		t.Fatalf("PORT on the admin port: err = %v", clash.Validate())
 	}
 }
 
@@ -334,7 +342,9 @@ products:
 // fail once the service runs are rejected when the file is read. A required
 // header value with surrounding spaces or a control character (a secret read
 // from a file with a trailing newline) can never match a received header; a
-// port outside 0 to 65535 fails at Listen; a source without regions shows
+// port outside 0 to 65535 fails at Listen; a listen host name may not
+// resolve, and only IP addresses can be compared (one address spelt two
+// ways is one address); a source without regions shows
 // every upstream key under ids that may change; fewer than 15 history days
 // do not cover the page's 14 local days of past incidents.
 func TestValuesThatCannotWorkAreRejected(t *testing.T) {
@@ -358,6 +368,9 @@ func TestValuesThatCannotWorkAreRejected(t *testing.T) {
 		"a directive given twice":              {`server: { cache_control: "public, max-age=600, max-age=10" }`, "max-age is given twice"},
 		"not-found copy with s-maxage":         {`server: { not_found_cache_control: "public, s-maxage=86400" }`, "server.not_found_cache_control"},
 		"listeners on one port":                {`server: { addr: ":18803", admin_addr: "127.0.0.1:18803" }`, "must differ"},
+		"one address, two spellings":           {`server: { addr: "[::ffff:127.0.0.1]:18803", admin_addr: "127.0.0.1:18803" }`, "must differ"},
+		"a host name":                          {`server: { addr: "localhost:18803", admin_addr: "127.0.0.1:18804" }`, `server.addr must be host:port with an IP address or no host`},
+		"a host name that does not resolve":    {`server: { admin_addr: "no-such-host.invalid:18803" }`, `server.admin_addr must be host:port with an IP address or no host`},
 		"a source without regions": {
 			strings.Replace(minimal, "        regions: [{ key: us, id: us, name: US }]\n", "", 1),
 			"at least one region is required",
@@ -371,7 +384,7 @@ func TestValuesThatCannotWorkAreRejected(t *testing.T) {
 			t.Errorf("%s: err = %v, want it to name %q", name, err, tc.want)
 		}
 	}
-	for _, addr := range []string{":0", "127.0.0.1:18800", "[::1]:9091", "localhost:65535"} {
+	for _, addr := range []string{":0", "127.0.0.1:18800", "[::1]:9091", "0.0.0.0:65535"} {
 		if _, err := Parse([]byte(minimal + "server: { addr: \"" + addr + "\" }\n")); err != nil {
 			t.Errorf("addr %q: %v", addr, err)
 		}
@@ -385,8 +398,33 @@ func TestValuesThatCannotWorkAreRejected(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := cfg.ApplyEnvOverrides(func(string) string { return "80800" }); err == nil || !strings.Contains(err.Error(), "server.addr") {
+	cfg.ApplyEnvOverrides(func(string) string { return "80800" })
+	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "server.addr") {
 		t.Fatalf("PORT=80800: err = %v, want server.addr named", err)
+	}
+}
+
+// TestSourceKeysCannotCollide: a source is keyed "backend/cloud", so a "/"
+// in a backend name could give two sources one key, and one would show the
+// other's data. Backend names are slugs.
+func TestSourceKeysCannotCollide(t *testing.T) {
+	t.Parallel()
+	_, err := Parse([]byte(`
+backends:
+  "a/x": { base_url: "https://one.test" }
+  a: { base_url: "https://two.test" }
+products:
+  - id: p1
+    name: P1
+    page_url: https://p1.test
+    sources: [{ backend: "a/x", cloud: y, regions: [{ key: us, id: us, name: US }] }]
+  - id: p2
+    name: P2
+    page_url: https://p2.test
+    sources: [{ backend: a, cloud: "x/y", regions: [{ key: us, id: us, name: US }] }]
+`))
+	if err == nil || !strings.Contains(err.Error(), `backends: name "a/x" must be a lowercase slug`) {
+		t.Fatalf("err = %v, want the backend name a/x refused", err)
 	}
 }
 

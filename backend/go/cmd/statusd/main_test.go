@@ -125,11 +125,36 @@ func TestCheckConfigRejects(t *testing.T) {
 		}
 	}
 
+	code, _, stderr := check(t, "-check-config", writeConfig(t, everyProblem))
+	for _, want := range everyProblemNamed {
+		if code != 1 || !strings.Contains(stderr, want) {
+			t.Errorf("every problem: exit %d, stderr %q; want 1 and %q", code, stderr, want)
+		}
+	}
+
 	t.Setenv("PORT", "9090")
 	if code, _, stderr := check(t, "-check-config", writeConfig(t, backend+product)); code != 1 || !strings.Contains(stderr, "must differ") {
 		t.Errorf("PORT on the admin port: exit %d, stderr %q; want 1 and the collision named", code, stderr)
 	}
 }
+
+// everyProblem has a validation error and two backends their adapters
+// refuse; a check and a start name all three (everyProblemNamed).
+const everyProblem = `
+history: { days: 400 }
+backends:
+  a: { type: legacy-status-apo, base_url: "https://a.example.test" }
+  b: { base_url: "https://b.example.test", options: { tokn: x } }
+products:
+  - id: p
+    name: P
+    page_url: https://p.example.test
+    sources:
+      - { backend: a, cloud: c, regions: [{ key: us, id: us, name: US }] }
+      - { backend: b, cloud: c, regions: [{ key: eu, id: eu, name: EU }] }
+`
+
+var everyProblemNamed = []string{"history.days must be between 15 and 366", "legacy-status-apo", "unknown options [tokn]"}
 
 // TestCheckConfigBindsNothing: the check passes for a file whose ports are
 // taken, because it never listens; a start with it would fail.
@@ -234,8 +259,9 @@ func all(line string, parts []string) bool {
 
 // TestServeLifecycle runs statusd as a process: SIGHUP reloads the
 // configuration file and statusd keeps serving, SIGTERM shuts it down with
-// exit 0, and a configuration rejected at startup exits 2. The runbook relies
-// on all three.
+// exit 0, and a configuration rejected at startup, whether by validation or
+// by a backend's adapter, exits 2 and logs "configuration rejected" with
+// every problem. The runbook relies on all three.
 func TestServeLifecycle(t *testing.T) {
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		bodies := map[string]string{
@@ -279,9 +305,20 @@ products:
 		t.Fatalf("after SIGTERM: %v, want exit 0", err)
 	}
 
-	bad, _ := statusd(t, "-config", writeConfig(t, backend+product+"history: { days: 400 }\n"))
-	var exit *exec.ExitError
-	if err := bad.Wait(); !errors.As(err, &exit) || exit.ExitCode() != 2 {
-		t.Fatalf("a rejected configuration: %v, want exit 2", err)
+	for name, body := range map[string]string{
+		"validation":           backend + product + "history: { days: 400 }\n",
+		"unknown backend type": strings.Replace(backend, "base_url", "type: csm, base_url", 1) + product,
+		"every problem":        everyProblem,
+	} {
+		bad, badLines := statusd(t, "-config", writeConfig(t, body))
+		parts := []string{`"level":"ERROR"`, `"msg":"configuration rejected"`}
+		if name == "every problem" {
+			parts = append(parts, everyProblemNamed...)
+		}
+		await(t, badLines, parts...)
+		var exit *exec.ExitError
+		if err := bad.Wait(); !errors.As(err, &exit) || exit.ExitCode() != 2 {
+			t.Errorf("%s: %v, want exit 2", name, err)
+		}
 	}
 }
