@@ -64,6 +64,9 @@ section here. The public API has its own version, in `api/openapi.yaml`.
 - A day with maintenance is labelled "Maintenance", not the present-tense
   "Under maintenance", and a count that includes a maintenance-only day
   reads "days with incidents or maintenance", as the legend has it.
+- A region list that opened because a product had a problem no longer
+  closes under the reader when the product recovers: it stays open while
+  focus is inside it or after the reader toggled it.
 - statusd lists each incident once at a cost that grows with the number of
   records rather than its square, and rejects an incident answer of more
   than 500 records as malformed: an upstream that filed one event

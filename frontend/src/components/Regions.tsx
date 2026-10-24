@@ -153,7 +153,7 @@ function LocationItem({
   location: Location;
   regions: readonly RegionSummary[];
 }) {
-  const [expanded, setExpanded] = useAutoExpanded(
+  const [expanded, setExpanded, panelFocus] = useAutoExpanded(
     isProblem(location.status) || regions.some((r) => r.status !== location.status),
   );
   const panelId = useId();
@@ -172,7 +172,7 @@ function LocationItem({
         <StatusLabel status={location.status}>{STATUS_LABEL[location.status]}</StatusLabel>
       </Stack>
       <Collapse in={expanded} id={panelId} unmountOnExit>
-        <Box component="ul" sx={listSx}>
+        <Box component="ul" sx={listSx} {...panelFocus}>
           {regions.map((region) => (
             <RegionItem
               key={region.id}
@@ -197,7 +197,7 @@ export function Regions({ product, trailing }: { product: ProductSummary; traili
   const rows = productRows(product);
   const needsAttention =
     isProblem(product.status) || rows.some((row) => rowStatus(row) !== product.status);
-  const [expanded, setExpanded] = useAutoExpanded(needsAttention);
+  const [expanded, setExpanded, panelFocus] = useAutoExpanded(needsAttention);
   const panelId = useId();
 
   return (
@@ -229,7 +229,7 @@ export function Regions({ product, trailing }: { product: ProductSummary; traili
         {trailing}
       </Stack>
       <Collapse in={expanded} id={panelId} unmountOnExit>
-        <Box component="ul" sx={{ ...listSx, mt: 1 }}>
+        <Box component="ul" sx={{ ...listSx, mt: 1 }} {...panelFocus}>
           {rows.map((row) =>
             row.kind === "location" ? (
               <LocationItem

@@ -406,6 +406,26 @@ describe("Regions", () => {
     );
   });
 
+  it("stays open when the product recovers while focus is inside it", () => {
+    const { rerender } = wrap(
+      <Regions product={product({ status: "degraded" })} trailing={null} />,
+    );
+    const link = screen.getByRole("link", { name: "Status page for EU, API Platform" });
+    act(() => {
+      link.focus();
+    });
+    rerender(
+      <ThemeRoot>
+        <Regions product={product()} trailing={null} />
+      </ThemeRoot>,
+    );
+    expect(screen.getByRole("button", { name: /2 regions/ })).toHaveAttribute(
+      "aria-expanded",
+      "true",
+    );
+    expect(link).toHaveFocus();
+  });
+
   it("handles one region and none", () => {
     wrap(<Regions product={product({ regions: [] })} trailing={<span>link</span>} />);
     expect(screen.queryByRole("button")).not.toBeInTheDocument();
