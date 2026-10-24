@@ -20,6 +20,9 @@ section here. The public API has its own version, in `api/openapi.yaml`.
   on hover, keyboard focus or tap.
 - The WSO2 logo heads the page, and the WSO2 pulse glyph is the favicon and
   the home-screen icon.
+- The footer links WSO2's privacy policy, cookie policy, terms of use,
+  modern slavery statement and California opt-out page, as the product
+  status pages do.
 
 ### Changed
 

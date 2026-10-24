@@ -16,7 +16,15 @@
  * under the License.
  */
 
-import { Box, Container, IconButton, Stack, Typography, useColorScheme } from "@wso2/oxygen-ui";
+import {
+  Box,
+  Container,
+  IconButton,
+  Link as MuiLink,
+  Stack,
+  Typography,
+  useColorScheme,
+} from "@wso2/oxygen-ui";
 import { Moon, Sun } from "@wso2/oxygen-ui-icons-react";
 import { useCallback, useEffect, useRef, type ReactNode } from "react";
 import { ViewFocus } from "../hooks/useViewFocus";
@@ -24,6 +32,52 @@ import { Link, usePathname } from "../lib/router";
 import { FOOTER_TIMES } from "../lib/status";
 import { CARD_RADIUS } from "../theme/shape";
 import { Wso2Logo } from "./Wso2Logo";
+
+/** WSO2's legal pages, as every WSO2 status page links them. */
+const LEGAL_LINKS = [
+  { text: "Privacy policy", href: "https://wso2.com/privacy-policy" },
+  { text: "Cookie policy", href: "https://wso2.com/cookie-policy" },
+  { text: "Terms of use", href: "https://wso2.com/terms-of-use" },
+  { text: "Modern slavery statement", href: "https://wso2.com/modern-slavery-statement" },
+  {
+    text: "Do not sell my personal information",
+    href: "https://wso2.com/california-privacy#opt-out",
+  },
+] as const;
+
+/**
+ * The legal links in the footer's own colour, underlined. Each is at least
+ * 24 px tall (WCAG 2.5.8), as they wrap onto several lines on a phone.
+ */
+function LegalLinks() {
+  return (
+    <Stack
+      component="nav"
+      aria-label="Legal"
+      direction="row"
+      useFlexGap
+      sx={{ flexWrap: "wrap", columnGap: 2, rowGap: 0, mb: 1 }}
+    >
+      {LEGAL_LINKS.map((link) => (
+        <MuiLink
+          key={link.href}
+          href={link.href}
+          variant="caption"
+          underline="always"
+          sx={{
+            display: "inline-flex",
+            alignItems: "center",
+            minHeight: 24,
+            color: "inherit",
+            textDecorationColor: "currentColor",
+          }}
+        >
+          {link.text}
+        </MuiLink>
+      ))}
+    </Stack>
+  );
+}
 
 function useResolvedMode(): { dark: boolean; set: (mode: "light" | "dark") => void } {
   const { mode, systemMode, setMode } = useColorScheme();
@@ -151,6 +205,7 @@ export function Layout({ children }: { children: ReactNode }) {
             color: "var(--cs-muted)",
           }}
         >
+          <LegalLinks />
           <Typography variant="caption" component="p">
             {FOOTER_TIMES} Each product keeps its full history on its own status page.
           </Typography>

@@ -1092,6 +1092,25 @@ describe("header", () => {
   });
 });
 
+describe("footer", () => {
+  it("links WSO2's legal pages", async () => {
+    serve(summaryBody());
+    render(<App />);
+    const legal = await screen.findByRole("navigation", { name: "Legal" });
+    expect(
+      within(legal)
+        .getAllByRole("link")
+        .map((a) => [a.textContent, a.getAttribute("href")]),
+    ).toEqual([
+      ["Privacy policy", "https://wso2.com/privacy-policy"],
+      ["Cookie policy", "https://wso2.com/cookie-policy"],
+      ["Terms of use", "https://wso2.com/terms-of-use"],
+      ["Modern slavery statement", "https://wso2.com/modern-slavery-statement"],
+      ["Do not sell my personal information", "https://wso2.com/california-privacy#opt-out"],
+    ]);
+  });
+});
+
 describe("theme toggle", () => {
   it("switches between light and dark", async () => {
     const user = userEvent.setup();
