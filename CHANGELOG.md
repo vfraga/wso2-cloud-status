@@ -61,6 +61,9 @@ section here. The public API has its own version, in `api/openapi.yaml`.
 - The loading placeholder no longer carries a label a plain element may
   not have (an accessibility error while the page loads); an accessibility
   scan of the loading state now runs with the others.
+- A day with maintenance is labelled "Maintenance", not the present-tense
+  "Under maintenance", and a count that includes a maintenance-only day
+  reads "days with incidents or maintenance", as the legend has it.
 - statusd lists each incident once at a cost that grows with the number of
   records rather than its square, and rejects an incident answer of more
   than 500 records as malformed: an upstream that filed one event

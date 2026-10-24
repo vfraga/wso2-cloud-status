@@ -17,26 +17,36 @@
  */
 
 import type { Day, Incident, Status } from "../api/types";
-import { DAY_LABEL, IMPACT_LABEL, STATUS_RANK, incidentsCompleteUntil, isProblem } from "./status";
+import {
+  DAY_LABEL,
+  IMPACT_LABEL,
+  STATUS_RANK,
+  daysWithIncidents,
+  incidentsCompleteUntil,
+  isProblem,
+} from "./status";
 import { formatDuration, formatHistoryDate, formatUtcClock, utcDayKey } from "./time";
 
 interface HistorySummary {
   withIncidents: number;
+  /** Whether one of those days had only maintenance. */
+  withMaintenance: boolean;
   withoutData: number;
 }
 
 export function summariseHistory(days: readonly Day[]): HistorySummary {
   return {
     withIncidents: days.filter((d) => STATUS_RANK[d.status] > STATUS_RANK.operational).length,
+    withMaintenance: days.some((d) => d.status === "maintenance"),
     withoutData: days.filter((d) => d.status === "unknown").length,
   };
 }
 
 /** Text read by assistive technology for the whole strip. */
 export function historyText(days: readonly Day[]): string {
-  const { withIncidents, withoutData } = summariseHistory(days);
+  const { withIncidents, withMaintenance, withoutData } = summariseHistory(days);
   const unit = (n: number) => `${String(n)} ${n === 1 ? "day" : "days"}`;
-  return `${String(days.length)} days: ${unit(withIncidents)} with incidents, ${unit(withoutData)} without data`;
+  return `${String(days.length)} days: ${daysWithIncidents(withIncidents, withMaintenance)}, ${unit(withoutData)} without data`;
 }
 
 export interface DayDetail {

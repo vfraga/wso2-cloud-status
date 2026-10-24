@@ -233,7 +233,9 @@ test.describe("outage, degraded and maintenance components in one place, and an 
     const api = productRows(page).filter({
       has: page.getByRole("heading", { level: 2, name: "API Platform" }),
     });
-    const toggle = api.getByRole("button", { name: /days? with incidents for API Platform$/ });
+    const toggle = api.getByRole("button", {
+      name: /days? with incidents( or maintenance)? for API Platform$/,
+    });
     await toggle.click();
     await expect(toggle).toHaveAttribute("aria-expanded", "true");
     const list = page.locator(`#${(await toggle.getAttribute("aria-controls")) ?? "missing"}`);
@@ -256,7 +258,7 @@ test.describe("outage, degraded and maintenance components in one place, and an 
     await expectNoSeriousViolationsOnPhone(browser, async (page) => {
       await ready(page);
       await productRows(page)
-        .getByRole("button", { name: /days? with incidents for API Platform$/ })
+        .getByRole("button", { name: /days? with incidents( or maintenance)? for API Platform$/ })
         .click();
     });
     await expectNoSeriousViolationsOnPhone(browser, (page) =>

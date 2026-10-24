@@ -50,9 +50,13 @@ export const BANNER_LABEL: Record<Status, string> = {
   operational: "All systems operational",
 };
 
-/** Label for a day cell in the history strip. */
+/**
+ * Label for a day cell in the history strip and its legend: what happened
+ * that day, so maintenance is the event, not the present-tense state.
+ */
 export const DAY_LABEL: Record<Status, string> = {
   ...STATUS_LABEL,
+  maintenance: "Maintenance",
   operational: "No incidents",
   unknown: "No data",
 };
@@ -63,6 +67,7 @@ export const DAY_LABEL: Record<Status, string> = {
  */
 export const IMPACT_LABEL: Record<Status, string> = {
   ...STATUS_LABEL,
+  maintenance: "Maintenance",
   operational: "No impact",
   unknown: "Unknown impact",
 };
@@ -119,8 +124,9 @@ export function othersOperational(n: number): string {
     : `The other ${String(n)} products are operational.`;
 }
 
-export function daysWithIncidents(n: number): string {
-  return `${count(n, "day")} with incidents`;
+/** "2 days with incidents"; "or maintenance" when a day counted had only maintenance. */
+export function daysWithIncidents(n: number, maintenance = false): string {
+  return `${count(n, "day")} with incidents${maintenance ? " or maintenance" : ""}`;
 }
 
 export function incidentInfoUnavailable(name: string): string {

@@ -541,7 +541,7 @@ describe("HistoryLegend", () => {
     const entries = [
       "Service outage",
       "Degraded performance",
-      "Under maintenance",
+      "Maintenance",
       "No incidents",
       "No data: information for this day is unavailable",
     ].map((name) => screen.getByText(name).parentElement!);

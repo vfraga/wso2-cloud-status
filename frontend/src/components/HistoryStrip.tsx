@@ -183,7 +183,7 @@ interface CaptionsProps {
  */
 function Captions({ days, today, productName, open, listId, onToggle }: CaptionsProps) {
   const [from, to] = stripCaptions(days, today);
-  const { withIncidents, withoutData } = summariseHistory(days);
+  const { withIncidents, withMaintenance, withoutData } = summariseHistory(days);
   const caption = { color: "var(--cs-muted)", whiteSpace: "nowrap" } as const;
   // The row wraps rather than overflow its card when text spacing grows (WCAG 1.4.12);
   // the end caption keeps to the right, under the end of the strip.
@@ -231,7 +231,7 @@ function Captions({ days, today, productName, open, listId, onToggle }: Captions
           }}
         >
           <span>
-            {daysWithIncidents(withIncidents)}{" "}
+            {daysWithIncidents(withIncidents, withMaintenance)}{" "}
             <span className="cs-visually-hidden">{`for ${productName}`}</span>
           </span>
         </Button>

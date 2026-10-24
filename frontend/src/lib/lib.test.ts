@@ -294,10 +294,15 @@ describe("history text", () => {
       4: { status: "outage" },
       5: { status: "unknown" },
     });
-    expect(summariseHistory(d)).toEqual({ withIncidents: 2, withoutData: 1 });
+    expect(summariseHistory(d)).toEqual({
+      withIncidents: 2,
+      withMaintenance: false,
+      withoutData: 1,
+    });
     expect(historyText(d)).toBe("90 days: 2 days with incidents, 1 day without data");
     expect(historyText(days(90, { 0: { status: "maintenance" } }))).toBe(
-      "90 days: 1 day with incidents, 0 days without data",
+      // A maintenance-only day is not called an incident.
+      "90 days: 1 day with incidents or maintenance, 0 days without data",
     );
   });
 

@@ -308,7 +308,7 @@ test.describe("all operational", () => {
     const names = [
       "Service outage",
       "Degraded performance",
-      "Under maintenance",
+      "Maintenance",
       "No incidents",
       "No data: information for this day is unavailable",
     ];
@@ -348,7 +348,7 @@ test.describe("all operational", () => {
     });
     expect(offCentre).toBeLessThanOrEqual(1);
     // A colour says what it means on hover.
-    await legend.getByText("Under maintenance", { exact: true }).hover();
+    await legend.getByText("Maintenance", { exact: true }).hover();
     await expect(page.getByRole("tooltip")).toHaveText(
       "Planned maintenance that day, and no outage or degraded performance.",
     );
@@ -373,7 +373,10 @@ test.describe("all operational", () => {
         ms,
       );
     await ready(page);
-    const entry = page.getByText("Under maintenance", { exact: true });
+    const entry = page
+      .getByText("Each bar is one UTC day.")
+      .locator("..")
+      .getByText("Maintenance", { exact: true });
     await entry.scrollIntoViewIfNeeded();
     const box = await entry.boundingBox();
     const point = { x: (box?.x ?? 0) + 5, y: (box?.y ?? 0) + 5 };
