@@ -495,6 +495,67 @@ test.describe("all operational", () => {
     await broken.close();
   });
 
+  for (const [path, width, height] of [
+    ["/", 1700, 2000],
+    ["/", 360, 800],
+    ["/products/moesif", 1700, 2000],
+    ["/products/moesif", 360, 800],
+  ] as const) {
+    test(`${path} does not shift as its data arrives (${String(width)} px)`, async ({ page }) => {
+      await page.setViewportSize({ width, height });
+      // Hold the API back, the incident list longest, so each loading state is
+      // painted first, as over a real network.
+      await page.route("**/api/v1/**", async (route) => {
+        const wait = route.request().url().endsWith("/incidents") ? 900 : 500;
+        await new Promise((resolve) => setTimeout(resolve, wait));
+        await route.continue();
+      });
+      await page.addInitScript(() => {
+        const shifts: { value: number; nodes: string[] }[] = [];
+        Object.assign(window, { shifts });
+        const describe = (node: Node | null): string => {
+          if (!(node instanceof Element)) return String(node?.nodeName);
+          const label = node.getAttribute("aria-label") ?? node.className.split(" ").pop();
+          return `${node.tagName.toLowerCase()} ${String(label)}`;
+        };
+        new PerformanceObserver((list) => {
+          for (const entry of list.getEntries() as (PerformanceEntry & {
+            value: number;
+            hadRecentInput: boolean;
+            sources: { node: Node | null }[];
+          })[]) {
+            if (!entry.hadRecentInput) {
+              shifts.push({
+                value: entry.value,
+                nodes: entry.sources.map((s) => describe(s.node)),
+              });
+            }
+          }
+        }).observe({ type: "layout-shift", buffered: true });
+      });
+      await page.goto(path);
+      await expect(page.getByRole("heading", { level: 1 })).not.toHaveText(/Checking status/);
+      if (path === "/") await expect(page.getByText("Loading past incidents.")).toHaveCount(0);
+      else await expect(page.getByRole("heading", { name: "Recent incidents" })).toBeVisible();
+      // The observer reports after the frame that shifted: let one more frame pass.
+      const shifts = await page.evaluate(
+        () =>
+          new Promise<{ value: number; nodes: string[] }[]>((resolve) => {
+            requestAnimationFrame(() => {
+              setTimeout(() => {
+                resolve(
+                  (window as unknown as { shifts: { value: number; nodes: string[] }[] }).shifts,
+                );
+              }, 0);
+            });
+          }),
+      );
+      const total = shifts.reduce((sum, s) => sum + s.value, 0);
+      // Core Web Vitals call a score under 0.1 good.
+      expect(total, JSON.stringify(shifts, null, 1)).toBeLessThan(0.1);
+    });
+  }
+
   test("a normal load never shows the built-in fallback", async ({ page }) => {
     await ready(page);
     await expect(page.getByText("If the current status does not appear")).toHaveCount(0);

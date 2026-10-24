@@ -20,7 +20,7 @@ import type { Incident, Status } from "../api/types";
 import { STATUS_RANK } from "./status";
 import { formatDayHeading, lastLocalDays, localDayKey } from "./time";
 
-interface DayGroup {
+export interface DayGroup {
   key: string;
   label: string;
   /** This local midnight. */

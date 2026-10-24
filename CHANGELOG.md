@@ -50,6 +50,11 @@ section here. The public API has its own version, in `api/openapi.yaml`.
   same response has, fails the incident fetch instead of hiding the other
   record; a record with an end time is resolved whatever its status word
   (ADR 0005).
+- The page no longer moves as its data arrives (a cumulative layout shift
+  of 0.37 to 0.86 on the home page, now 0): until the status answers it
+  shows a placeholder at least as tall as the window, Past incidents holds
+  its days while the list loads, and the fallback shown before the app
+  starts no longer moves the page.
 - `statusd -check-config` rejects cache directives the cache limits do not
   read (`s-maxage`, a repeated directive) and two listeners on one port
   (ADR 0003).

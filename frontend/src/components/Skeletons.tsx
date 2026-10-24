@@ -18,9 +18,14 @@
 
 import { Box, Skeleton } from "@wso2/oxygen-ui";
 
+/**
+ * Holds the place of a page's data until it answers. It is at least as tall
+ * as the window, so the footer stays out of view and nothing on screen moves
+ * when the data replaces it.
+ */
 export function ProductListSkeleton() {
   return (
-    <Box aria-busy="true" aria-label="Loading products" sx={{ p: 2.5 }}>
+    <Box aria-busy="true" aria-label="Loading products" sx={{ p: 2.5, minHeight: "100vh" }}>
       {[0, 1, 2].map((i) => (
         <Box key={i} sx={{ mb: 3 }}>
           <Skeleton variant="text" width="30%" />

@@ -1247,21 +1247,17 @@ describe("incidents", () => {
 
   it("reports loading and failure of the incident list", () => {
     const { rerender } = wrap(<PastIncidents state={listState(null, false)} products={[]} />);
+    // Loading, its days hold their place, and no quiet day is vouched for.
     expect(screen.getByText("Loading past incidents.")).toBeInTheDocument();
+    expect(screen.getAllByRole("heading", { level: 3 })).toHaveLength(14);
+    expect(screen.queryByText(/^No incident/)).toBeNull();
     rerender(
       <ThemeRoot>
         <PastIncidents state={listState(null, true)} products={[]} />
       </ThemeRoot>,
     );
     expect(screen.getByText("Past incidents could not be loaded.")).toBeInTheDocument();
-    // The list is in, the summary is not: which days it covers is not known yet.
-    rerender(
-      <ThemeRoot>
-        <PastIncidents state={listState([], false)} products={null} />
-      </ThemeRoot>,
-    );
-    expect(screen.getByText("Loading past incidents.")).toBeInTheDocument();
-    expect(screen.queryByText("No incidents reported.")).toBeNull();
+    expect(screen.queryAllByRole("heading", { level: 3 })).toHaveLength(0);
   });
 });
 

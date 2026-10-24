@@ -16,14 +16,15 @@
  * under the License.
  */
 
-import { Box, Stack, Typography } from "@wso2/oxygen-ui";
+import { Box, Skeleton, Stack, Typography } from "@wso2/oxygen-ui";
+import type { ReactNode } from "react";
 import { Clock } from "@wso2/oxygen-ui-icons-react";
 import type { Incident, ProductSummary } from "../api/types";
 import { config } from "../config";
 import { usePageNow } from "../hooks/useNow";
 import { lastKnownAt, missingIncidents, notCoveredBefore } from "../lib/dataNotes";
 import { freshness, type FreshnessInputs } from "../lib/freshness";
-import { groupByDay } from "../lib/incidents";
+import { groupByDay, type DayGroup } from "../lib/incidents";
 import {
   PAST_INCIDENTS_FAILED,
   PAST_INCIDENTS_LOADING,
@@ -46,8 +47,8 @@ interface IncidentListState extends FreshnessInputs {
 
 interface PastIncidentsProps {
   state: IncidentListState;
-  /** Null while the summary is loading; empty when it failed or listed none. */
-  products: readonly ProductSummary[] | null;
+  /** The summary's products; empty when it failed or listed none. */
+  products: readonly ProductSummary[];
 }
 
 /**
@@ -70,17 +71,59 @@ function RefreshNote({ state, now }: { state: FreshnessInputs; now: Date }) {
   );
 }
 
+/** A day's heading and what happened that day. */
+function Day({ group, children }: { group: DayGroup; children: ReactNode }) {
+  return (
+    <Box component="section" aria-labelledby={`day-${group.key}`} sx={{ mt: 3 }}>
+      <Typography
+        id={`day-${group.key}`}
+        component="h3"
+        sx={{
+          fontSize: "1rem",
+          fontWeight: 600,
+          pb: 0.75,
+          borderBottom: "1px solid var(--cs-border)",
+        }}
+      >
+        {group.label}
+      </Typography>
+      {children}
+    </Box>
+  );
+}
+
+const quietSx = { color: "var(--cs-muted)", pt: 1.25 } as const;
+
+/**
+ * While the list loads, its days with a placeholder line each, the height of
+ * a quiet day: a quiet list then arrives without moving anything on screen.
+ */
+function LoadingDays({ now }: { now: Date }) {
+  return (
+    <div aria-busy="true">
+      <span className="cs-visually-hidden">{PAST_INCIDENTS_LOADING}</span>
+      {groupByDay([], now, config.historyDays).map((group) => (
+        <Day key={group.key} group={group}>
+          <Typography variant="body2" aria-hidden="true" sx={quietSx}>
+            <Skeleton variant="text" width="40%" />
+          </Typography>
+        </Day>
+      ))}
+    </div>
+  );
+}
+
 /**
  * The last days of incidents, by the reader's local day. A product whose
  * incident data is unavailable or incomplete is named with a link to its own
  * page, and a quiet day the data does not fully cover speaks only for the
  * other products: it never says "No incidents reported." for it. Without the
- * summary nothing says what the list covers, so no quiet day is vouched for.
+ * summary's products nothing says what the list covers, so no quiet day is
+ * vouched for.
  */
-export function PastIncidents({ state, products: known }: PastIncidentsProps) {
+export function PastIncidents({ state, products }: PastIncidentsProps) {
   const now = usePageNow();
-  const incidents = known === null ? null : state.incidents;
-  const products = known ?? [];
+  const incidents = state.incidents;
   const byId = new Map(products.map((p) => [p.id, p]));
   const missing = missingIncidents(products, incidents ?? []);
   const knownUntil = state.knownUntil ?? null;
@@ -112,37 +155,20 @@ export function PastIncidents({ state, products: known }: PastIncidentsProps) {
           ))}
         </Stack>
       )}
-      {incidents === null ? (
+      {incidents === null && state.failed && (
         <Typography sx={{ mt: 2, color: "var(--cs-muted)" }}>
-          {state.incidents === null && state.failed
-            ? PAST_INCIDENTS_UNAVAILABLE
-            : PAST_INCIDENTS_LOADING}
+          {PAST_INCIDENTS_UNAVAILABLE}
         </Typography>
-      ) : (
+      )}
+      {incidents === null && !state.failed && <LoadingDays now={now} />}
+      {incidents !== null && (
         <>
           <RefreshNote state={state} now={now} />
           <IncidentsUnavailable missing={missing} />
           {groupByDay(incidents, now, config.historyDays).map((group) => (
-            <Box
-              key={group.key}
-              component="section"
-              aria-labelledby={`day-${group.key}`}
-              sx={{ mt: 3 }}
-            >
-              <Typography
-                id={`day-${group.key}`}
-                component="h3"
-                sx={{
-                  fontSize: "1rem",
-                  fontWeight: 600,
-                  pb: 0.75,
-                  borderBottom: "1px solid var(--cs-border)",
-                }}
-              >
-                {group.label}
-              </Typography>
+            <Day key={group.key} group={group}>
               {group.incidents.length === 0 ? (
-                <Typography variant="body2" sx={{ color: "var(--cs-muted)", pt: 1.25 }}>
+                <Typography variant="body2" sx={quietSx}>
                   {quietDayText(notCovered(group.end).length, products.length)}
                 </Typography>
               ) : (
@@ -163,7 +189,7 @@ export function PastIncidents({ state, products: known }: PastIncidentsProps) {
                   })}
                 </Box>
               )}
-            </Box>
+            </Day>
           ))}
         </>
       )}

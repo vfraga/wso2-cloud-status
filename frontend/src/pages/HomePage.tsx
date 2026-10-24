@@ -38,6 +38,11 @@ import { earliest } from "../lib/time";
 import { CARD_RADIUS } from "../theme/shape";
 
 const NO_DATA: Headline = { status: "unknown", label: BANNER_LABEL.unknown };
+const cardSx = {
+  bgcolor: "var(--cs-surface)",
+  border: "1px solid var(--cs-border)",
+  borderRadius: CARD_RADIUS,
+} as const;
 const NONE: readonly Incident[] = [];
 
 export function HomePage() {
@@ -72,9 +77,22 @@ function HomeBody({
   // rows and Past incidents read both resources, so they stop at the earlier.
   const summaryUntil = useKnownUntil(summary);
   const bothUntil = earliest(summaryUntil, useKnownUntil(incidents));
+  const banner = <HomeBanner summary={summary} known={incidents.data ?? NONE} />;
+  // Until the summary answers, only a placeholder: the sections that replace
+  // it are new to the page, so nothing on screen moves when they arrive.
+  if (data === null && !summary.failed) {
+    return (
+      <>
+        {banner}
+        <Box sx={{ ...cardSx, mt: { xs: 3, sm: 4 } }}>
+          <ProductListSkeleton />
+        </Box>
+      </>
+    );
+  }
   return (
     <>
-      <HomeBanner summary={summary} known={incidents.data ?? NONE} />
+      {banner}
       {data && (
         <ActiveIncidents
           incidents={data.activeIncidents}
@@ -82,22 +100,8 @@ function HomeBody({
           knownUntil={summaryUntil}
         />
       )}
-      <Box
-        component="section"
-        aria-label="Products"
-        sx={{
-          mt: { xs: 3, sm: 4 },
-          bgcolor: "var(--cs-surface)",
-          border: "1px solid var(--cs-border)",
-          borderRadius: CARD_RADIUS,
-        }}
-      >
-        <ProductList
-          data={data}
-          failed={summary.failed}
-          incidents={incidentById}
-          knownUntil={bothUntil}
-        />
+      <Box component="section" aria-label="Products" sx={{ ...cardSx, mt: { xs: 3, sm: 4 } }}>
+        <ProductList data={data} incidents={incidentById} knownUntil={bothUntil} />
       </Box>
       {data && data.products.length > 0 && <HistoryLegend />}
       <PastIncidents
@@ -111,8 +115,7 @@ function HomeBody({
           skewMs: incidents.skewMs,
           knownUntil: bothUntil,
         }}
-        // Null while the summary is loading: which days the list covers is not known yet.
-        products={data?.products ?? (summary.failed ? [] : null)}
+        products={data?.products ?? []}
       />
     </>
   );
@@ -138,17 +141,15 @@ function HomeBanner({
 
 function ProductList({
   data,
-  failed,
   incidents,
   knownUntil,
 }: {
   data: Summary | null;
-  failed: boolean;
   incidents: ReadonlyMap<string, Incident>;
   knownUntil: Date | null;
 }) {
-  // A summary without products (a 200 from something other than the service,
-  // for example) is no better than none: the links are what is left.
+  // Without products, from a failed summary or a 200 from something other
+  // than the service, the links are what is left.
   if (data && data.products.length > 0) {
     return (
       <Box
@@ -166,5 +167,5 @@ function ProductList({
       </Box>
     );
   }
-  return failed || data ? <FallbackLinks /> : <ProductListSkeleton />;
+  return <FallbackLinks />;
 }
