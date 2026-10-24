@@ -19,12 +19,11 @@
 # real public status APIs: testdata/upstream/<cloud>.monitors.json,
 # <cloud>.availabilities.json and <cloud>.incidents.json.
 #
-#   scripts/capture-fixtures.sh              every cloud below
+#   scripts/capture-fixtures.sh              every cloud in config/statusd.yaml
 #   scripts/capture-fixtures.sh <cloud>...   only those clouds (a new product)
 #
-# The cloud asgardeo is read from api.status.asgardeo.io, every other one
-# from api.status.cloudservices.wso2.com. Keep the list below in step with
-# the clouds in config/statusd.yaml.
+# The clouds, and the base URL each is read from, are the sources of the
+# products in config/statusd.yaml and the base_url of their backends.
 #
 # Each cloud's three files are replaced only when all three answered. The
 # tests expect what the committed files hold: every product operational,
@@ -36,16 +35,40 @@
 # held.
 set -euo pipefail
 
-out="$(cd "$(dirname "$0")/.." && pwd)/testdata/upstream"
-cloudservices="https://api.status.cloudservices.wso2.com"
-asgardeo="https://api.status.asgardeo.io"
-all=(agent-manager bijira choreo choreo-eu devant moesif asgardeo)
+root="$(cd "$(dirname "$0")/.." && pwd)"
+out="$root/testdata/upstream"
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
 
+# One line per source: its cloud and its backend's base URL.
+sources="$(awk '
+  /^[^ #]/ { section = $1 }
+  { gsub(/"/, "") }
+  section == "backends:" && /^  [a-z0-9_-]+:/ { name = $1; sub(/:$/, "", name) }
+  section == "backends:" && /^    base_url:/ { url[name] = $2 }
+  section == "products:" && /^ *- backend:/ { backend = $3 }
+  section == "products:" && /^ *cloud:/ { print $2, url[backend] }
+' "$root/config/statusd.yaml")"
+if [[ -z "$sources" ]]; then
+  echo "capture-fixtures: found no product sources in config/statusd.yaml" >&2
+  exit 2
+fi
+all=()
+while read -r cloud base; do
+  if [[ ! "$base" =~ ^https?:// ]]; then
+    echo "capture-fixtures: no base URL for cloud '$cloud' in config/statusd.yaml" >&2
+    exit 2
+  fi
+  all+=("$cloud")
+done <<<"$sources"
+
 capture() {
-  local cloud="$1" base="$cloudservices" endpoint
-  [[ "$cloud" == asgardeo ]] && base="$asgardeo"
+  local cloud="$1" base endpoint
+  base="$(awk -v c="$cloud" '$1 == c { print $2; exit }' <<<"$sources")"
+  if [[ -z "$base" ]]; then
+    echo "capture-fixtures: config/statusd.yaml has no source with cloud '$cloud'" >&2
+    exit 2
+  fi
   for endpoint in monitors availabilities incidents; do
     curl -fsS --max-time 15 "$base/api/v1/$endpoint?cloud=$cloud" -o "$work/$cloud.$endpoint.json"
   done
