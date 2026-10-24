@@ -17,6 +17,7 @@
  */
 
 import { Box, Stack, Tooltip, Typography } from "@wso2/oxygen-ui";
+import { useEffect, useRef, useState } from "react";
 import type { Status } from "../api/types";
 import { DAY_LABEL, LEGEND_DESCRIPTION, LEGEND_INTRO, LEGEND_NO_DATA } from "../lib/status";
 import { CARD_RADIUS } from "../theme/shape";
@@ -64,18 +65,40 @@ const tipSx = {
 /**
  * One colour and its name. Its description opens on hover, on keyboard focus
  * and on a tap, can be hovered, and closes on Escape (WCAG 1.4.13); a screen
- * reader hears it as the entry's description.
+ * reader hears it as the entry's description. A tap keeps it open until the
+ * reader taps elsewhere or focus moves on: the tooltip's own touch timer would
+ * close it before it can be read.
  */
 function Entry({ status }: { status: Status }) {
+  const [open, setOpen] = useState(false);
+  const entry = useRef<HTMLSpanElement>(null);
+  useEffect(() => {
+    if (!open) return undefined;
+    const away = (event: PointerEvent): void => {
+      if (!entry.current?.contains(event.target as Node)) setOpen(false);
+    };
+    document.addEventListener("pointerdown", away);
+    return () => {
+      document.removeEventListener("pointerdown", away);
+    };
+  }, [open]);
   return (
     <Tooltip
       title={LEGEND_DESCRIPTION[status]}
       describeChild
+      open={open}
+      onOpen={() => {
+        setOpen(true);
+      }}
+      onClose={(event) => {
+        if (event.type !== "touchend") setOpen(false);
+      }}
       enterTouchDelay={0}
       placement="top"
       slotProps={{ tooltip: { sx: tipSx } }}
     >
       <Stack
+        ref={entry}
         component="span"
         tabIndex={0}
         direction="row"

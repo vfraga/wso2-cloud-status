@@ -355,6 +355,45 @@ test.describe("all operational", () => {
     await expect(page.locator("footer")).toContainText("History bars are UTC calendar days.");
   });
 
+  test("on a phone a tapped legend description stays open until the reader taps elsewhere", async ({
+    browser,
+  }) => {
+    const phone = await browser.newContext({
+      viewport: { width: 360, height: 800 },
+      hasTouch: true,
+      isMobile: true,
+    });
+    const page = await phone.newPage();
+    const pause = (ms: number) =>
+      page.evaluate(
+        (delay) =>
+          new Promise((resolve) => {
+            setTimeout(resolve, delay);
+          }),
+        ms,
+      );
+    await ready(page);
+    const entry = page.getByText("Under maintenance", { exact: true });
+    await entry.scrollIntoViewIfNeeded();
+    const box = await entry.boundingBox();
+    const point = { x: (box?.x ?? 0) + 5, y: (box?.y ?? 0) + 5 };
+    // A finger rests for a moment; Playwright's tap lifts in the same instant.
+    const cdp = await phone.newCDPSession(page);
+    await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [point] });
+    await pause(200);
+    await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+    const tip = page.getByRole("tooltip");
+    await expect(tip).toHaveText(
+      "Planned maintenance that day, and no outage or degraded performance.",
+    );
+    // Time to read it: the tooltip's own touch timer closed it 1.5 s after the finger lifted.
+    await pause(4_000);
+    await expect(tip).toBeVisible();
+    await page.getByRole("heading", { name: "Past incidents" }).tap();
+    await expect(tip).toHaveCount(0);
+    await phone.close();
+  });
+
   test("the header logo and the icons are WSO2's, and the tab names the site", async ({ page }) => {
     await ready(page);
     await expect(page).toHaveTitle("WSO2 Cloud Status");

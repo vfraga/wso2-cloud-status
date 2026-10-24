@@ -54,6 +54,8 @@ section here. The public API has its own version, in `api/openapi.yaml`.
   after that point green: a day not fully covered reads "No data" unless a
   problem is known, as it already did when a product's incident feed
   stopped.
+- On a phone, a tapped legend description stays open until the reader taps
+  elsewhere, instead of closing 1.5 s after the tap.
 - While a product's incident feed is stale, an open incident's daily
   minutes stop at `checked_at.incidents` instead of running to
   `generated_at` (ADR 0009).
