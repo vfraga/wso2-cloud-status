@@ -28,7 +28,13 @@ import type { DetailLine, Headline } from "../lib/headline";
 import {
   BANNER_LABEL,
   CHECKING_LABEL,
+  OUT_OF_DATE,
+  REFRESH_FAILED_DETAIL,
+  SERVICE_UNREACHABLE,
+  cannotRefreshDetail,
+  lastCheckOver,
   othersChecked,
+  servedStaleDetail,
   statusChanged,
   statusChecked,
 } from "../lib/status";
@@ -60,14 +66,10 @@ interface NoticeInputs {
 }
 
 function noticeDetail({ fresh, failed, servedStale }: NoticeInputs): string {
-  if (servedStale) {
-    return `The data we received was last checked more than ${staleAfter} ago, so this page cannot confirm the current status. We will keep trying.`;
-  }
-  if (fresh.unavailable) {
-    return `We have not been able to refresh it for more than ${staleAfter}, so this page shows the last known state. We will keep trying.`;
-  }
-  if (failed) return "We could not refresh it just now, and will keep trying.";
-  return `The last check was more than ${staleAfter} ago.`;
+  if (servedStale) return servedStaleDetail(staleAfter);
+  if (fresh.unavailable) return cannotRefreshDetail(staleAfter);
+  if (failed) return REFRESH_FAILED_DETAIL;
+  return lastCheckOver(staleAfter);
 }
 
 function noticeText(
@@ -76,11 +78,9 @@ function noticeText(
   notes: readonly string[],
 ): string | null {
   // Nothing has been shown yet, so nothing can be out of date.
-  if (!everLoaded && inputs.failed) {
-    return "We cannot reach the status service right now. This page will keep trying.";
-  }
+  if (!everLoaded && inputs.failed) return SERVICE_UNREACHABLE;
   const parts = [
-    ...(inputs.fresh.outdated ? [`Status data may be out of date. ${noticeDetail(inputs)}`] : []),
+    ...(inputs.fresh.outdated ? [`${OUT_OF_DATE} ${noticeDetail(inputs)}`] : []),
     ...notes,
   ];
   return parts.length > 0 ? parts.join(" ") : null;

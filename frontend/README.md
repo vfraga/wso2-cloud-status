@@ -54,9 +54,10 @@ How the frontend behaves in each state, data missing included:
   on the page runs past the last data (`useKnownUntil`).
 - A body older than the one shown never replaces it, and each API path keeps
   its last state across navigation (`usePolled`).
-- Words: every status label and sentence is in `src/lib/status.ts`; times go
-  through `Intl` in the reader's locale (`src/lib/time.ts`), data times and
-  history days in UTC.
+- Words: every status label and status sentence (headlines, notices, notes,
+  the not-found page) is in `src/lib/status.ts`; headings and link texts stay
+  with their components. Times go through `Intl` in the reader's locale
+  (`src/lib/time.ts`), data times and history days in UTC.
 - Accessibility: the banner's live region announces late data and headline
   changes; after an in-page navigation focus moves to the new view's h1 once
   it shows data or a failure; the history strip is one tab stop with arrow

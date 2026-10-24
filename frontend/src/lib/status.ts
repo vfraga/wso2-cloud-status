@@ -109,6 +109,10 @@ export function listNames(names: readonly string[]): string {
 export function unavailableFor(names: readonly string[]): string {
   return `Status unavailable for ${listNames(names)}`;
 }
+/** The same when too many products to name have no status. */
+export function unavailableForMany(n: number): string {
+  return `Status unavailable for ${String(n)} products`;
+}
 
 export function regionsAffected(affected: number, total: number): string {
   return `${String(affected)} of ${count(total, "region")} affected`;
@@ -259,3 +263,31 @@ export function quietDayText(missing: number, total: number): string {
     ? "No incidents reported for the other product."
     : "No incidents reported for the other products.";
 }
+
+/**
+ * The banner's notice when the page's own data may be out of date: a lead,
+ * then why, with the page's limit as "5 minutes".
+ */
+export const OUT_OF_DATE = "Status data may be out of date.";
+export function servedStaleDetail(limit: string): string {
+  return `The data we received was last checked more than ${limit} ago, so this page cannot confirm the current status. We will keep trying.`;
+}
+export function cannotRefreshDetail(limit: string): string {
+  return `We have not been able to refresh it for more than ${limit}, so this page shows the last known state. We will keep trying.`;
+}
+export const REFRESH_FAILED_DETAIL = "We could not refresh it just now, and will keep trying.";
+export function lastCheckOver(limit: string): string {
+  return `The last check was more than ${limit} ago.`;
+}
+/** The notice when the service has not answered since the page opened. */
+export const SERVICE_UNREACHABLE =
+  "We cannot reach the status service right now. This page will keep trying.";
+
+/** A product page whose data could not be loaded; a link to the product's own page follows. */
+export const PRODUCT_STATUS_UNAVAILABLE = "Product status is not available right now.";
+
+/** The page for a path that names nothing: "product" or "page". */
+export function notFound(what: string): string {
+  return `We could not find that ${what}`;
+}
+export const ALL_PRODUCTS_LINK = "See the status of all products";

@@ -30,6 +30,7 @@ import {
   othersOperational,
   regionsUnavailable,
   unavailableFor,
+  unavailableForMany,
 } from "./status";
 
 /** One sentence of the line under the headline, with the status it names, if any. */
@@ -124,7 +125,7 @@ function summaryLabel(status: Status, unknown: readonly ProductSummary[]): Headl
   if (unknown.length === 0) return { status, label: PARTIAL_HEADLINE };
   const label =
     unknown.length > MAX_NAMED
-      ? `Status unavailable for ${String(unknown.length)} products`
+      ? unavailableForMany(unknown.length)
       : unavailableFor(unknown.map((p) => p.name));
   return { status, label };
 }

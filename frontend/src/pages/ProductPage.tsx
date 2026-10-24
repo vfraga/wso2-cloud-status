@@ -45,7 +45,12 @@ import { productHeadline, type Headline } from "../lib/headline";
 import { isOngoing } from "../lib/incidents";
 import { regionRows } from "../lib/regions";
 import { Link } from "../lib/router";
-import { BANNER_LABEL, NO_INCIDENTS, NO_OTHER_INCIDENTS } from "../lib/status";
+import {
+  BANNER_LABEL,
+  NO_INCIDENTS,
+  NO_OTHER_INCIDENTS,
+  PRODUCT_STATUS_UNAVAILABLE,
+} from "../lib/status";
 import { earliest } from "../lib/time";
 import { CARD_RADIUS } from "../theme/shape";
 import { NotFoundPage } from "./NotFoundPage";
@@ -197,7 +202,7 @@ function Pending({ failed, known }: { failed: boolean; known: FallbackProduct | 
   if (!failed) return <ProductListSkeleton />;
   return (
     <Typography sx={{ mt: 3 }}>
-      Product status is not available right now.{" "}
+      {PRODUCT_STATUS_UNAVAILABLE}{" "}
       {known && (
         <ExternalAnchor href={known.pageUrl} label={`Open the ${known.name} status page`} inline>
           Open the {known.name} status page

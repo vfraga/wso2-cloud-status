@@ -20,6 +20,7 @@ import { Typography } from "@wso2/oxygen-ui";
 import { pageTitle, useDocumentTitle } from "../hooks/useDocumentTitle";
 import { useViewHeading } from "../hooks/useViewFocus";
 import { Link } from "../lib/router";
+import { ALL_PRODUCTS_LINK, notFound } from "../lib/status";
 
 export function NotFoundPage({ what = "page" }: { what?: string }) {
   useDocumentTitle(pageTitle("Not found"));
@@ -34,10 +35,10 @@ export function NotFoundPage({ what = "page" }: { what?: string }) {
         tabIndex={-1}
         sx={{ fontSize: "1.5rem", fontWeight: 600 }}
       >
-        {`We could not find that ${what}`}
+        {notFound(what)}
       </Typography>
       <Typography sx={{ mt: 1 }}>
-        <Link to="/">See the status of all products</Link>
+        <Link to="/">{ALL_PRODUCTS_LINK}</Link>
       </Typography>
     </section>
   );
