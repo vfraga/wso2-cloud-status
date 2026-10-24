@@ -977,17 +977,6 @@ describe("Banner", () => {
     expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("Service outage");
   });
 
-  it("puts the headline in the document title when asked to", () => {
-    const { rerender } = wrap(<Banner {...base} loading titled headline={headline("unknown")} />);
-    expect(document.title).toBe("WSO2 Cloud Status");
-    rerender(
-      <ThemeRoot>
-        <Banner {...base} titled headline={headline("degraded")} />
-      </ThemeRoot>,
-    );
-    expect(document.title).toBe("Degraded performance - WSO2 Cloud Status");
-  });
-
   it("says the age line covers the other products when some are late", () => {
     wrap(<Banner {...base} headline={headline("unknown")} checkedAt={new Date()} someLate />);
     expect(screen.getByText(/^Other products checked /)).toBeInTheDocument();

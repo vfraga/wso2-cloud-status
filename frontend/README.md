@@ -91,6 +91,11 @@ port 8080, security headers, one-year cache for hashed assets, `no-cache` for
 `index.html`, `/healthz`). Both base images are pinned by digest. Route `/api` to the
 status API at the ingress. Build: `docker build -t wso2-cloud-status-web frontend`.
 
+`public/` holds the icons, the WSO2 pulse glyph from the brand pack: `icon.svg`,
+and `favicon.ico` and `apple-touch-icon.png`, which `node scripts/icons.mjs`
+renders from it. The header logo is `src/components/Wso2Logo.tsx`, the brand
+pack's paths unchanged.
+
 ## Build notes
 
 - `build/stubs.ts` aliases `@mui/x-data-grid`, `@mui/x-date-pickers`,

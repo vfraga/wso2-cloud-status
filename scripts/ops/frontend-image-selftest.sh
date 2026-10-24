@@ -206,6 +206,29 @@ else
   expect revalidate "$first revalidated (If-None-Match)" 304 "$immutable"
 fi
 
+# The icons the shell links sit at the root, outside /assets: each must be the
+# file itself, never the HTML shell that try_files falls back to.
+icons=()
+while IFS= read -r icon; do
+  icons+=("$icon")
+done < <(tr '\r\n' '  ' <"$work/page.body" | grep -oE '<link[[:space:]][^>]*>' |
+  grep -E 'rel="(icon|apple-touch-icon)"' | sed -nE 's/.*[[:space:]]href="(\/[^"]+)".*/\1/p')
+if [[ ${#icons[@]} -lt 3 ]]; then
+  bad "index.html links ${#icons[@]} icons, want favicon.ico, icon.svg and apple-touch-icon.png"
+else
+  i=0
+  for icon in "${icons[@]}"; do
+    i=$((i + 1))
+    get "icon$i" "$icon"
+    expect "icon$i" "$icon" 200 "no-cache"
+    type="$(hdr "icon$i" Content-Type)"
+    case "$icon:$type" in
+      *.ico:image/x-icon | *.svg:image/svg+xml | *.png:image/png) ok "$icon is served as $type" ;;
+      *) bad "$icon is served as \"$type\"" ;;
+    esac
+  done
+fi
+
 missing="/assets/index-selftest-missing-$$.js"
 get missing "$missing"
 expect missing "missing asset $missing" 404 "no-store"

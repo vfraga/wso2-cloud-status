@@ -39,6 +39,8 @@ export interface Palette {
   text: string;
   muted: string;
   focus: string;
+  /** The WSO2 logo: the brand allows black or white only. */
+  logo: string;
   status: Record<Status, StatusColors>;
 }
 
@@ -49,6 +51,7 @@ export const LIGHT: Palette = {
   text: "#181818",
   muted: "#4d5665",
   focus: "#0a5aa8",
+  logo: "#000000",
   status: {
     operational: { fg: "#146c2e", fill: "#2c9a4b", tint: "#e8f5ec" },
     maintenance: { fg: "#0a5aa8", fill: "#2f7fd1", tint: "#e6f0fb" },
@@ -65,6 +68,7 @@ export const DARK: Palette = {
   text: "#f1f5f9",
   muted: "#a9b4c8",
   focus: "#7cc0ff",
+  logo: "#ffffff",
   status: {
     operational: { fg: "#4ade80", fill: "#34b25c", tint: "#12301f" },
     maintenance: { fg: "#7cc0ff", fill: "#4b9ae6", tint: "#14304f" },
@@ -84,6 +88,7 @@ function declarations(p: Palette): string {
     `--cs-text:${p.text}`,
     `--cs-muted:${p.muted}`,
     `--cs-focus:${p.focus}`,
+    `--cs-logo:${p.logo}`,
   ];
   for (const key of STATUS_KEYS) {
     const c = p.status[key];

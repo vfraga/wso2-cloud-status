@@ -156,8 +156,8 @@ describe("home page", () => {
     expect(
       screen.getByText("Affected: API Platform (EU). The other product is operational."),
     ).toBeInTheDocument();
-    // A background tab shows the status too.
-    await expectTitle("Degraded performance - WSO2 Cloud Status");
+    // The tab names the site only; the status is the h1.
+    await expectTitle("WSO2 Cloud Status");
     const products = screen.getByRole("region", { name: "Products" });
     const rows = within(products)
       .getAllByRole("listitem", {})
@@ -979,7 +979,7 @@ describe("product page", () => {
     await expectTitle("API Platform - WSO2 Cloud Status");
     await user.click(screen.getByRole("link", { name: "All products" }));
     await expectHeadingFocused("Degraded performance");
-    await expectTitle("Degraded performance - WSO2 Cloud Status");
+    await expectTitle("WSO2 Cloud Status");
     await act(async () => {
       await Promise.resolve();
     });
@@ -1083,6 +1083,18 @@ describe("product page", () => {
       navigate("/nothing/here");
     });
     await expectHeadingFocused("We could not find that page");
+  });
+});
+
+describe("header", () => {
+  it("leads home with the WSO2 logo, drawn in the logo colour and hidden from screen readers", async () => {
+    serve(summaryBody());
+    render(<App />);
+    const home = await screen.findByRole("link", { name: "WSO2 Cloud Status, home" });
+    const logo = home.querySelector("svg");
+    expect(logo).toHaveAttribute("aria-hidden", "true");
+    expect(logo?.querySelectorAll("path")).toHaveLength(6);
+    expect(home).toHaveTextContent("Cloud Status");
   });
 });
 

@@ -18,6 +18,8 @@ section here. The public API has its own version, in `api/openapi.yaml`.
   it.
 - Each colour in the history legend has its own label, and a description
   on hover, keyboard focus or tap.
+- The WSO2 logo heads the page, and the WSO2 pulse glyph is the favicon and
+  the home-screen icon.
 
 ### Changed
 
@@ -27,6 +29,8 @@ section here. The public API has its own version, in `api/openapi.yaml`.
 - Links to other sites take the text colour with an underline, so they no
   longer look like a status.
 - A day's details put its status beside the date.
+- The home page's tab reads "WSO2 Cloud Status"; the status is no longer in
+  it.
 
 ### Fixed
 

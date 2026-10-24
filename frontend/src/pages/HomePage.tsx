@@ -26,6 +26,7 @@ import { HistoryLegend } from "../components/HistoryLegend";
 import { PastIncidents } from "../components/PastIncidents";
 import { ProductRow } from "../components/ProductRow";
 import { ProductListSkeleton } from "../components/Skeletons";
+import { pageTitle, useDocumentTitle } from "../hooks/useDocumentTitle";
 import { PageNowProvider, usePageNow } from "../hooks/useNow";
 import { useKnownUntil, type PolledState } from "../hooks/usePolled";
 import { useIncidents, useSummary } from "../hooks/useResources";
@@ -42,6 +43,8 @@ const NONE: readonly Incident[] = [];
 export function HomePage() {
   const summary = useSummary();
   const incidents = useIncidents();
+  // The site's name alone: a tab is short, and the status is the h1 and announced.
+  useDocumentTitle(pageTitle());
   return (
     <PageNowProvider skewMs={summary.skewMs}>
       <HomeBody summary={summary} incidents={incidents} />
@@ -128,7 +131,6 @@ function HomeBanner({
     <Banner
       headline={data ? summaryHeadline(data) : NO_DATA}
       loading={data === null && !summary.failed}
-      titled
       {...bannerFreshness(summary, data?.products ?? null, known, now)}
     />
   );

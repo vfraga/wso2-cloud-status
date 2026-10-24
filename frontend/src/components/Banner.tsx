@@ -21,7 +21,6 @@ import { Info } from "@wso2/oxygen-ui-icons-react";
 import { useState } from "react";
 import type { Status } from "../api/types";
 import { config } from "../config";
-import { pageTitle, useDocumentTitle } from "../hooks/useDocumentTitle";
 import { useBannerNow } from "../hooks/useNow";
 import { useViewHeading } from "../hooks/useViewFocus";
 import { freshness, type Freshness, type FreshnessInputs } from "../lib/freshness";
@@ -46,8 +45,6 @@ interface BannerProps extends FreshnessInputs {
   notes?: readonly string[];
   /** Some products are late and named in the notes: the age line speaks for the others. */
   someLate?: boolean;
-  /** The document title carries the headline (the home page). */
-  titled?: boolean;
   /** One secondary line under the headline, kept while the headline is shown. */
   secondary?: string;
   /** Read before the headline by screen readers, for example the product name. */
@@ -142,13 +139,6 @@ function headingText(subject: string | undefined, label: string): string {
   return subject === undefined ? label : `${subject}: ${label}`;
 }
 
-/** The home page's tab names the status once it is in, so a background tab shows it. */
-function useStatusTitle(titled: boolean, settled: string | null): void {
-  let title: string | null = null;
-  if (titled) title = pageTitle(settled ?? undefined);
-  useDocumentTitle(title);
-}
-
 /** "Status checked 3 min ago", or "Other products ..." when some are late and named in the notice. */
 function AgeLine({ ageMs, someLate }: { ageMs: number | null; someLate: boolean }) {
   if (ageMs === null) return null;
@@ -179,7 +169,6 @@ export function Banner({
   loading,
   notes = [],
   someLate = false,
-  titled = false,
   secondary,
   subject,
   ...inputs
@@ -189,7 +178,6 @@ export function Banner({
   const fresh = freshness(now, inputs);
   const shown = shownHeadline(headline, loading, fresh);
   const announcement = useChangeAnnouncement(shown.label, !loading);
-  useStatusTitle(titled, loading ? null : shown.label);
   const status: Status = shown.status;
   const notice: NoticeInputs = {
     fresh,

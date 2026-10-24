@@ -43,7 +43,7 @@ test.describe("all operational", () => {
     const errors = collectConsoleErrors(page);
     await ready(page);
     // A background tab shows the status.
-    await expect(page).toHaveTitle("All systems operational - WSO2 Cloud Status");
+    await expect(page).toHaveTitle("WSO2 Cloud Status");
     await expect(page.getByRole("heading", { level: 1 })).toHaveText("All systems operational");
     const rows = productRows(page);
     await expect(rows).toHaveCount(PRODUCTS);
@@ -329,6 +329,27 @@ test.describe("all operational", () => {
     await expect(page.locator("footer")).toContainText("History bars are UTC calendar days.");
   });
 
+  test("the header logo and the icons are WSO2's, and the tab names the site", async ({ page }) => {
+    await ready(page);
+    await expect(page).toHaveTitle("WSO2 Cloud Status");
+    // The logo at the brand's digital minimum on a wide screen, in pure black or white.
+    const logo = page.getByRole("link", { name: "WSO2 Cloud Status, home" }).locator("svg");
+    expect((await logo.boundingBox())?.height).toBeCloseTo(36, 0);
+    expect(await logo.evaluate((el) => getComputedStyle(el).fill)).toMatch(
+      /^rgb\((0, 0, 0|255, 255, 255)\)$/,
+    );
+    // Every icon the page links is that file, not the HTML shell.
+    const icons = await page
+      .locator('link[rel="icon"], link[rel="apple-touch-icon"]')
+      .evaluateAll((links) => links.map((l) => l.getAttribute("href") ?? ""));
+    expect(icons).toEqual(["/favicon.ico", "/icon.svg", "/apple-touch-icon.png"]);
+    for (const href of icons) {
+      const res = await page.request.get(href);
+      expect(res.status()).toBe(200);
+      expect(res.headers()["content-type"]).toMatch(/^image\//);
+    }
+  });
+
   test("links to other sites take the text colour, never a status colour", async ({ page }) => {
     await ready(page);
     const link = productRows(page)
@@ -396,7 +417,7 @@ test.describe("all operational", () => {
     await page.getByRole("link", { name: "All products" }).click();
     await expect(page.getByRole("heading", { level: 1 })).toHaveText("All systems operational");
     await expect(page.getByRole("heading", { level: 1 })).toBeFocused();
-    await expect(page).toHaveTitle("All systems operational - WSO2 Cloud Status");
+    await expect(page).toHaveTitle("WSO2 Cloud Status");
   });
 
   test("an unknown product shows a plain not-found message", async ({ page }) => {

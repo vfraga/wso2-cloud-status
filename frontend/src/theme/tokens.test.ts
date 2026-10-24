@@ -43,6 +43,9 @@ describe.each([
       expect(contrast(p.muted, bg)).toBeGreaterThanOrEqual(4.5);
     }
     expect(contrast(p.focus, p.surface)).toBeGreaterThanOrEqual(3);
+    // The logo sits on the page; the brand's black or white, never a tint.
+    expect(["#000000", "#ffffff"]).toContain(p.logo);
+    expect(contrast(p.logo, p.page)).toBeGreaterThanOrEqual(3);
   });
 
   it.each(STATUSES)(

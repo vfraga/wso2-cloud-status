@@ -23,6 +23,7 @@ import { ViewFocus } from "../hooks/useViewFocus";
 import { Link, usePathname } from "../lib/router";
 import { FOOTER_TIMES } from "../lib/status";
 import { CARD_RADIUS } from "../theme/shape";
+import { Wso2Logo } from "./Wso2Logo";
 
 function useResolvedMode(): { dark: boolean; set: (mode: "light" | "dark") => void } {
   const { mode, systemMode, setMode } = useColorScheme();
@@ -105,9 +106,25 @@ export function Layout({ children }: { children: ReactNode }) {
             }}
           >
             <Link to="/" style={{ textDecoration: "none" }} aria-label="WSO2 Cloud Status, home">
-              <Typography component="span" sx={{ fontSize: "1.125rem", letterSpacing: "-0.01em" }}>
-                <strong>WSO2</strong> Cloud Status
-              </Typography>
+              <Stack
+                component="span"
+                direction="row"
+                sx={{ alignItems: "center", gap: { xs: 1.25, sm: 1.5 } }}
+              >
+                {/* 36 px tall on a wide screen: the brand's digital minimum. */}
+                <Wso2Logo height={{ xs: 28, sm: 36 }} />
+                <Box
+                  component="span"
+                  aria-hidden="true"
+                  sx={{ width: "1px", height: "1.5em", bgcolor: "var(--cs-border)" }}
+                />
+                <Typography
+                  component="span"
+                  sx={{ fontSize: { xs: "1.0625rem", sm: "1.25rem" }, fontWeight: 500 }}
+                >
+                  Cloud Status
+                </Typography>
+              </Stack>
             </Link>
             <ThemeToggle />
           </Stack>
