@@ -23,8 +23,9 @@ import { usePolled } from "./usePolled";
 export const useSummary = () =>
   usePolled("/api/v1/summary", parseSummary, config.summaryIntervalMs);
 
-export const useIncidents = () =>
-  usePolled("/api/v1/incidents", parseIncidentList, config.incidentsIntervalMs);
+/** `activeKey` names the summary's active incidents: when it changes, the list is fetched at once. */
+export const useIncidents = (activeKey: string | null = null) =>
+  usePolled("/api/v1/incidents", parseIncidentList, config.incidentsIntervalMs, activeKey);
 
 export const useProduct = (id: string) =>
   usePolled(

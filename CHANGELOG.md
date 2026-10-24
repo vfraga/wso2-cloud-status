@@ -46,6 +46,10 @@ section here. The public API has its own version, in `api/openapi.yaml`.
 
 ### Fixed
 
+- Past incidents no longer says a day had no incidents while the banner
+  lists one as active. The incident list catches up with a newer summary,
+  and a change in the summary's active incidents fetches the list at once
+  instead of at its next minute.
 - While a product's incident feed is stale, an open incident's daily
   minutes stop at `checked_at.incidents` instead of running to
   `generated_at` (ADR 0009).

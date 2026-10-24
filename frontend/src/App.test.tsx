@@ -188,7 +188,7 @@ describe("home page", () => {
     expect(
       within(active).getByRole("link", { name: "Updates on the API Platform status page" }),
     ).toHaveAttribute("href", "https://status.example.test/api");
-    expect(screen.getByText(/Ongoing for 1h/)).toBeInTheDocument();
+    expect(within(active).getByText(/Ongoing for 1h/)).toBeInTheDocument();
     expect(await screen.findByText(/^Status checked just now$/)).toBeInTheDocument();
   });
 
@@ -1102,5 +1102,52 @@ describe("theme toggle", () => {
     expect(await screen.findByRole("button", { name: "Switch to light mode" })).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Switch to light mode" }));
     expect(await screen.findByRole("button", { name: "Switch to dark mode" })).toBeInTheDocument();
+  });
+});
+
+describe("the incident list and the summary", () => {
+  it("never calls a day quiet while the summary lists an incident in it", async () => {
+    server.use(
+      http.get("http://api.test/api/v1/summary", () => HttpResponse.json(degradedSummary())),
+      // The list has not caught up with the summary yet.
+      http.get("http://api.test/api/v1/incidents", () => HttpResponse.json({ incidents: [] })),
+    );
+    render(<App />);
+    const past = await screen.findByRole("region", { name: "Past incidents" });
+    const today = within(past).getAllByRole("region")[0]!;
+    expect(await within(today).findByText("Elevated latency")).toBeInTheDocument();
+    expect(within(today).queryByText(/^No incidents reported/)).toBeNull();
+  });
+
+  it("fetches the list at once when the summary's active incidents change", async () => {
+    vi.useFakeTimers({
+      shouldAdvanceTime: true,
+      toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval", "Date"],
+    });
+    let active = false;
+    let lists = 0;
+    server.use(
+      http.get("http://api.test/api/v1/summary", () =>
+        HttpResponse.json(active ? degradedSummary() : summaryBody()),
+      ),
+      http.get("http://api.test/api/v1/incidents", () => {
+        lists += 1;
+        return HttpResponse.json({ incidents: [] });
+      }),
+    );
+    render(<App />);
+    await screen.findByRole("heading", { level: 1, name: "All systems operational" });
+    await waitFor(() => {
+      expect(lists).toBe(1);
+    });
+    active = true;
+    // The summary's next poll, 30 s on; the list's own is 60 s away.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(31_000);
+    });
+    await screen.findByRole("heading", { level: 1, name: "Degraded performance" });
+    await waitFor(() => {
+      expect(lists).toBe(2);
+    });
   });
 });

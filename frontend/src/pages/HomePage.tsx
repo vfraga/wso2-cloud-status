@@ -34,6 +34,7 @@ import { bannerFreshness } from "../lib/dataNotes";
 import { rememberProducts } from "../lib/fallbackProducts";
 import { summaryHeadline, type Headline } from "../lib/headline";
 import { BANNER_LABEL } from "../lib/status";
+import { caughtUp } from "../lib/incidents";
 import { earliest } from "../lib/time";
 import { CARD_RADIUS } from "../theme/shape";
 
@@ -45,9 +46,19 @@ const cardSx = {
 } as const;
 const NONE: readonly Incident[] = [];
 
+/** The summary's active incidents as a key that changes when one starts or ends. */
+function activeKey(summary: Summary | null): string | null {
+  return summary === null
+    ? null
+    : summary.activeIncidents
+        .map((i) => i.id)
+        .toSorted((a, b) => a.localeCompare(b))
+        .join(" ");
+}
+
 export function HomePage() {
   const summary = useSummary();
-  const incidents = useIncidents();
+  const incidents = useIncidents(activeKey(summary.data));
   // The site's name alone: a tab is short, and the status is the h1 and announced.
   useDocumentTitle(pageTitle());
   return (
@@ -64,11 +75,20 @@ function HomeBody({
   summary: PolledState<Summary>;
   incidents: PolledState<Incident[]>;
 }) {
-  const incidentById = useMemo(
-    () => new Map((incidents.data ?? []).map((i) => [i.id, i])),
-    [incidents.data],
-  );
   const data = summary.data;
+  // Null while the list is loading; once loaded, caught up with a newer summary.
+  const listed = useMemo(
+    () =>
+      incidents.data &&
+      caughtUp(
+        incidents.data,
+        incidents.generatedAt,
+        data?.activeIncidents ?? NONE,
+        summary.generatedAt,
+      ),
+    [incidents.data, incidents.generatedAt, data, summary.generatedAt],
+  );
+  const incidentById = useMemo(() => new Map((listed ?? NONE).map((i) => [i.id, i])), [listed]);
   const products = useMemo(() => new Map((data?.products ?? []).map((p) => [p.id, p])), [data]);
   useEffect(() => {
     if (data) rememberProducts(data.products);
@@ -77,7 +97,7 @@ function HomeBody({
   // rows and Past incidents read both resources, so they stop at the earlier.
   const summaryUntil = useKnownUntil(summary);
   const bothUntil = earliest(summaryUntil, useKnownUntil(incidents));
-  const banner = <HomeBanner summary={summary} known={incidents.data ?? NONE} />;
+  const banner = <HomeBanner summary={summary} known={listed ?? NONE} />;
   // Until the summary answers, only a placeholder: the sections that replace
   // it are new to the page, so nothing on screen moves when they arrive.
   if (data === null && !summary.failed) {
@@ -106,7 +126,7 @@ function HomeBody({
       {data && data.products.length > 0 && <HistoryLegend />}
       <PastIncidents
         state={{
-          incidents: incidents.data,
+          incidents: listed,
           // generated_at, the age of the snapshot the list comes from.
           checkedAt: incidents.generatedAt,
           lastSuccessAt: incidents.lastSuccessAt,

@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { fetchSnapshot } from "../api/client";
 import { ApiError } from "../api/errors";
 import type { Snapshot } from "../api/types";
@@ -144,12 +144,15 @@ function deadline(controller: AbortController, ms: number): Deadline {
  * Polls one API path. Pauses while the tab is hidden, refreshes as soon as it
  * is visible again, and backs off exponentially while the API is failing. A
  * request that does not answer within config.requestTimeoutMs fails like any
- * other error. `parse` must be a stable function.
+ * other error. `parse` must be a stable function. A `refreshKey` that changes
+ * once it is known (not null) asks for a fresh answer at once, so a resource
+ * can follow another.
  */
 export function usePolled<T>(
   path: string,
   parse: (raw: unknown) => T,
   intervalMs: number,
+  refreshKey: string | null = null,
 ): PolledState<T> {
   const [state, setState] = useState<PolledState<T>>(
     () => (lastStates.get(path) as PolledState<T> | undefined) ?? initial,
@@ -157,6 +160,14 @@ export function usePolled<T>(
   useEffect(() => {
     if (state.lastSuccessAt !== null) lastStates.set(path, state);
   }, [path, state]);
+
+  const pollNow = useRef<() => void>(() => undefined);
+  const lastKey = useRef(refreshKey);
+  useEffect(() => {
+    const previous = lastKey.current;
+    lastKey.current = refreshKey;
+    if (previous !== null && refreshKey !== null && previous !== refreshKey) pollNow.current();
+  }, [refreshKey]);
 
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout> | undefined;
@@ -204,6 +215,9 @@ export function usePolled<T>(
     };
 
     document.addEventListener("visibilitychange", onVisibility);
+    pollNow.current = () => {
+      if (isActive() && !document.hidden) void poll();
+    };
     if (!document.hidden) void poll();
 
     return () => {

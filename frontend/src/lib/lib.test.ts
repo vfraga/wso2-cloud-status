@@ -19,7 +19,14 @@
 import { describe, expect, it } from "vitest";
 import { clockSkew, freshness, staleOnArrival } from "./freshness";
 import { dayAriaLabel, dayDetail, historyText, stripCaptions, summariseHistory } from "./history";
-import { groupByDay, incidentDuration, isOngoing, stateLabel, worstImpact } from "./incidents";
+import {
+  caughtUp,
+  groupByDay,
+  incidentDuration,
+  isOngoing,
+  stateLabel,
+  worstImpact,
+} from "./incidents";
 import {
   formatCheckAge,
   formatDuration,
@@ -412,5 +419,22 @@ describe("region rows", () => {
     expect(shortName(part("EU data plane (US-managed)"), eu)).toBe("Data plane (US-managed)");
     expect(shortName(part("Europe"), eu)).toBe("Europe");
     expect(shortName({ ...part("EU "), name: "EU " }, eu)).toBe("EU ");
+  });
+});
+
+describe("caughtUp", () => {
+  const at = (iso: string) => new Date(`2026-10-21T${iso}:00Z`);
+  const open = incident({ id: "a", title: "Now", resolvedAt: null });
+  const listed = incident({ id: "a", title: "Before" });
+
+  it("adds or updates the active incidents of a newer summary", () => {
+    expect(caughtUp([], at("14:00"), [open], at("14:01"))).toEqual([open]);
+    expect(caughtUp([listed], null, [open], at("14:01"))).toEqual([open]);
+  });
+
+  it("takes a list as new as the summary as it is", () => {
+    expect(caughtUp([listed], at("14:01"), [open], at("14:01"))).toEqual([listed]);
+    expect(caughtUp([listed], at("14:02"), [open], at("14:01"))).toEqual([listed]);
+    expect(caughtUp([listed], at("14:00"), [open], null)).toEqual([listed]);
   });
 });

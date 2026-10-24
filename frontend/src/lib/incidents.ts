@@ -30,6 +30,26 @@ export interface DayGroup {
   incidents: Incident[];
 }
 
+/**
+ * The incident list caught up with a newer summary. The two are polled
+ * apart, so for up to a poll the summary can name an active incident the list
+ * does not have yet, or a newer state of one; each active incident of a newer
+ * summary then joins or replaces the list's copy. A list as new as the summary
+ * is taken as it is.
+ */
+export function caughtUp(
+  list: readonly Incident[],
+  listAt: Date | null,
+  active: readonly Incident[],
+  summaryAt: Date | null,
+): readonly Incident[] {
+  if (summaryAt === null || active.length === 0) return list;
+  if (listAt !== null && listAt.getTime() >= summaryAt.getTime()) return list;
+  const byId = new Map(list.map((i) => [i.id, i]));
+  for (const incident of active) byId.set(incident.id, incident);
+  return [...byId.values()];
+}
+
 /** Whether an incident covers part of [start, end): it started then, or was still going at start. */
 function overlaps(incident: Incident, start: number, end: number, now: Date): boolean {
   const from = incident.startedAt.getTime();
