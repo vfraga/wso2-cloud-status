@@ -50,6 +50,10 @@ section here. The public API has its own version, in `api/openapi.yaml`.
   lists one as active. The incident list catches up with a newer summary,
   and a change in the summary's active incidents fetches the list at once
   instead of at its next minute.
+- When the page's own data stops, the history no longer paints the days
+  after that point green: a day not fully covered reads "No data" unless a
+  problem is known, as it already did when a product's incident feed
+  stopped.
 - While a product's incident feed is stale, an open incident's daily
   minutes stop at `checked_at.incidents` instead of running to
   `generated_at` (ADR 0009).

@@ -31,6 +31,7 @@ import type { Day, Incident } from "../api/types";
 import { usePageNow } from "../hooks/useNow";
 import { useVisibleDays } from "../hooks/useVisibleDays";
 import {
+  coveredDays,
   dayAriaLabel,
   dayDetail,
   historyText,
@@ -355,7 +356,7 @@ export function HistoryStrip({
   const visible = useVisibleDays();
   const now = usePageNow();
   const today = utcDayKey(now);
-  const days = allDays.slice(-visible);
+  const days = coveredDays(allDays.slice(-visible), completeUntil);
   const last = days.length - 1;
   // Focus is kept as a distance from today, so it survives a change of range.
   const [fromEnd, setFromEnd] = useState(0);

@@ -17,8 +17,16 @@
  */
 
 import { describe, expect, it } from "vitest";
+import type { Day } from "../api/types";
 import { clockSkew, freshness, staleOnArrival } from "./freshness";
-import { dayAriaLabel, dayDetail, historyText, stripCaptions, summariseHistory } from "./history";
+import {
+  coveredDays,
+  dayAriaLabel,
+  dayDetail,
+  historyText,
+  stripCaptions,
+  summariseHistory,
+} from "./history";
 import {
   caughtUp,
   groupByDay,
@@ -436,5 +444,33 @@ describe("caughtUp", () => {
     expect(caughtUp([listed], at("14:01"), [open], at("14:01"))).toEqual([listed]);
     expect(caughtUp([listed], at("14:02"), [open], at("14:01"))).toEqual([listed]);
     expect(caughtUp([listed], at("14:00"), [open], null)).toEqual([listed]);
+  });
+});
+
+describe("coveredDays", () => {
+  const day = (date: string, status: Day["status"]): Day => ({
+    date,
+    status,
+    minutes: {},
+    incidentIds: [],
+  });
+  const strip = [
+    day("2026-10-19", "operational"),
+    day("2026-10-20", "operational"),
+    day("2026-10-21", "outage"),
+    day("2026-10-22", "operational"),
+  ];
+
+  it("reads a day not fully covered as no data, unless a problem is known", () => {
+    expect(coveredDays(strip, new Date("2026-10-20T09:00:00Z")).map((d) => d.status)).toEqual([
+      "operational",
+      "unknown",
+      "outage",
+      "unknown",
+    ]);
+  });
+
+  it("leaves the days as they are while the data is current", () => {
+    expect(coveredDays(strip, null)).toBe(strip);
   });
 });

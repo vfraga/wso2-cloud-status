@@ -68,6 +68,22 @@ describe("HistoryStrip", () => {
     3: { status: "unknown" },
   });
 
+  it("draws a day the data covers only in part as no data, never quiet", () => {
+    wrap(
+      <HistoryStrip
+        productName="API Platform"
+        days={d}
+        incidents={new Map([["inc-1", incident()]])}
+        completeUntil={new Date("2026-10-20T09:00:00Z")}
+      />,
+    );
+    const options = screen.getAllByRole("option");
+    expect(options[89]).toHaveAccessibleName(
+      /\(UTC\): No data\. Incident information complete only until /,
+    );
+    expect(options[88]).toHaveAccessibleName(/\(UTC\): Degraded performance\./);
+  });
+
   it("is one tab stop with a hidden text summary", async () => {
     const user = userEvent.setup();
     wrap(

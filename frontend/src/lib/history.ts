@@ -17,7 +17,7 @@
  */
 
 import type { Day, Incident, Status } from "../api/types";
-import { DAY_LABEL, IMPACT_LABEL, STATUS_RANK, incidentsCompleteUntil } from "./status";
+import { DAY_LABEL, IMPACT_LABEL, STATUS_RANK, incidentsCompleteUntil, isProblem } from "./status";
 import { formatDuration, formatHistoryDate, formatUtcClock, utcDayKey } from "./time";
 
 interface HistorySummary {
@@ -103,6 +103,20 @@ function impactTimes(
     spans.set(impact, [...(spans.get(impact) ?? []), [from, to]]);
   }
   return Object.fromEntries([...spans].map(([status, list]) => [status, union(list)]));
+}
+
+/**
+ * The days as far as the data vouches for them. From the UTC day that holds
+ * `completeUntil` on (where a product's incident feed, or the page's own
+ * data, stops), a day with no known problem reads unknown ("No data"), not
+ * quiet: statusd applies the same rule to a feed that stopped.
+ */
+export function coveredDays(days: readonly Day[], completeUntil: Date | null): readonly Day[] {
+  if (completeUntil === null) return days;
+  const from = utcDayKey(completeUntil);
+  return days.map((day) =>
+    day.date >= from && !isProblem(day.status) ? { ...day, status: "unknown" } : day,
+  );
 }
 
 /**
