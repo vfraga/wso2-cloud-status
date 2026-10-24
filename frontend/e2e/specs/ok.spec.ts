@@ -556,28 +556,47 @@ test.describe("all operational", () => {
     });
   }
 
-  test("the home page's API requests start with the HTML, and each is made once", async ({
+  test("a tab shown later, and a visit that starts on a product page, fetch the status anew", async ({
     page,
   }) => {
-    const requests: string[] = [];
-    page.on("request", (request) => {
-      const { pathname } = new URL(request.url());
-      if (pathname.startsWith("/api/")) requests.push(pathname);
+    // Responses the network answered; one handed over from a browser cache is not counted.
+    let summaries = 0;
+    await page.route("**/api/v1/summary", async (route) => {
+      summaries += 1;
+      await route.continue();
     });
-    await ready(page);
-    await expect(page.getByText("Loading past incidents.")).toHaveCount(0);
-    // The build preloads them, so they do not wait for the scripts...
-    const preloaded = await page
-      .locator('link[rel="preload"][as="fetch"]')
-      .evaluateAll((links) =>
-        links.map((link) => new URL((link as HTMLLinkElement).href).pathname),
-      );
-    expect(preloaded).toEqual(["/api/v1/summary", "/api/v1/incidents"]);
-    // ...and the first poll of each takes the preloaded response.
-    expect(requests.toSorted((a, b) => a.localeCompare(b))).toEqual([
-      "/api/v1/incidents",
-      "/api/v1/summary",
-    ]);
+    await page.addInitScript(() => {
+      let hidden = true;
+      Object.defineProperty(document, "hidden", { configurable: true, get: () => hidden });
+      Object.defineProperty(document, "visibilityState", {
+        configurable: true,
+        get: () => (hidden ? "hidden" : "visible"),
+      });
+      Object.assign(window, {
+        show: () => {
+          hidden = false;
+          document.dispatchEvent(new Event("visibilitychange"));
+        },
+      });
+    });
+    await page.goto("/");
+    await expect(page.getByRole("heading", { level: 1 })).toHaveText("Checking status");
+    const beforeShown = summaries;
+    await page.evaluate(() => {
+      (window as unknown as { show: () => void }).show();
+    });
+    await expect(page.getByRole("heading", { level: 1 })).not.toHaveText("Checking status");
+    expect(summaries).toBeGreaterThan(beforeShown);
+
+    await page.goto("/products/moesif");
+    await page.evaluate(() => {
+      (window as unknown as { show: () => void }).show();
+    });
+    await expect(page.getByRole("heading", { level: 1 })).toHaveText(/^Moesif: (?!Checking)/);
+    const beforeHome = summaries;
+    await page.getByRole("link", { name: "All products" }).click();
+    await expect(productRows(page).first()).toBeVisible();
+    expect(summaries).toBeGreaterThan(beforeHome);
   });
 
   test("a normal load never shows the built-in fallback", async ({ page }) => {

@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import { trimTrailingSlashes } from "../api/endpoints";
+import { trimTrailingSlashes } from "../config";
 import {
   useSyncExternalStore,
   type AnchorHTMLAttributes,

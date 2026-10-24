@@ -37,9 +37,6 @@ section here. The public API has its own version, in `api/openapi.yaml`.
   its limit is aged as before.
 - The history legend says what a bar is on its own line, with the colours
   centred below it, each drawn the same size.
-- The page asks for the status and the incident list along with its
-  scripts instead of after them, so the status shows about 0.6 s sooner on
-  a slow phone connection.
 - The frontend image sends its files compressed once at the highest level
   instead of at the lowest level on every request: about 37 KB less on a
   first visit, and far less CPU per request.

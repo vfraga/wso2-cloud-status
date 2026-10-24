@@ -16,11 +16,15 @@
  * under the License.
  */
 
-import { apiBase } from "./api/endpoints";
+export function trimTrailingSlashes(value: string): string {
+  let end = value.length;
+  while (end > 0 && value.charAt(end - 1) === "/") end -= 1;
+  return value.slice(0, end);
+}
 
 /** Runtime settings. Intervals are in milliseconds. */
 export const config = {
-  apiBaseUrl: apiBase(import.meta.env.VITE_API_BASE_URL),
+  apiBaseUrl: trimTrailingSlashes(import.meta.env.VITE_API_BASE_URL ?? ""),
   summaryIntervalMs: 30_000,
   incidentsIntervalMs: 60_000,
   productIntervalMs: 30_000,
