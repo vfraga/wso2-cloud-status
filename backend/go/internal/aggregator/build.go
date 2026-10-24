@@ -645,37 +645,73 @@ func collapseDuplicates(incidents []domain.Incident) []domain.Incident {
 }
 
 // oneOfEachEvent returns, for each set of records that sameEvent connects,
-// the record with the smallest id.
+// the record with the smallest id. In start order, each record is compared
+// only with the later ones that start within collapseWindow of it and are
+// not yet in its set, so the cost is a sort plus the pairs that start that
+// close together.
 func oneOfEachEvent(records []domain.Incident) []domain.Incident {
-	root := make([]int, len(records))
-	for i := range root {
-		root[i] = i
+	order := make([]int, len(records))
+	for i := range order {
+		order[i] = i
 	}
-	find := func(i int) int {
-		for root[i] != i {
-			i = root[i]
-		}
-		return i
-	}
-	for i := range records {
-		for j := i + 1; j < len(records); j++ {
-			if sameEvent(records[i], records[j]) {
-				root[find(i)] = find(j)
+	slices.SortFunc(order, func(i, j int) int { return records[i].StartedAt.Compare(records[j].StartedAt) })
+	sets := newDisjointSets(len(records))
+	for x, i := range order {
+		for _, j := range order[x+1:] {
+			if records[j].StartedAt.Sub(records[i].StartedAt) > collapseWindow {
+				break
+			}
+			if sets.find(i) != sets.find(j) && sameEvent(&records[i], &records[j]) {
+				sets.union(i, j)
 			}
 		}
 	}
 	kept := map[int]domain.Incident{}
 	for i, r := range records {
-		if k, ok := kept[find(i)]; !ok || r.ID < k.ID {
-			kept[find(i)] = r
+		if k, ok := kept[sets.find(i)]; !ok || r.ID < k.ID {
+			kept[sets.find(i)] = r
 		}
 	}
 	return slices.Collect(maps.Values(kept))
 }
 
+// disjointSets is a union-find over 0 to n-1, with union by size and path
+// halving, so each find or union costs almost constant time.
+type disjointSets struct {
+	root, size []int
+}
+
+func newDisjointSets(n int) disjointSets {
+	s := disjointSets{root: make([]int, n), size: make([]int, n)}
+	for i := range n {
+		s.root[i], s.size[i] = i, 1
+	}
+	return s
+}
+
+func (s disjointSets) find(i int) int {
+	for s.root[i] != i {
+		s.root[i] = s.root[s.root[i]]
+		i = s.root[i]
+	}
+	return i
+}
+
+func (s disjointSets) union(i, j int) {
+	a, b := s.find(i), s.find(j)
+	if a == b {
+		return
+	}
+	if s.size[a] < s.size[b] {
+		a, b = b, a
+	}
+	s.root[b] = a
+	s.size[a] += s.size[b]
+}
+
 // sameEvent reports whether two records of one kind start, and end, within
 // collapseWindow of each other.
-func sameEvent(a, b domain.Incident) bool {
+func sameEvent(a, b *domain.Incident) bool {
 	if !near(a.StartedAt, b.StartedAt) {
 		return false
 	}

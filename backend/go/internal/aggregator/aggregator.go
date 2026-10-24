@@ -371,7 +371,7 @@ func (a *Aggregator) loop(ctx context.Context, key string, kind Kind, every time
 			} else {
 				failures = 0
 			}
-			a.Rebuild()
+			a.rebuild(ctx.Done())
 			timer.Reset(nextDelay(every, failures))
 		}
 	}
@@ -490,8 +490,21 @@ func (a *Aggregator) report(key string, b Binding, kind Kind, took time.Duration
 // Builds are serialized so a slower, older build never overwrites a newer
 // one. Only a build that was published reaches the Observer.
 func (a *Aggregator) Rebuild() {
+	a.rebuild(nil)
+}
+
+// rebuild is Rebuild, skipped when done is closed by the time the build's
+// turn comes; a nil done never is. A poll loop passes its context's done:
+// that context ends at shutdown, or at a reload, which builds again itself,
+// so neither waits for the loops' builds queued behind the one in progress.
+func (a *Aggregator) rebuild(done <-chan struct{}) {
 	a.buildMu.Lock()
 	defer a.buildMu.Unlock()
+	select {
+	case <-done:
+		return
+	default:
+	}
 	a.mu.Lock()
 	snapshot := maps.Clone(a.state)
 	cfg := a.cfg

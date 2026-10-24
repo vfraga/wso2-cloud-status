@@ -685,6 +685,36 @@ func TestCancelledPollIsNotAFailure(t *testing.T) {
 	}
 }
 
+// TestBuildAfterTheContextEndsIsSkipped: a poll loop's build that waits
+// for the one in progress is skipped once the loop's context ends, so a
+// shutdown is not held by queued builds; Rebuild still publishes.
+func TestBuildAfterTheContextEndsIsSkipped(t *testing.T) {
+	t.Parallel()
+	bindings, _ := fakes()
+	rec := &recorder{}
+	a, err := New(testConfig(), bindings, Options{Publish: rec.publish, Observer: rec})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	a.buildMu.Lock()
+	queued := make(chan struct{})
+	go func() {
+		a.rebuild(ctx.Done())
+		close(queued)
+	}()
+	cancel()
+	a.buildMu.Unlock()
+	<-queued
+	if got := rec.pubs.Load(); got != 0 {
+		t.Fatalf("%d builds published after the context ended, want none", got)
+	}
+	a.Rebuild()
+	if got := rec.pubs.Load(); got != 1 {
+		t.Fatalf("%d builds published by Rebuild, want 1", got)
+	}
+}
+
 // productRecorder also implements the optional ProductObserver.
 type productRecorder struct {
 	recorder

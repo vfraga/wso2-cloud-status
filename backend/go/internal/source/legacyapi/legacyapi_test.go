@@ -18,7 +18,9 @@ package legacyapi
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -322,6 +324,56 @@ func TestMalformedUpstreamDataFails(t *testing.T) {
 				t.Fatal("expected an error")
 			}
 		})
+	}
+}
+
+// TestIncidentCountIsBounded: an answer with more than MaxIncidents records,
+// counted across its months, fails like a malformed one; one at the cap is
+// read.
+func TestIncidentCountIsBounded(t *testing.T) {
+	t.Parallel()
+	for n, wantErr := range map[int]bool{MaxIncidents: false, MaxIncidents + 1: true} {
+		srv := serveJSON(t, http.StatusOK, incidentAnswer(n))
+		got, err := NewSource(newTestClient(t, srv.URL, nil), "c").Incidents(context.Background())
+		if (err != nil) != wantErr || err == nil && len(got.Items) != n {
+			t.Errorf("%d records: %d read, err %v; want an error %v", n, len(got.Items), err, wantErr)
+		}
+	}
+}
+
+// incidentAnswer is an incident answer with n records over two months.
+func incidentAnswer(n int) string {
+	var months [2][]string
+	for i := range n {
+		months[i%2] = append(months[i%2], fmt.Sprintf(
+			`{"id":"i%d","begin":"2026-10-01 00:00:00","end":"2026-10-01 01:00:00","type":"Outage","status":"Resolved"}`, i))
+	}
+	return `{"2026-10":{"incidents":[` + strings.Join(months[0], ",") + `]},"2026-9":{"incidents":[` + strings.Join(months[1], ",") + `]}}`
+}
+
+// TestIncidentCapLeavesRoomAboveTheCapturedAnswers: the cap is at least ten
+// times the largest captured real answer, so a heavy stretch of real
+// incidents is never rejected.
+func TestIncidentCapLeavesRoomAboveTheCapturedAnswers(t *testing.T) {
+	t.Parallel()
+	names, err := filepath.Glob(filepath.Join(fixtureDir, "*.incidents.json"))
+	if err != nil || len(names) == 0 {
+		t.Fatalf("no captured incident answers in %s: %v", fixtureDir, err)
+	}
+	largest := 0
+	for _, name := range names {
+		body, err := os.ReadFile(filepath.Clean(name))
+		if err != nil {
+			t.Fatal(err)
+		}
+		var raw map[string]wireMonth
+		if err := json.Unmarshal(body, &raw); err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		largest = max(largest, incidentCount(raw))
+	}
+	if largest == 0 || MaxIncidents < 10*largest {
+		t.Fatalf("MaxIncidents = %d, want at least ten times the largest captured answer (%d)", MaxIncidents, largest)
 	}
 }
 

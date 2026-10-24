@@ -176,7 +176,27 @@ func toRegionUptime(raw map[string][]wireAvailability) source.Uptime {
 	return out
 }
 
+// MaxIncidents caps the incident records one answer may hold, at least ten
+// times as many as the largest captured real answer. Each build compares the
+// records of one event with each other to list them once, so an answer above
+// the cap is rejected like a malformed one: only that source's incidents
+// read as not received, and a faulty upstream cannot slow every product's
+// build.
+const MaxIncidents = 500
+
+// incidentCount is the number of incident records in an answer.
+func incidentCount(raw map[string]wireMonth) int {
+	total := 0
+	for _, m := range raw {
+		total += len(m.Incidents)
+	}
+	return total
+}
+
 func toIncidents(raw map[string]wireMonth, loc *time.Location) (source.Incidents, error) {
+	if n := incidentCount(raw); n > MaxIncidents {
+		return source.Incidents{}, fmt.Errorf("legacyapi: %d incidents, more than the %d one answer may hold", n, MaxIncidents)
+	}
 	var res source.Incidents
 	seen := map[string]bool{}
 	for month, m := range raw {

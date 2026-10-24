@@ -20,6 +20,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"os"
 	"regexp"
 	"slices"
@@ -31,6 +32,7 @@ import (
 	"github.com/wso2/wso2-cloud-status/backend/go/internal/config"
 	"github.com/wso2/wso2-cloud-status/backend/go/internal/domain"
 	"github.com/wso2/wso2-cloud-status/backend/go/internal/source"
+	"github.com/wso2/wso2-cloud-status/backend/go/internal/source/legacyapi"
 )
 
 func TestAllHealthy(t *testing.T) {
@@ -693,9 +695,6 @@ func TestDuplicateIncidentsRealPair(t *testing.T) {
 	}
 }
 
-// TestDuplicateIncidentsKeepTheSmallestIDs: a chain of records each within
-// 60 s of the next collapses onto the records kept in id order, not onto
-// one record for the whole chain.
 // TestDuplicateIncidentsAreAFunctionOfTheirTimes: records chained within
 // 60 s of each other are one event, whichever ids they carry. A chain at
 // 0 s, 45 s and 90 s is one incident under its smallest id for every
@@ -717,6 +716,45 @@ func TestDuplicateIncidentsAreAFunctionOfTheirTimes(t *testing.T) {
 			if !slices.Equal(kept, []string{ids[3], chain}) {
 				t.Fatalf("ids %v at 0, 45, 90 and 290 s, arriving as %v: kept %v, want %s then %s", ids, idsOf(order), kept, ids[3], chain)
 			}
+		}
+	}
+}
+
+// TestIncidentCollapseAtTheCapIsCheap: a build where every source holds as
+// many incident records as one answer may (legacyapi.MaxIncidents), all of
+// one event or all of distinct events, takes far less than a poll interval.
+// It runs alone, not in parallel, so its time is its own.
+func TestIncidentCollapseAtTheCapIsCheap(t *testing.T) {
+	const budget = 2 * time.Second
+	n := legacyapi.MaxIncidents
+	for _, tt := range []struct {
+		name    string
+		spacing time.Duration
+		want    int
+	}{{"one event", 0, 1}, {"distinct events", 2 * collapseWindow, n}} {
+		st := freshState()
+		for _, key := range []string{"b/s1", "b/s2", "b/s3"} {
+			items := make([]domain.Incident, n)
+			for i := range items {
+				start := t0.Add(-48*time.Hour + time.Duration(i)*tt.spacing)
+				items[i] = domain.Incident{
+					ID: fmt.Sprintf("%s-%d", key, i), Title: "Outage", Impact: domain.StatusOutage,
+					StartedAt: start, ResolvedAt: resolved(start.Add(time.Hour)),
+				}
+			}
+			s := st[key]
+			s.incidents.data.Items = items
+			st[key] = s
+		}
+		start := time.Now()
+		b := build(params(st, t0))
+		took := time.Since(start)
+		t.Logf("%s: %d records per source built in %v", tt.name, n, took)
+		if one, two := len(b.Products["one"].Incidents), len(b.Products["two"].Incidents); one != tt.want || two != tt.want {
+			t.Errorf("%s: one lists %d incidents, two lists %d; want %d each", tt.name, one, two, tt.want)
+		}
+		if took > budget {
+			t.Errorf("%s: build took %v, want under %v", tt.name, took, budget)
 		}
 	}
 }
