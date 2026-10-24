@@ -13,7 +13,9 @@ Scenarios (one spec each in e2e/specs/; scripts/e2e.sh runs them in turn):
   ok         testdata/upstream, with one resolved Identity Platform outage
              10 days ago ("Sign-in errors in the EU region"), so the strips
              hold an incident day whatever the date the suite runs on
-  degraded   one degraded Bijira component and an active incident
+  degraded   in Bijira's EU data plane one degraded and one outage
+             component, in its EU control plane one maintenance component;
+             an active incident, and a resolved outage and maintenance
   stale      Moesif never answers (all three of its files removed)
   outdated   Moesif's incidents never answer (only that file removed);
              scripts/e2e.sh also shortens the polling intervals and

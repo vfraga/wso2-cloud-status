@@ -43,6 +43,15 @@
         "status": "Resolved",
         "short_description": "Console sign-in failures",
         "expanded": false
+      },
+      {
+        "id": "e2e-maintenance-1",
+        "begin": "@@ago:30h@@",
+        "end": "@@ago:29h@@",
+        "type": "Maintenance",
+        "status": "Completed",
+        "short_description": "Planned maintenance of the API Platform console",
+        "expanded": false
       }
     ]
   }

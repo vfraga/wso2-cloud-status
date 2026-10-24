@@ -81,7 +81,7 @@
         {
           "description": "View API Governance compliance",
           "display_name": "Compliance",
-          "status": 0,
+          "status": 1,
           "availability": [
             { "availability": "100", "duration": "Last 30 days" },
             { "availability": "100", "duration": "Last 90 days" }
@@ -260,7 +260,7 @@
         {
           "description": "View logs of deployed API Proxies",
           "display_name": "Logs",
-          "status": 0,
+          "status": 3,
           "availability": [
             { "availability": "100", "duration": "Last 30 days" },
             { "availability": "100", "duration": "Last 90 days" }

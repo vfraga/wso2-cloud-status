@@ -28,6 +28,18 @@ function luminance(hex: string): number {
   return 0.2126 * (channels[0] ?? 0) + 0.7152 * (channels[1] ?? 0) + 0.0722 * (channels[2] ?? 0);
 }
 
+/** HSL hue of a #rrggbb colour, in degrees from 0 to 360. */
+function hue(hex: string): number {
+  const [r = 0, g = 0, b = 0] = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
+  const max = Math.max(r, g, b);
+  const range = max - Math.min(r, g, b);
+  if (range === 0) return 0;
+  let sector = (r - g) / range + 4;
+  if (max === r) sector = (g - b) / range;
+  else if (max === g) sector = (b - r) / range + 2;
+  return (sector * 60 + 360) % 360;
+}
+
 function contrast(a: string, b: string): number {
   const [hi, lo] = [luminance(a), luminance(b)].sort((x, y) => y - x);
   return ((hi ?? 0) + 0.05) / ((lo ?? 0) + 0.05);
@@ -46,6 +58,13 @@ describe.each([
     // The logo sits on the page; the brand's black or white, never a tint.
     expect(["#000000", "#ffffff"]).toContain(p.logo);
     expect(contrast(p.logo, p.page)).toBeGreaterThanOrEqual(3);
+  });
+
+  // Maintenance stays blue: hues from 200 to 240 degrees, between cyan and violet.
+  it("maintenance fill is blue", () => {
+    const h = hue(p.status.maintenance.fill);
+    expect(h).toBeGreaterThanOrEqual(200);
+    expect(h).toBeLessThanOrEqual(240);
   });
 
   it.each(STATUSES)(

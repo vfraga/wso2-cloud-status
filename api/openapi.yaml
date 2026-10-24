@@ -27,9 +27,9 @@ info:
     Regions and locations: a product's "regions" are where it runs, or the
     parts of one place (a control plane, a data plane). Parts carry the id
     of their place in "location", and the product's "locations" list those
-    places with a status of their own. A product's regions all have a
-    location or none do; a region the configuration does not name has
-    none.
+    places with a status of their own. The regions the configuration names
+    for a product all have a location or none do; a region it does not
+    name has none and is listed after those that have one.
 
     Caching: responses carry a strong ETag, Last-Modified and Cache-Control.
     The plain and gzip bodies are two representations with distinct ETags;

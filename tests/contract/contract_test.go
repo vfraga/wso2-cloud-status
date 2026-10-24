@@ -973,8 +973,14 @@ func TestEdgeScenario(t *testing.T) {
 	t.Run("a source that returns {} for incidents hides neither the other's incidents nor the gap", func(t *testing.T) {
 		checkEdgeMerge(t, products["developer-platform"])
 	})
-	t.Run("a source that never answers components leaves its product unknown", func(t *testing.T) {
-		checkEdgeFreshness(t, products["agent-platform"])
+	t.Run("outage, maintenance and degraded regions are affected, and an unconfigured region comes last", func(t *testing.T) {
+		checkEdgeAgentRegions(t, products["agent-platform"])
+	})
+	t.Run("a Maintenance incident has impact maintenance", func(t *testing.T) {
+		checkEdgeMaintenance(t, products["integration-platform"], sum)
+	})
+	t.Run("every status value occurs in some region", func(t *testing.T) {
+		checkEveryStatus(t, sum)
 	})
 	t.Run("a silent source of a multi-source product leaves only its own regions unknown", func(t *testing.T) {
 		checkEdgeSilentSibling(t, products["developer-platform"])
@@ -982,6 +988,111 @@ func TestEdgeScenario(t *testing.T) {
 	t.Run("checked_at is null and stale is true exactly for the kinds never answered", func(t *testing.T) {
 		checkEdgeFeeds(t, products)
 	})
+}
+
+// checkEdgeAgentRegions: agent-manager answers with an outage component in
+// its US control plane, a maintenance one in its US data plane, and a
+// degraded one under "ap - 9", a key the configuration does not name. Each
+// region takes its worst component and counts as affected, and the
+// unconfigured region has no location and comes after the located ones.
+func checkEdgeAgentRegions(t *testing.T, p product) {
+	t.Helper()
+	want := []region{
+		{ID: "us-control-plane", Location: "us", Status: "outage"},
+		{ID: "us-data-plane", Location: "us", Status: "maintenance"},
+		{ID: "ap-9", Status: "degraded"},
+	}
+	if len(p.Regions) != len(want) {
+		t.Fatalf("agent-platform regions = %+v, want %d", p.Regions, len(want))
+	}
+	for i, r := range p.Regions {
+		if r.ID != want[i].ID || r.Location != want[i].Location || r.Status != want[i].Status {
+			t.Errorf("agent-platform region %d = %s (location %q) %s, want %s (location %q) %s",
+				i, r.ID, r.Location, r.Status, want[i].ID, want[i].Location, want[i].Status)
+		}
+	}
+	if p.AffectedRegions != len(want) || p.Status != "outage" || !p.DataComplete {
+		t.Errorf("agent-platform: affected_regions %d, status %s, data_complete %v; want %d, outage, true",
+			p.AffectedRegions, p.Status, p.DataComplete, len(want))
+	}
+	if len(p.Locations) != 1 || p.Locations[0].ID != "us" || p.Locations[0].Status != "outage" {
+		t.Errorf("agent-platform locations = %+v, want us only, outage", p.Locations)
+	}
+}
+
+// checkEdgeMaintenance: devant has an active incident of type Maintenance.
+// Its impact is maintenance, it raises the product, whose regions are
+// operational, to maintenance without affecting a region, today is a
+// maintenance day, and the summary lists it as active.
+func checkEdgeMaintenance(t *testing.T, p product, sum summary) {
+	t.Helper()
+	var planned *incident
+	for i, inc := range p.Incidents {
+		if inc.ID == "edge-maintenance" {
+			planned = &p.Incidents[i]
+		}
+	}
+	if planned == nil || planned.Impact != "maintenance" || planned.ResolvedAt != nil {
+		t.Fatalf("integration-platform incident = %+v, want active with impact maintenance", planned)
+	}
+	if p.Status != "maintenance" || p.AffectedRegions != 0 {
+		t.Errorf("integration-platform: status %s, affected_regions %d; want maintenance, 0", p.Status, p.AffectedRegions)
+	}
+	if today := p.History[len(p.History)-1]; today.Status != "maintenance" {
+		t.Errorf("integration-platform today = %+v, want maintenance", today)
+	} else if _, ok := today.Minutes["maintenance"]; !ok {
+		t.Errorf("integration-platform today = %+v, want maintenance minutes", today)
+	}
+	found := false
+	for _, inc := range sum.ActiveIncidents {
+		found = found || inc.ID == planned.ID
+	}
+	if !found {
+		t.Error("the maintenance incident is missing from the summary's active incidents")
+	}
+}
+
+// checkEveryStatus: each value of the API's Status occurs as the status of
+// some region in the edge data, so every status is read end to end.
+func checkEveryStatus(t *testing.T, sum summary) {
+	t.Helper()
+	seen := map[string]bool{}
+	for _, p := range sum.Products {
+		for _, r := range p.Regions {
+			seen[r.Status] = true
+		}
+	}
+	for _, s := range statusValues(t) {
+		if !seen[s] {
+			t.Errorf("no region in the edge data has status %q; add one to testdata/contract-edge", s)
+		}
+	}
+}
+
+// statusValues reads the values of the Status schema in api/openapi.yaml.
+func statusValues(t *testing.T) []string {
+	t.Helper()
+	raw, err := os.ReadFile("../../api/openapi.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var doc struct {
+		Components struct {
+			Schemas struct {
+				Status struct {
+					Enum []string `yaml:"enum"`
+				} `yaml:"Status"`
+			} `yaml:"schemas"`
+		} `yaml:"components"`
+	}
+	if err := yaml.Unmarshal(raw, &doc); err != nil {
+		t.Fatal(err)
+	}
+	values := doc.Components.Schemas.Status.Enum
+	if len(values) == 0 {
+		t.Fatal("api/openapi.yaml: the Status schema has no enum")
+	}
+	return values
 }
 
 // checkEdgeSilentSibling: choreo-eu answers {} for components and incidents,
@@ -1003,14 +1114,13 @@ func checkEdgeSilentSibling(t *testing.T, p product) {
 	}
 }
 
-// checkEdgeFeeds: in the edge data agent-manager never answers components
-// and choreo-eu never answers components or incidents; everything else
-// answers. Each never-answered kind is null in checked_at and stale; every
-// other kind is checked and fresh.
+// checkEdgeFeeds: in the edge data choreo-eu never answers components or
+// incidents (it answers {}); everything else answers. Each never-answered
+// kind is null in checked_at and stale; every other kind is checked and
+// fresh.
 func checkEdgeFeeds(t *testing.T, products map[string]product) {
 	t.Helper()
 	never := map[string]staleFlags{
-		"agent-platform":     {Components: true},
 		"developer-platform": {Components: true, Incidents: true},
 	}
 	for id, p := range products {
@@ -1022,16 +1132,6 @@ func checkEdgeFeeds(t *testing.T, products map[string]product) {
 		if p.Outdated != (want.Incidents || want.Uptime) {
 			t.Errorf("%s: outdated = %v, want %v", id, p.Outdated, want.Incidents || want.Uptime)
 		}
-	}
-}
-
-// checkEdgeFreshness: agent-manager answers {} for components, so it has
-// never answered. Its product reads unknown and incomplete. checkEdgeFeeds
-// checks that only its checked_at.components is null and stale.
-func checkEdgeFreshness(t *testing.T, silent product) {
-	t.Helper()
-	if silent.Status != "unknown" || silent.DataComplete {
-		t.Errorf("agent-platform: status %s, data_complete %v; want unknown and incomplete", silent.Status, silent.DataComplete)
 	}
 }
 

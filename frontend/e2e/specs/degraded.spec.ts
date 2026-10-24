@@ -28,14 +28,15 @@ import {
   shotPath,
 } from "../helpers";
 
-test.describe("one degraded component and an active incident", () => {
+test.describe("outage, degraded and maintenance components in one place, and an active incident", () => {
   test("banner, auto-expanded product and affected-region count", async ({ page }) => {
     await ready(page);
-    await expect(page.getByRole("heading", { level: 1 })).toHaveText("Degraded performance");
-    // The banner names the affected product and region.
-    await expect(page.getByRole("region", { name: "Overall status" })).toContainText(
-      `Affected: API Platform (EU data plane). ${ALL_BUT_ONE_OPERATIONAL}`,
-    );
+    await expect(page.getByRole("heading", { level: 1 })).toHaveText("Service outage");
+    // The banner names the affected product and regions, grouped by status.
+    const banner = page.getByRole("region", { name: "Overall status" });
+    await expect(banner).toContainText("Service outage: API Platform (EU data plane).");
+    await expect(banner).toContainText("Under maintenance: API Platform (EU control plane).");
+    await expect(banner).toContainText(ALL_BUT_ONE_OPERATIONAL);
     const rows = productRows(page);
     const api = rows.filter({ has: page.getByRole("heading", { level: 2, name: "API Platform" }) });
     await expect(api.getByRole("button", { name: /^2 regions/ })).toHaveAttribute(
@@ -147,8 +148,8 @@ test.describe("one degraded component and an active incident", () => {
     const part = await api.getByText("Data plane", { exact: true }).boundingBox();
     expect((part?.x ?? 0) - (place?.x ?? 0)).toBeGreaterThanOrEqual(15.5);
     expect((part?.x ?? 0) - (place?.x ?? 0)).toBeLessThanOrEqual(16.5);
-    const productStatus = await api.getByText("Degraded performance").first().boundingBox();
-    const regionStatus = await api.getByText("Degraded performance").last().boundingBox();
+    const productStatus = await api.getByText("Service outage").first().boundingBox();
+    const regionStatus = await api.getByText("Service outage").last().boundingBox();
     const right = (b: typeof productStatus): number => (b?.x ?? 0) + (b?.width ?? 0);
     expect(Math.abs(right(productStatus) - right(regionStatus))).toBeLessThanOrEqual(1);
   });
@@ -204,13 +205,14 @@ test.describe("one degraded component and an active incident", () => {
     await context.close();
   });
 
-  test("the product page names the affected region under the headline", async ({ page }) => {
+  test("the product page names the affected regions under the headline", async ({ page }) => {
     await readyProduct(page, "api-platform", "API Platform");
     const banner = page.getByRole("region", { name: "Overall status" });
     await expect(banner.getByRole("heading", { level: 1 })).toHaveAccessibleName(
-      "API Platform: Degraded performance",
+      "API Platform: Service outage",
     );
-    await expect(banner).toContainText("Affected: EU data plane.");
+    await expect(banner).toContainText("Service outage: EU data plane.");
+    await expect(banner).toContainText("Under maintenance: EU control plane.");
     // The ongoing incident comes first, above the history and the regions.
     const active = page.getByRole("region", { name: "Active incidents" });
     await expect(active.getByRole("heading", { level: 3 })).toHaveText(
