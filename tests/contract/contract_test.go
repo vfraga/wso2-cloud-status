@@ -653,6 +653,23 @@ func TestEveryResponseIsCacheExplicit(t *testing.T) {
 	}
 }
 
+// TestEncodedPaths: a percent-encoded spelling of a data path is not the
+// data. Each spelling would be a separate CDN cache entry, so it gets the
+// cacheable 404 for unknown paths.
+func TestEncodedPaths(t *testing.T) {
+	base := baseURL(t)
+	for _, path := range []string{"/api/v1/%73ummary", "/api/v1/sum%6dary", "/api/v1/%69ncidents", "/api/v1/products/mo%65sif"} {
+		p := probe{method: http.MethodGet, path: path}
+		r := p.send(t, base)
+		if r.code != http.StatusNotFound {
+			t.Errorf("%s: %d, want 404", p, r.code)
+		}
+		if cc := r.header.Get("Cache-Control"); cc == "" || strings.Contains(cc, "no-store") {
+			t.Errorf("%s: Cache-Control %q, want the cacheable 404", p, cc)
+		}
+	}
+}
+
 // TestAcceptEncoding runs the content negotiation table the handler tests share.
 func TestAcceptEncoding(t *testing.T) {
 	base := baseURL(t)

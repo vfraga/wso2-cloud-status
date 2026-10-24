@@ -77,7 +77,7 @@ func NewHandler(opts Options) http.Handler {
 	})
 	registerProbes(mux, opts.Store)
 	mux.HandleFunc("/", h.fallback(mux))
-	return chain(mux,
+	return chain(h.canonicalOnly(mux),
 		recoverer(opts.Logger),
 		securityHeaders,
 		defaultCacheControl(h.notFoundCache),
@@ -137,6 +137,21 @@ func (h *handler) fallback(mux *http.ServeMux) http.HandlerFunc {
 		}
 		problem(w, http.StatusNotFound, h.notFoundCache, "Not found", "No resource exists at this path.")
 	}
+}
+
+// canonicalOnly answers a percent-encoded spelling of a path (one whose
+// escaped form is not the default, so r.URL.RawPath is set) with the
+// cacheable 404 for unknown paths, before routing. Ids are [a-z0-9-] and the
+// page never encodes a path, so every such spelling would otherwise be a
+// separate cache entry at the CDN, each answered with a full body.
+func (h *handler) canonicalOnly(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.RawPath != "" {
+			problem(w, http.StatusNotFound, h.notFoundCache, "Not found", "No resource exists at this path.")
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
 }
 
 func (h *handler) serve(w http.ResponseWriter, r *http.Request, key string) {

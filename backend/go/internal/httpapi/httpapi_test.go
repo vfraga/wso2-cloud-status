@@ -259,6 +259,32 @@ func TestNotFoundAndMethodNotAllowed(t *testing.T) {
 	}
 }
 
+// TestEncodedPathsAreNotFound: a percent-encoded spelling of a path gets the
+// cacheable 404 for unknown paths, not the canonical path's body.
+func TestEncodedPathsAreNotFound(t *testing.T) {
+	t.Parallel()
+	store := &Store{}
+	if err := store.Publish(sampleBuild()); err != nil {
+		t.Fatal(err)
+	}
+	obs := &observed{}
+	h := NewHandler(Options{Store: store, NotFoundCacheControl: "public, max-age=60", Observer: obs})
+	for _, path := range []string{"/api/v1/%73ummary", "/api/v1/sum%6dary", "/api/v1/%69ncidents", "/api/v1/products/api%2Dplatform", "/%68ealthz"} {
+		rec := do(h, http.MethodGet, path, nil)
+		if rec.Code != http.StatusNotFound || rec.Header().Get("Cache-Control") != "public, max-age=60" ||
+			rec.Header().Get("Content-Type") != "application/problem+json" {
+			t.Errorf("GET %s: %d Cache-Control %q Content-Type %q, want the cacheable 404", path, rec.Code,
+				rec.Header().Get("Cache-Control"), rec.Header().Get("Content-Type"))
+		}
+	}
+	if rec := do(h, http.MethodGet, "/api/v1/summary", nil); rec.Code != http.StatusOK {
+		t.Fatalf("the canonical path: %d, want 200", rec.Code)
+	}
+	if obs.routes[0] != "unmatched" {
+		t.Fatalf("route label = %q, want unmatched", obs.routes[0])
+	}
+}
+
 func TestWarmingUp(t *testing.T) {
 	t.Parallel()
 	h, _, _ := newTestHandler(t, false)
