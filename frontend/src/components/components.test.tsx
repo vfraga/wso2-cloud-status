@@ -1315,7 +1315,7 @@ describe("small pieces", () => {
       </>,
     );
     expect(screen.getByText("Under maintenance")).toBeInTheDocument();
-    expect(screen.getByLabelText("Loading products")).toHaveAttribute("aria-busy", "true");
+    expect(document.querySelector('[aria-busy="true"]')).toBeInTheDocument();
   });
 
   it("shows a plain message when rendering throws, and the title stops naming a status", () => {

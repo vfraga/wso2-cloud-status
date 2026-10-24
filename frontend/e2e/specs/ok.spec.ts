@@ -438,6 +438,16 @@ test.describe("all operational", () => {
     );
   });
 
+  test("axe finds no serious or critical issues while the data loads", async ({ page }) => {
+    // The API never answers within the test: the page stays in its loading state.
+    await page.route("**/api/v1/**", () => new Promise(() => undefined));
+    for (const path of ["/", "/products/api-platform"]) {
+      await page.goto(path);
+      await expect(page.getByRole("heading", { level: 1 })).toContainText("Checking status");
+      await expectNoSeriousViolations(page);
+    }
+  });
+
   for (const scheme of ["light", "dark"] as const) {
     test(`axe finds no serious or critical issues in ${scheme} mode`, async ({ browser }) => {
       const context = await browser.newContext({ colorScheme: scheme });

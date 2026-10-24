@@ -58,6 +58,9 @@ section here. The public API has its own version, in `api/openapi.yaml`.
   elsewhere, instead of closing 1.5 s after the tap.
 - A screen reader no longer hears "Status changed" again with every later
   notice: the change announcement has its own live region.
+- The loading placeholder no longer carries a label a plain element may
+  not have (an accessibility error while the page loads); an accessibility
+  scan of the loading state now runs with the others.
 - statusd lists each incident once at a cost that grows with the number of
   records rather than its square, and rejects an incident answer of more
   than 500 records as malformed: an upstream that filed one event
