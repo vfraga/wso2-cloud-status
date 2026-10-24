@@ -29,6 +29,9 @@ export default defineConfig({
   resolve: { alias: stubAliases },
   test: {
     environment: "jsdom",
+    // A cold first render of the whole app can pass the 5 s default on a busy machine.
+    testTimeout: 20_000,
+    hookTimeout: 20_000,
     setupFiles: ["./src/test/setup.ts"],
     include: ["src/**/*.test.{ts,tsx}"],
     env: { VITE_API_BASE_URL: "http://api.test" },

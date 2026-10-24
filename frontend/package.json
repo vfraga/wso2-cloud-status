@@ -46,7 +46,7 @@
     "lint": "eslint . --max-warnings 0 && prettier --check .",
     "format": "prettier --write .",
     "test": "vitest run --coverage && npm run test:zones",
-    "test:zones": "VITEST_TZ=Asia/Colombo vitest run && VITEST_TZ=America/Sao_Paulo vitest run",
+    "test:zones": "VITEST_TZ=Asia/Colombo vitest run && VITEST_TZ=America/Sao_Paulo vitest run && VITEST_LOCALE=de LC_ALL=de_DE.UTF-8 LANG=de_DE.UTF-8 vitest run src/lib/locale.test.ts",
     "test:watch": "vitest",
     "e2e:install": "playwright install chromium",
     "e2e": "bash scripts/e2e.sh"
