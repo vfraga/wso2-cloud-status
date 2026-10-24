@@ -45,7 +45,7 @@ cd frontend && nvm use && npm ci && npm run dev   # http://localhost:5173, proxi
 
 | Endpoint | Purpose |
 |---|---|
-| `GET /api/v1/summary` | overall status, product rows with regions and 90-day history, active incidents |
+| `GET /api/v1/summary` | overall status, product rows with regions (grouped by location, with uptime) and 90-day history, active incidents |
 | `GET /api/v1/products/{id}` | regions, component groups, uptime and incidents for one product |
 | `GET /api/v1/incidents` | active incidents and those within the history window |
 | `GET /healthz`, `GET /readyz` | probes (also on the admin port) |

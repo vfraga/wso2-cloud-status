@@ -18,6 +18,7 @@
 
 import type { ProductSummary, Status, Summary } from "../api/types";
 import { componentFreshness } from "./freshness";
+import { productRows, rowStatus } from "./regions";
 import {
   BANNER_LABEL,
   COMPONENTS_UNAVAILABLE,
@@ -75,10 +76,15 @@ function withDetail(headline: Headline, lines: readonly DetailLine[]): Headline 
 
 const line = (status: Status | null, text: string): DetailLine => ({ status, text });
 
-/** "2 of 5 regions unavailable", or a note on components when every region is known. */
+/**
+ * "1 of 2 regions unavailable", counting what the row lists (a location
+ * whose parts are partly unknown counts as unknown unless one has a
+ * problem), or a note on components when every region is known.
+ */
 export function missingDataText(product: ProductSummary): string {
-  const unknown = product.regions.filter((r) => r.status === "unknown").length;
-  return unknown > 0 ? regionsUnavailable(unknown, product.regions.length) : COMPONENTS_UNAVAILABLE;
+  const rows = productRows(product);
+  const unknown = rows.filter((r) => rowStatus(r) === "unknown").length;
+  return unknown > 0 ? regionsUnavailable(unknown, rows.length) : COMPONENTS_UNAVAILABLE;
 }
 
 /** Names to list under each problem status, in the order they were added. */
@@ -88,7 +94,7 @@ function add(affected: Affected, status: Status, name: string): void {
   affected.set(status, [...(affected.get(status) ?? []), name]);
 }
 
-/** The product's problem regions by status: "API Platform (EU Data Plane)". */
+/** The product's problem regions by status: "API Platform (EU data plane)". */
 function addProduct(affected: Affected, product: ProductSummary): void {
   for (const status of PROBLEMS) {
     const regions = product.regions.filter((r) => r.status === status).map((r) => r.name);

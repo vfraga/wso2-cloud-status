@@ -112,8 +112,8 @@ func TestSummaryStatus(t *testing.T) {
 		{[]domain.Status{out, dg}, true, out},
 	}
 	for _, tt := range tests {
-		if got := summaryStatus(tt.products, tt.complete); got != tt.want {
-			t.Errorf("summaryStatus(%v, complete=%v) = %v, want %v", tt.products, tt.complete, got, tt.want)
+		if got := failClosed(tt.products, tt.complete); got != tt.want {
+			t.Errorf("failClosed(%v, complete=%v) = %v, want %v", tt.products, tt.complete, got, tt.want)
 		}
 	}
 
@@ -223,7 +223,7 @@ func TestCheckedAt(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if want := `"outdated":true,"checked_at":{"components":"2026-10-20T11:58:00Z","incidents":"2026-10-20T11:59:00Z","uptime":null},"stale":{"components":false,"incidents":false,"uptime":true},"regions"`; !strings.Contains(string(raw), want) {
+	if want := `"outdated":true,"checked_at":{"components":"2026-10-20T11:58:00Z","incidents":"2026-10-20T11:59:00Z","uptime":null},"stale":{"components":false,"incidents":false,"uptime":true},"locations":[],"regions"`; !strings.Contains(string(raw), want) {
 		t.Fatalf("product JSON = %s\nwant it to contain %s", raw, want)
 	}
 }
@@ -1024,12 +1024,106 @@ func nullPaths(path string, v any) []string {
 	}
 }
 
-func TestSlugify(t *testing.T) {
+// locatedProduct has two locations whose regions come from two sources,
+// listed out of order, as Developer Platform's are: the US-managed EU data
+// plane is read from the US cloud.
+func locatedProduct() config.Product {
+	return config.Product{ID: "three", Name: "Three", PageURL: "https://three.test", Sources: []config.SourceRef{
+		{Backend: "b", Cloud: "s4", Regions: []config.RegionRef{
+			{Key: "dp", ID: "us-dp", Name: "US data plane", Location: "US"},
+			{Key: "cp", ID: "us-cp", Name: "US control plane", Location: "US"},
+			{Key: "eu-dp", ID: "eu-dp-us", Name: "EU data plane (US-managed)", Location: "EU"},
+		}},
+		{Backend: "b", Cloud: "s5", PageURL: "https://eu.three.test", Regions: []config.RegionRef{
+			{Key: "cp", ID: "eu-cp", Name: "EU control plane", Location: "EU"},
+			{Key: "dp", ID: "eu-dp", Name: "EU data plane", Location: "EU"},
+		}},
+	}}
+}
+
+func locatedState() map[string]sourceState {
+	st := freshState()
+	up := fetched[source.Uptime]{data: source.Uptime{
+		"cp": {{Window: "90d", Percent: 99.994}}, "dp": {{Window: "90d", Percent: 100}}, "eu-dp": {{Window: "90d", Percent: 99.993}},
+	}, at: t0}
+	st["b/s4"] = sourceState{components: fetched[source.Components]{data: healthy("dp", "cp", "eu-dp"), at: t0}, uptime: up, incidents: st["b/s1"].incidents}
+	st["b/s5"] = sourceState{components: fetched[source.Components]{data: healthy("cp", "dp"), at: t0}, uptime: up, incidents: st["b/s1"].incidents}
+	return st
+}
+
+func buildLocated(st map[string]sourceState) ProductDetail {
+	p := params(st, t0)
+	p.products = append(p.products, locatedProduct())
+	return build(p).Products["three"]
+}
+
+// TestLocationsGroupRegions: the regions of one location are listed
+// together, locations in the order the configuration first names them and
+// regions by name within one, so each control plane comes first whatever
+// source it is read from. Summary and detail agree, and the summary carries
+// the uptime figures.
+func TestLocationsGroupRegions(t *testing.T) {
 	t.Parallel()
-	for in, want := range map[string]string{"cp - us": "cp-us", "EU - DP - EU": "eu-dp-eu", "  x  ": "x"} {
-		if got := slugify(in); got != want {
-			t.Fatalf("slugify(%q) = %q, want %q", in, got, want)
+	three := buildLocated(locatedState())
+	want := []Location{
+		{ID: "us", Name: "US", Status: domain.StatusOperational},
+		{ID: "eu", Name: "EU", Status: domain.StatusOperational},
+	}
+	if !slices.Equal(three.Locations, want) {
+		t.Fatalf("locations = %+v, want %+v", three.Locations, want)
+	}
+	got := make([]string, 0, len(three.Regions))
+	for i, r := range three.Regions {
+		got = append(got, r.Location+"/"+r.ID)
+		d := three.RegionDetails[i]
+		if d.ID != r.ID || d.Location != r.Location || !slices.Equal(d.Uptime, r.Uptime) || len(r.Uptime) != 1 {
+			t.Errorf("region %d: summary %+v and detail %s/%s %v disagree", i, r, d.Location, d.ID, d.Uptime)
 		}
+	}
+	if order := []string{"us/us-cp", "us/us-dp", "eu/eu-cp", "eu/eu-dp", "eu/eu-dp-us"}; !slices.Equal(got, order) {
+		t.Fatalf("regions = %v, want %v", got, order)
+	}
+	if one := build(params(freshState(), t0)).Products["one"]; one.Locations == nil || len(one.Locations) != 0 || one.Regions[0].Location != "" {
+		t.Fatalf("a product without locations: locations %#v, first region location %q", one.Locations, one.Regions[0].Location)
+	}
+}
+
+// TestLocationStatusFailsClosed: a location is unknown when one of its
+// regions is and no problem is known, and a known problem leads.
+func TestLocationStatusFailsClosed(t *testing.T) {
+	t.Parallel()
+	st := locatedState()
+	s5 := st["b/s5"]
+	s5.components.at = t0.Add(-10 * time.Minute)
+	st["b/s5"] = s5
+	three := buildLocated(st)
+	if got := three.Locations[1].Status; got != domain.StatusUnknown {
+		t.Fatalf("EU with its own cloud stale: %v, want unknown", got)
+	}
+	if got := three.Locations[0].Status; got != domain.StatusOperational {
+		t.Fatalf("US: %v, want operational", got)
+	}
+	s4 := st["b/s4"]
+	s4.components.data = healthy("dp", "cp")
+	s4.components.data["eu-dp"] = []domain.Group{group(domain.StatusDegraded)}
+	st["b/s4"] = s4
+	if got := buildLocated(st).Locations[1].Status; got != domain.StatusDegraded {
+		t.Fatalf("EU with a degraded plane and two unknown: %v, want degraded", got)
+	}
+}
+
+// TestUnmatchedRegionFollowsTheLocations: a region the upstream adds and the
+// configuration does not name has no location and is listed last.
+func TestUnmatchedRegionFollowsTheLocations(t *testing.T) {
+	t.Parallel()
+	st := locatedState()
+	s4 := st["b/s4"]
+	s4.components.data = healthy("dp", "cp", "eu-dp", "ap")
+	st["b/s4"] = s4
+	three := buildLocated(st)
+	last := three.Regions[len(three.Regions)-1]
+	if len(three.Regions) != 6 || last.ID != "ap" || last.Location != "" {
+		t.Fatalf("regions = %+v", three.Regions)
 	}
 }
 

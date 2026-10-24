@@ -52,11 +52,23 @@ type ProductSummary struct {
 	DataComplete bool `json:"data_complete"`
 	// Outdated is Stale.Incidents or Stale.Uptime. The last known data is
 	// still shown.
-	Outdated  bool            `json:"outdated"`
-	CheckedAt CheckedAt       `json:"checked_at"`
-	Stale     Stale           `json:"stale"`
+	Outdated  bool      `json:"outdated"`
+	CheckedAt CheckedAt `json:"checked_at"`
+	Stale     Stale     `json:"stale"`
+	// Locations group the regions that are parts of one place; empty when
+	// the product's regions are places themselves.
+	Locations []Location      `json:"locations"`
 	Regions   []RegionSummary `json:"regions"`
 	History   []domain.Day    `json:"history"`
+}
+
+// Location is a place a product runs in, such as US, whose regions are its
+// parts (a control plane, a data plane). Its status is failClosed over
+// theirs.
+type Location struct {
+	ID     string        `json:"id"`
+	Name   string        `json:"name"`
+	Status domain.Status `json:"status"`
 }
 
 // CheckedAt holds, per kind of data, the oldest last successful fetch among
@@ -80,10 +92,13 @@ type Stale struct {
 
 // RegionSummary is one region inside a product row.
 type RegionSummary struct {
-	ID      string        `json:"id"`
-	Name    string        `json:"name"`
-	Status  domain.Status `json:"status"`
-	PageURL string        `json:"page_url"`
+	ID string `json:"id"`
+	// Location is the ID of the Location the region is part of, if any.
+	Location string          `json:"location,omitempty"`
+	Name     string          `json:"name"`
+	Status   domain.Status   `json:"status"`
+	Uptime   []domain.Uptime `json:"uptime"`
+	PageURL  string          `json:"page_url"`
 }
 
 // ProductDetail is the body of GET /api/v1/products/{id}.
@@ -98,7 +113,9 @@ type ProductDetail struct {
 // RegionDetail is a region with its component groups and uptime.
 type RegionDetail struct {
 	domain.Region
-	PageURL string `json:"page_url"`
+	// Location is RegionSummary.Location.
+	Location string `json:"location,omitempty"`
+	PageURL  string `json:"page_url"`
 }
 
 // Incidents is the body of GET /api/v1/incidents.

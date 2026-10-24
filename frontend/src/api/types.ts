@@ -40,15 +40,24 @@ export interface Group {
   components: Component[];
 }
 
+/** A place a product runs in, such as US, whose regions are its parts. */
+export interface Location {
+  id: string;
+  name: string;
+  status: Status;
+}
+
 export interface RegionSummary {
   id: string;
   name: string;
   status: Status;
   pageUrl: string;
+  uptime: Uptime[];
+  /** The id of the location the region is part of, if any. */
+  location?: string;
 }
 
 export interface RegionDetail extends RegionSummary {
-  uptime: Uptime[];
   groups: Group[];
 }
 
@@ -94,11 +103,12 @@ export interface ProductSummary {
   description?: string;
   pageUrl: string;
   status: Status;
-  affectedRegions: number;
   /** False when any region or component status is unknown. */
   dataComplete: boolean;
   /** How current each kind of its data is; every kind is stale when the API does not say. */
   freshness: ProductFreshness;
+  /** Empty when the regions are places themselves. */
+  locations: Location[];
   regions: RegionSummary[];
   history: Day[];
 }

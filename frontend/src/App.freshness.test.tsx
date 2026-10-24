@@ -330,8 +330,8 @@ describe("an incident feed that stopped after answering", () => {
     render(<App />);
     const products = await screen.findByRole("region", { name: "Products" });
     expect(await within(products).findByText(/^Incidents last updated/)).toBeInTheDocument();
-    // The home page shows no uptime, so its row says nothing of the uptime feed.
-    expect(within(products).queryByText(/^Uptime last updated/)).toBeNull();
+    // The home page shows each region's uptime, so its row names that feed too.
+    expect(within(products).getByText(/^Uptime last updated/)).toBeInTheDocument();
   });
 
   it("marks the partly covered day and the incomplete list on the product page", async () => {

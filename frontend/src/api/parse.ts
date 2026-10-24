@@ -23,6 +23,7 @@ import {
   type Day,
   type Group,
   type Incident,
+  type Location,
   type PerKind,
   type ProductDetail,
   type ProductFreshness,
@@ -95,13 +96,22 @@ function toRegion(r: Rec, fallbackUrl: string): RegionSummary | null {
     name: str(r.name, id),
     status: toStatus(r.status),
     pageUrl: str(r.page_url, fallbackUrl),
+    uptime: toUptime(r),
+    ...optionalString("location", r.location),
   };
 }
 
 function toRegionDetail(r: Rec, fallbackUrl: string): RegionDetail | null {
   const base = toRegion(r, fallbackUrl);
   if (!base) return null;
-  return { ...base, uptime: toUptime(r), groups: records(r.groups).map(toGroup) };
+  return { ...base, groups: records(r.groups).map(toGroup) };
+}
+
+/** A location without an id is dropped; its regions are then listed on their own. */
+function toLocation(r: Rec): Location | null {
+  const id = str(r.id);
+  if (id === "") return null;
+  return { id, name: str(r.name, id), status: toStatus(r.status) };
 }
 
 function toMinutes(v: unknown): Day["minutes"] {
@@ -187,13 +197,11 @@ function toProduct(r: Rec): ProductSummary | null {
   const regions = records(sent)
     .map((x) => toRegion(x, pageUrl))
     .filter(nonNull);
-  const affected = r.affected_regions;
   return {
     id,
     name: str(r.name, id),
     pageUrl,
     status: toStatus(r.status),
-    affectedRegions: typeof affected === "number" && affected > 0 ? affected : 0,
     // Fails closed: complete only when the API says so, every region it sent
     // could be read, and none of them is unknown.
     dataComplete:
@@ -201,6 +209,7 @@ function toProduct(r: Rec): ProductSummary | null {
       regions.length === sent.length &&
       regions.every((x) => x.status !== "unknown"),
     freshness: toFreshness(r),
+    locations: records(r.locations).map(toLocation).filter(nonNull),
     regions,
     history: records(r.history).map(toDay).filter(nonNull),
     ...optionalString("description", r.description),

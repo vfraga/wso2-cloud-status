@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: WSO2 Cloud Status API
-  version: 1.0.0
+  version: 1.1.0
   summary: Read-only status of the WSO2 Cloud products.
   description: |
     Public, unauthenticated, read-only API behind the WSO2 Cloud status page.
@@ -20,7 +20,16 @@ info:
     stable, so clients may store them and match on them. Removing or
     renaming one follows a deprecation notice; it never happens silently.
     A region the configuration does not name yet is listed under a derived
-    id (see RegionId), which can change when the region is named.
+    id (see RegionId), which can change when the region is named. A
+    location id is derived from the location's name and is stable while
+    the name is.
+
+    Regions and locations: a product's "regions" are where it runs, or the
+    parts of one place (a control plane, a data plane). Parts carry the id
+    of their place in "location", and the product's "locations" list those
+    places with a status of their own. A product's regions all have a
+    location or none do; a region the configuration does not name has
+    none.
 
     Caching: responses carry a strong ETag, Last-Modified and Cache-Control.
     Clients should poll with If-None-Match (or If-Modified-Since, which is
@@ -321,14 +330,43 @@ components:
       allOf:
         - $ref: "#/components/schemas/Slug"
 
+    LocationId:
+      description: >-
+        Unique within the product: the slug of the location's name. A
+        region's "location" is the id of an entry of its product's
+        "locations".
+      allOf:
+        - $ref: "#/components/schemas/Slug"
+
+    Location:
+      type: object
+      additionalProperties: false
+      required: [id, name, status]
+      description: >-
+        A place a product runs in, such as US, whose regions are its parts.
+        Listed in the order the configuration first names them.
+      properties:
+        id: { $ref: "#/components/schemas/LocationId" }
+        name: { type: string }
+        status:
+          $ref: "#/components/schemas/Status"
+          description: >-
+            The most severe known status of its regions, except that it is
+            "unknown" when one of them is and none is maintenance or worse.
+
     RegionSummary:
       type: object
       additionalProperties: false
-      required: [id, name, status, page_url]
+      required: [id, name, status, uptime, page_url]
       properties:
         id: { $ref: "#/components/schemas/RegionId" }
+        location: { $ref: "#/components/schemas/LocationId" }
         name: { type: string }
         status: { $ref: "#/components/schemas/Status" }
+        uptime:
+          type: array
+          description: The same figures as the region's entry in "region_details".
+          items: { $ref: "#/components/schemas/Uptime" }
         page_url: { type: string, format: uri }
 
     RegionDetail:
@@ -337,6 +375,7 @@ components:
       required: [id, name, status, uptime, groups, page_url]
       properties:
         id: { $ref: "#/components/schemas/RegionId" }
+        location: { $ref: "#/components/schemas/LocationId" }
         name: { type: string }
         status: { $ref: "#/components/schemas/Status" }
         uptime:
@@ -414,7 +453,7 @@ components:
 
     ProductSummary:
       type: object
-      required: [id, name, page_url, status, affected_regions, data_complete, outdated, checked_at, stale, regions, history]
+      required: [id, name, page_url, status, affected_regions, data_complete, outdated, checked_at, stale, locations, regions, history]
       properties:
         id: { $ref: "#/components/schemas/Slug" }
         name: { type: string }
@@ -443,8 +482,15 @@ components:
             is shown as "unknown" statuses instead.
         checked_at: { $ref: "#/components/schemas/CheckedAt" }
         stale: { $ref: "#/components/schemas/Stale" }
+        locations:
+          type: array
+          description: Empty when the product's regions have no location.
+          items: { $ref: "#/components/schemas/Location" }
         regions:
           type: array
+          description: >-
+            Each location's regions together, in the order of "locations" and
+            by name within one, then the regions without a location.
           items: { $ref: "#/components/schemas/RegionSummary" }
         history:
           type: array

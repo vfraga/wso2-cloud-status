@@ -29,15 +29,15 @@ import {
   formatUtcClock,
   formatUtcDateTime,
 } from "../lib/time";
-import { apiTime, days, incident, product } from "../test/factories";
+import { apiTime, days, incident, locatedProduct, part, product } from "../test/factories";
 import { Banner } from "./Banner";
 import { HistoryStrip } from "./HistoryStrip";
 import { IncidentItem } from "./IncidentMeta";
 import { ProductRow } from "./ProductRow";
-import { RegionDetailPanel } from "./RegionDetailPanel";
+import { LocationPanel, RegionDetailPanel } from "./RegionDetailPanel";
 import { Regions } from "./Regions";
 import { ThemeRoot } from "../theme/ThemeRoot";
-import { UptimeList, formatPercent } from "./UptimeList";
+import { UptimeFigure, UptimeList, formatPercent } from "./UptimeList";
 import { ErrorBoundary } from "./ErrorBoundary";
 import { ProductListSkeleton } from "./Skeletons";
 import { StatusLabel } from "./StatusIcon";
@@ -391,12 +391,121 @@ describe("Regions", () => {
     wrap(
       <Regions
         product={product({
-          regions: [{ id: "us", name: "US", status: "operational", pageUrl: "" }],
+          regions: [{ id: "us", name: "US", status: "operational", pageUrl: "", uptime: [] }],
         })}
         trailing={null}
       />,
     );
     expect(screen.getByRole("button", { name: /1 region$/ })).toBeInTheDocument();
+  });
+});
+
+describe("Regions by location", () => {
+  it("lists places that open into their parts, each part with its 90-day uptime", async () => {
+    const user = userEvent.setup();
+    wrap(<Regions product={locatedProduct()} trailing={null} />);
+    await user.click(screen.getByRole("button", { name: /^2 regions/ }));
+    const us = screen.getByRole("button", { name: /^US/ });
+    expect(us).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByText("Control plane")).not.toBeInTheDocument();
+    await user.click(us);
+    const panel = document.getElementById(us.getAttribute("aria-controls") ?? "");
+    const parts = within(panel!).getAllByRole("listitem");
+    expect(parts.map((li) => li.firstElementChild?.textContent)).toEqual([
+      "Control plane",
+      "Data plane",
+    ]);
+    // The figure as the upstream reports it, and words for a screen reader.
+    expect(within(parts[0]!).getByText("99.994% (90d)")).toHaveAttribute("aria-hidden", "true");
+    expect(within(parts[0]!).getByText("90-day uptime 99.994%")).toBeInTheDocument();
+    expect(within(parts[1]!).getByText("100% (90d)")).toBeInTheDocument();
+  });
+
+  it("opens the place whose part has a problem, and counts places as regions", () => {
+    const degraded = locatedProduct({
+      status: "degraded",
+      locations: [
+        { id: "us", name: "US", status: "operational" },
+        { id: "eu", name: "EU", status: "degraded" },
+      ],
+      regions: [
+        part("US control plane"),
+        part("US data plane"),
+        part("EU control plane"),
+        part("EU data plane", "degraded"),
+      ],
+    });
+    wrap(
+      <ul>
+        <ProductRow product={degraded} incidents={new Map()} />
+      </ul>,
+    );
+    expect(screen.getByText("1 of 2 regions affected")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^2 regions/ })).toHaveAttribute(
+      "aria-expanded",
+      "true",
+    );
+    expect(screen.getByRole("button", { name: /^EU/ })).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByRole("button", { name: /^US/ })).toHaveAttribute("aria-expanded", "false");
+    expect(screen.getByText("Data plane")).toBeInTheDocument();
+  });
+
+  it("lists a part whose place it cannot read on its own, under its full name", async () => {
+    const user = userEvent.setup();
+    wrap(
+      <Regions
+        product={locatedProduct({
+          locations: [{ id: "us", name: "US", status: "operational" }],
+          regions: [part("US control plane"), part("EU data plane")],
+        })}
+        trailing={null}
+      />,
+    );
+    await user.click(screen.getByRole("button", { name: /^2 regions/ }));
+    expect(screen.getByRole("button", { name: /^US/ })).toBeInTheDocument();
+    expect(screen.getByText("EU data plane")).toBeInTheDocument();
+  });
+});
+
+describe("LocationPanel", () => {
+  it("heads a place h3 and its parts h4, by their short names, with groups one level below", () => {
+    const region = (name: string) => ({
+      ...part(name, "degraded"),
+      groups: [
+        {
+          name: "Runtime",
+          status: "degraded" as const,
+          components: [{ name: "Gateway", status: "degraded" as const, uptime: [] }],
+        },
+      ],
+    });
+    wrap(
+      <ul>
+        <LocationPanel
+          location={{ id: "eu", name: "EU", status: "degraded" }}
+          regions={[region("EU control plane"), region("EU data plane")]}
+        />
+      </ul>,
+    );
+    expect(screen.getByRole("heading", { level: 3, name: "EU" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 4, name: "Control plane" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 4, name: "Data plane" })).toBeInTheDocument();
+    expect(screen.getAllByRole("heading", { level: 5, name: "Runtime" })).toHaveLength(2);
+  });
+});
+
+describe("UptimeFigure", () => {
+  it("shows the 90-day figure, or nothing without one", () => {
+    const { container, rerender } = wrap(
+      <UptimeFigure uptime={[{ window: "90d", percent: 99.9996 }]} />,
+    );
+    expect(screen.getByText("99.999% (90d)")).toBeInTheDocument();
+    rerender(
+      <ThemeRoot>
+        <UptimeFigure uptime={[{ window: "30d", percent: 100 }]} />
+      </ThemeRoot>,
+    );
+    expect(container).toHaveTextContent("");
   });
 });
 
@@ -499,7 +608,13 @@ describe("ProductRow", () => {
     wrap(
       <ul>
         <ProductRow
-          product={product({ status: "degraded", affectedRegions: 1 })}
+          product={product({
+            status: "degraded",
+            regions: [
+              { id: "us", name: "US", status: "operational", pageUrl: "", uptime: [] },
+              { id: "eu", name: "EU", status: "degraded", pageUrl: "", uptime: [] },
+            ],
+          })}
           incidents={new Map()}
         />
       </ul>,
@@ -515,8 +630,8 @@ describe("ProductRow", () => {
           product={product({
             dataComplete: false,
             regions: [
-              { id: "us", name: "US", status: "operational", pageUrl: "" },
-              { id: "eu", name: "EU", status: "unknown", pageUrl: "" },
+              { id: "us", name: "US", status: "operational", pageUrl: "", uptime: [] },
+              { id: "eu", name: "EU", status: "unknown", pageUrl: "", uptime: [] },
             ],
           })}
           incidents={new Map()}
@@ -545,11 +660,10 @@ describe("ProductRow", () => {
         <ProductRow
           product={product({
             status: "degraded",
-            affectedRegions: 1,
             dataComplete: false,
             regions: [
-              { id: "us", name: "US", status: "degraded", pageUrl: "" },
-              { id: "eu", name: "EU", status: "unknown", pageUrl: "" },
+              { id: "us", name: "US", status: "degraded", pageUrl: "", uptime: [] },
+              { id: "eu", name: "EU", status: "unknown", pageUrl: "", uptime: [] },
             ],
           })}
           incidents={new Map()}
@@ -570,7 +684,14 @@ describe("ProductRow", () => {
     const { rerender } = wrap(
       <ul>
         <ProductRow
-          product={product({ status: "outage", affectedRegions: 2, freshness: incidentsStale })}
+          product={product({
+            status: "outage",
+            regions: [
+              { id: "us", name: "US", status: "outage", pageUrl: "", uptime: [] },
+              { id: "eu", name: "EU", status: "degraded", pageUrl: "", uptime: [] },
+            ],
+            freshness: incidentsStale,
+          })}
           incidents={new Map()}
         />
       </ul>,
@@ -597,8 +718,8 @@ describe("ProductRow", () => {
     );
     expect(screen.getByText("Some data unavailable")).toBeInTheDocument();
     expect(screen.getByText("Incident information unavailable")).toBeInTheDocument();
-    // The home row shows no uptime, so it says nothing about the uptime feed.
-    expect(screen.queryByText(/^Uptime/)).toBeNull();
+    // The home row shows each region's uptime, so it names a feed that never answered.
+    expect(screen.getByText("Uptime unavailable")).toBeInTheDocument();
   });
 
   it("does not open the regions of a product with stale feeds that is otherwise healthy", () => {

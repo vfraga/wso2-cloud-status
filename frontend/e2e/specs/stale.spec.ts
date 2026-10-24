@@ -51,16 +51,15 @@ test.describe("a source that never answers", () => {
       "false",
     );
     await expect(moesif.getByText("Status unavailable").first()).toBeVisible();
-    // Its incidents never answered: no time to name. The home page shows no uptime,
-    // so the row says nothing about it.
+    // Its incidents and uptime never answered: no time to name.
     await expect(
       moesif.getByText("Incident information unavailable", { exact: true }),
     ).toBeVisible();
-    await expect(moesif.getByText("Uptime unavailable", { exact: true })).toHaveCount(0);
+    await expect(moesif.getByText("Uptime unavailable", { exact: true })).toBeVisible();
     const agent = productRows(page).filter({
       has: page.getByRole("heading", { level: 2, name: "Agent Platform" }),
     });
-    await expect(agent.getByRole("button", { name: /regions/ })).toHaveAttribute(
+    await expect(agent.getByRole("button", { name: /^\d+ regions?$/ })).toHaveAttribute(
       "aria-expanded",
       "false",
     );

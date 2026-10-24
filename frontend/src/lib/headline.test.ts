@@ -49,6 +49,7 @@ const region = (name: string, status: Status): RegionSummary => ({
   name,
   status,
   pageUrl: "",
+  uptime: [],
 });
 
 /** A product whose status and completeness follow from its regions, as the backend computes them. */
@@ -59,8 +60,6 @@ function p(name: string, ...regions: [string, Status][]): ProductSummary {
     name,
     regions: list,
     status: worst(list.map((r) => r.status)),
-    affectedRegions: list.filter((r) => r.status !== "operational" && r.status !== "unknown")
-      .length,
     dataComplete: list.length > 0 && list.every((r) => r.status !== "unknown"),
   });
 }
@@ -151,27 +150,27 @@ describe("summaryHeadline", () => {
   });
 
   it("keeps a problem as the headline and names products, regions and the missing part below", () => {
-    const api = p("API Platform", ["US", "operational"], ["EU Data Plane", "degraded"]);
+    const api = p("API Platform", ["US", "operational"], ["EU data plane", "degraded"]);
     const idp = p("Identity Platform", ["US", "outage"], ["EU", "degraded"]);
     const moesif = p("Moesif", ["US", "unknown"]);
     expect(summaryHeadline(summary(api, ok("A"), moesif))).toMatchObject({
       status: "degraded",
       label: "Degraded performance",
       detail:
-        "Affected: API Platform (EU Data Plane). Status unavailable for Moesif. The other product is operational.",
+        "Affected: API Platform (EU data plane). Status unavailable for Moesif. The other product is operational.",
     });
     // Mixed statuses are grouped, worst first, so a degraded region never reads as an outage.
     expect(summaryHeadline(summary(api, idp))).toMatchObject({
       status: "outage",
       label: "Service outage",
       detail:
-        "Service outage: Identity Platform (US). Degraded performance: API Platform (EU Data Plane) and Identity Platform (EU).",
+        "Service outage: Identity Platform (US). Degraded performance: API Platform (EU data plane) and Identity Platform (EU).",
     });
   });
 
   it("never lists maintenance under an outage", () => {
-    const api = p("API Platform", ["US", "operational"], ["EU Control Plane", "maintenance"]);
-    const integration = p("Integration Platform", ["EU Control Plane", "outage"]);
+    const api = p("API Platform", ["US", "operational"], ["EU control plane", "maintenance"]);
+    const integration = p("Integration Platform", ["EU control plane", "outage"]);
     const moesif = p("Moesif", ["US", "unknown"]);
     expect(
       summaryHeadline(summary(api, integration, moesif, ok("A"), ok("B"), ok("C"))),
@@ -179,12 +178,12 @@ describe("summaryHeadline", () => {
       status: "outage",
       label: "Service outage",
       detail:
-        "Service outage: Integration Platform (EU Control Plane). Under maintenance: API Platform (EU Control Plane). Status unavailable for Moesif. The other 3 products are operational.",
+        "Service outage: Integration Platform (EU control plane). Under maintenance: API Platform (EU control plane). Status unavailable for Moesif. The other 3 products are operational.",
     });
     // Three statuses, and one product in two groups.
     const idp = p("Identity Platform", ["US", "degraded"], ["EU", "maintenance"]);
     expect(summaryHeadline(summary(integration, idp)).detail).toBe(
-      "Service outage: Integration Platform (EU Control Plane). Degraded performance: Identity Platform (US). Under maintenance: Identity Platform (EU).",
+      "Service outage: Integration Platform (EU control plane). Degraded performance: Identity Platform (US). Under maintenance: Identity Platform (EU).",
     );
   });
 
@@ -275,13 +274,13 @@ describe("summaryHeadline", () => {
 
 describe("detail lines", () => {
   it("lists each status on its own line when more than one is named, the rest after", () => {
-    const api = p("API Platform", ["US", "operational"], ["EU Control Plane", "maintenance"]);
-    const integration = p("Integration Platform", ["EU Control Plane", "outage"]);
+    const api = p("API Platform", ["US", "operational"], ["EU control plane", "maintenance"]);
+    const integration = p("Integration Platform", ["EU control plane", "outage"]);
     const moesif = p("Moesif", ["US", "unknown"]);
     const headline = summaryHeadline(summary(api, integration, moesif, ok("A")));
     expect(headline.lines).toEqual([
-      { status: "outage", text: "Service outage: Integration Platform (EU Control Plane)." },
-      { status: "maintenance", text: "Under maintenance: API Platform (EU Control Plane)." },
+      { status: "outage", text: "Service outage: Integration Platform (EU control plane)." },
+      { status: "maintenance", text: "Under maintenance: API Platform (EU control plane)." },
       { status: "unknown", text: "Status unavailable for Moesif." },
       { status: null, text: "The other product is operational." },
     ]);
@@ -290,10 +289,10 @@ describe("detail lines", () => {
   });
 
   it("keeps one paragraph when a single status is named", () => {
-    const api = p("API Platform", ["US", "operational"], ["EU Data Plane", "degraded"]);
+    const api = p("API Platform", ["US", "operational"], ["EU data plane", "degraded"]);
     const headline = summaryHeadline(summary(api, ok("A")));
     expect(headline.detail).toBe(
-      "Affected: API Platform (EU Data Plane). The other product is operational.",
+      "Affected: API Platform (EU data plane). The other product is operational.",
     );
     expect(headline).not.toHaveProperty("lines");
   });

@@ -65,8 +65,11 @@ test.describe("all operational", () => {
   }) => {
     await ready(page);
     const first = productRows(page).first();
-    await first.getByRole("button", { name: /regions/ }).click();
-    await expect(first.getByText("US Control Plane")).toBeVisible();
+    await first.getByRole("button", { name: /^\d+ regions?$/ }).click();
+    // A place opens into its parts, each with its 90-day uptime as the upstream reports it.
+    await first.getByRole("button", { name: /^US/ }).click();
+    await expect(first.getByText("Control plane", { exact: true })).toBeVisible();
+    await expect(first.getByText(/^\d{1,3}(\.\d{1,3})?% \(90d\)$/).first()).toBeVisible();
     await expect(
       first.getByRole("link", { name: /View status page for Agent Platform/ }),
     ).toHaveAttribute("href", "https://status.cloud.wso2.com");
@@ -130,7 +133,7 @@ test.describe("all operational", () => {
     await page.setViewportSize({ width: 360, height: 800 });
     await ready(page);
     const first = productRows(page).first();
-    await first.getByRole("button", { name: /regions/ }).click();
+    await first.getByRole("button", { name: /^\d+ regions?$/ }).click();
     const overflow = await page.evaluate(
       () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
     );
@@ -174,7 +177,7 @@ test.describe("all operational", () => {
     await expect(toggle.locator(".MuiTouchRipple-ripplePulsate")).toBeHidden();
     const regions = productRows(page)
       .first()
-      .getByRole("button", { name: /regions/ });
+      .getByRole("button", { name: /^\d+ regions?$/ });
     await regions.focus();
     await page.keyboard.press("Shift+Tab");
     await page.keyboard.press("Tab");
@@ -323,7 +326,7 @@ test.describe("all operational", () => {
       await ready(page);
       await productRows(page)
         .nth(1)
-        .getByRole("button", { name: /regions/ })
+        .getByRole("button", { name: /^\d+ regions?$/ })
         .click();
       await expectNoSeriousViolations(page);
       await context.close();
@@ -344,7 +347,10 @@ test.describe("all operational", () => {
     await expect(
       page.getByRole("link", { name: "Open the API Platform status page" }),
     ).toHaveAttribute("href", "https://status.bijira.dev");
-    await expect(page.getByRole("heading", { level: 3, name: "US Control Plane" })).toBeVisible();
+    await expect(page.getByRole("heading", { level: 3, name: "US" })).toBeVisible();
+    await expect(
+      page.getByRole("heading", { level: 4, name: "Control plane" }).first(),
+    ).toBeVisible();
     await expect(page.getByText("12mo").first()).toBeVisible();
     await expectNoSeriousViolations(page);
     await page.screenshot({

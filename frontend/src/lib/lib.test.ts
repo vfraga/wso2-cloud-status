@@ -32,7 +32,8 @@ import {
   localDayKey,
   utcDayKey,
 } from "./time";
-import { days, incident } from "../test/factories";
+import { days, incident, locatedProduct, part } from "../test/factories";
+import { productRows, regionRows, rowStatus, shortName } from "./regions";
 
 describe("formatDuration", () => {
   it.each([
@@ -363,5 +364,41 @@ describe("history text", () => {
     expect(stripCaptions(d, "2026-10-20")).toEqual([first, "Today"]);
     expect(stripCaptions(d, "2026-10-21")).toEqual([first, formatHistoryDate("2026-10-20")]);
     expect(stripCaptions([], "2026-10-20")).toEqual(["", ""]);
+  });
+});
+
+describe("region rows", () => {
+  it("groups parts under their place, in the API's order, and keeps the rest on their own", () => {
+    const rows = productRows(locatedProduct());
+    expect(rows.map((r) => (r.kind === "location" ? r.location.name : r.region.name))).toEqual([
+      "US",
+      "EU",
+    ]);
+    expect(rows[0]?.kind === "location" && rows[0].regions.map((r) => r.id)).toEqual([
+      "us-control-plane",
+      "us-data-plane",
+    ]);
+    const plain = productRows(locatedProduct({ locations: [] }));
+    expect(plain.map((r) => r.kind)).toEqual(["region", "region", "region", "region"]);
+    // A place without parts is not listed; a part whose place is unknown stands alone.
+    const odd = regionRows(
+      [
+        { id: "us", name: "US", status: "degraded" },
+        { id: "ap", name: "AP", status: "operational" },
+      ],
+      [part("US data plane", "degraded"), part("EU data plane")],
+    );
+    expect(odd.map((r) => [r.kind, rowStatus(r)])).toEqual([
+      ["location", "degraded"],
+      ["region", "operational"],
+    ]);
+  });
+
+  it("names a part without its place, and leaves other names alone", () => {
+    const eu = { id: "eu", name: "EU", status: "operational" as const };
+    expect(shortName(part("EU data plane"), eu)).toBe("Data plane");
+    expect(shortName(part("EU data plane (US-managed)"), eu)).toBe("Data plane (US-managed)");
+    expect(shortName(part("Europe"), eu)).toBe("Europe");
+    expect(shortName({ ...part("EU "), name: "EU " }, eu)).toBe("EU ");
   });
 });

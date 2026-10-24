@@ -17,6 +17,7 @@
 package aggregator
 
 import (
+	"cmp"
 	"crypto/sha256"
 	"encoding/hex"
 	"maps"
@@ -173,7 +174,7 @@ func build(p buildParams) Built {
 	}
 	domain.SortIncidents(all)
 	b.Summary.DataComplete = allComplete(b.Summary.Products)
-	b.Summary.Status = summaryStatus(statuses, b.Summary.DataComplete)
+	b.Summary.Status = failClosed(statuses, b.Summary.DataComplete)
 	b.Summary.ActiveIncidents = filter(all, func(i domain.Incident) bool { return i.Active() })
 	cutoff := p.now.UTC().Truncate(24*time.Hour).AddDate(0, 0, 1-p.days)
 	b.Incidents.Incidents = filter(all, func(i domain.Incident) bool { return overlaps(i, cutoff) })
@@ -248,12 +249,13 @@ func absent[V any](names []string, in map[string]V) []string {
 	return out
 }
 
-// summaryStatus is the overall status, computed here once and shown by the
-// page as is. It fails closed: unknown when data is missing and no problem
-// (maintenance or worse) is known, otherwise the most severe known status. A
-// known problem leads even over missing data.
-func summaryStatus(products []domain.Status, complete bool) domain.Status {
-	worst := domain.Worst(products...)
+// failClosed rolls statuses up for the overall status and each location,
+// computed here once and shown by the page as is: unknown when data is
+// missing (complete is false) and no problem (maintenance or worse) is
+// known, otherwise the most severe known status. A known problem leads even
+// over missing data.
+func failClosed(statuses []domain.Status, complete bool) domain.Status {
+	worst := domain.Worst(statuses...)
 	if !complete && worst <= domain.StatusOperational {
 		return domain.StatusUnknown
 	}
@@ -283,6 +285,8 @@ func buildProduct(p buildParams, prod config.Product, configured map[string]map[
 	for i, ref := range prod.Sources {
 		regions = append(regions, buildRegions(p, prod, ref, unmatched[i])...)
 	}
+	locations := locationsOf(prod, regions)
+	regions = byLocation(regions, locations)
 	comp := feedOf(p.state, prod.Sources, p.now, p.stale.components, func(st sourceState) time.Time { return st.components.at })
 	inc := feedOf(p.state, prod.Sources, p.now, p.stale.incidents, func(st sourceState) time.Time { return st.incidents.at })
 	incidents, coverage := productIncidents(p, prod, inc)
@@ -292,7 +296,9 @@ func buildProduct(p buildParams, prod config.Product, configured map[string]map[
 	affected, complete := 0, len(regions) > 0
 	for _, r := range regions {
 		statuses = append(statuses, r.Status)
-		summaries = append(summaries, RegionSummary{ID: r.ID, Name: r.Name, Status: r.Status, PageURL: r.PageURL})
+		summaries = append(summaries, RegionSummary{
+			ID: r.ID, Location: r.Location, Name: r.Name, Status: r.Status, Uptime: r.Uptime, PageURL: r.PageURL,
+		})
 		if r.Status > domain.StatusOperational {
 			affected++
 		}
@@ -312,6 +318,7 @@ func buildProduct(p buildParams, prod config.Product, configured map[string]map[
 			Outdated:        inc.stale || up.stale,
 			CheckedAt:       CheckedAt{Components: minuteOrNil(comp.oldest), Incidents: minuteOrNil(inc.oldest), Uptime: minuteOrNil(up.oldest)},
 			Stale:           Stale{Components: comp.stale, Incidents: inc.stale, Uptime: up.stale},
+			Locations:       locations,
 			Regions:         summaries,
 			History:         domain.DailyHistory(incidents, p.days, coverage, p.now),
 		},
@@ -368,6 +375,71 @@ func regionComplete(r domain.Region) bool {
 		}
 	}
 	return true
+}
+
+// locationsOf lists the product's locations in the order their first
+// region appears in the configuration, each with failClosed over its
+// regions' statuses.
+func locationsOf(prod config.Product, regions []RegionDetail) []Location {
+	out := []Location{}
+	index := map[string]int{}
+	for _, ref := range prod.Sources {
+		for _, rr := range ref.Regions {
+			id := rr.LocationID()
+			if _, seen := index[id]; id == "" || seen {
+				continue
+			}
+			index[id] = len(out)
+			out = append(out, Location{ID: id, Name: rr.Location})
+		}
+	}
+	statuses := make([][]domain.Status, len(out))
+	complete := make([]bool, len(out))
+	for i := range complete {
+		complete[i] = true
+	}
+	for _, r := range regions {
+		if i, ok := index[r.Location]; ok {
+			statuses[i] = append(statuses[i], r.Status)
+			complete[i] = complete[i] && r.Status.Known()
+		}
+	}
+	for i := range out {
+		out[i].Status = failClosed(statuses[i], complete[i])
+	}
+	return out
+}
+
+// byLocation lists each location's regions together, in the locations'
+// order and by name within one (control plane before data plane), then the
+// regions without a location in their own order.
+func byLocation(regions []RegionDetail, locations []Location) []RegionDetail {
+	rank := map[string]int{}
+	for i, l := range locations {
+		rank[l.ID] = i
+	}
+	out := slices.Clone(regions)
+	slices.SortStableFunc(out, func(a, b RegionDetail) int {
+		ra, aLocated := rank[a.Location]
+		rb, bLocated := rank[b.Location]
+		switch {
+		case !aLocated || !bLocated:
+			return cmp.Compare(boolRank(!aLocated), boolRank(!bLocated))
+		case ra != rb:
+			return cmp.Compare(ra, rb)
+		default:
+			return strings.Compare(a.Name, b.Name)
+		}
+	})
+	return out
+}
+
+// boolRank sorts false before true.
+func boolRank(b bool) int {
+	if b {
+		return 1
+	}
+	return 0
 }
 
 // buildRegions returns the configured regions in order, then the regions the
@@ -437,7 +509,7 @@ func unmatchedRegions(p buildParams, prod config.Product, configured map[string]
 
 // regionSlug is the key's slug, or "region" when it has no letter or digit.
 func regionSlug(key string) string {
-	if s := slugify(key); s != "" {
+	if s := config.Slugify(key); s != "" {
 		return s
 	}
 	return "region"
@@ -473,7 +545,8 @@ func buildRegion(st sourceState, rr config.RegionRef, fresh bool, page string) R
 			Uptime: uptime,
 			Groups: groups,
 		},
-		PageURL: page,
+		Location: rr.LocationID(),
+		PageURL:  page,
 	}
 }
 
@@ -634,11 +707,4 @@ func filter(incidents []domain.Incident, keep func(domain.Incident) bool) []doma
 		}
 	}
 	return out
-}
-
-func slugify(key string) string {
-	fields := strings.FieldsFunc(strings.ToLower(key), func(r rune) bool {
-		return (r < 'a' || r > 'z') && (r < '0' || r > '9')
-	})
-	return strings.Join(fields, "-")
 }

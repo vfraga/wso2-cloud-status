@@ -27,6 +27,7 @@ import (
 	"reflect"
 	"regexp"
 	"slices"
+	"strings"
 	"time"
 
 	"go.yaml.in/yaml/v3"
@@ -127,6 +128,22 @@ type RegionRef struct {
 	Key  string `yaml:"key"`
 	ID   string `yaml:"id"`
 	Name string `yaml:"name"`
+	// Location groups the parts of one place, such as the US control and
+	// data planes; the name then starts with it ("US control plane").
+	Location string `yaml:"location"`
+}
+
+// LocationID is the slug of the region's location, empty when it has none.
+func (r RegionRef) LocationID() string {
+	return Slugify(r.Location)
+}
+
+// Slugify lowercases s and joins its runs of letters and digits with "-".
+func Slugify(s string) string {
+	fields := strings.FieldsFunc(strings.ToLower(s), func(r rune) bool {
+		return (r < 'a' || r > 'z') && (r < '0' || r > '9')
+	})
+	return strings.Join(fields, "-")
 }
 
 // Load reads, defaults and validates the configuration at path.

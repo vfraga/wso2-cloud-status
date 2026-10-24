@@ -451,6 +451,76 @@ backends:
 	}
 }
 
+func TestSlugify(t *testing.T) {
+	t.Parallel()
+	for in, want := range map[string]string{"cp - us": "cp-us", "EU - DP - EU": "eu-dp-eu", "  x  ": "x", "US": "us", "--": ""} {
+		if got := Slugify(in); got != want {
+			t.Fatalf("Slugify(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+// TestRegionLocations: every region of a product has a location or none
+// does; a located region's name is its location, a space and more; two
+// location names of one product may not share an id. Products are checked
+// one by one, so two products may differ.
+func TestRegionLocations(t *testing.T) {
+	t.Parallel()
+	const head = `
+backends:
+  b: { base_url: "https://example.test" }
+products:
+  - id: p
+    name: P
+    page_url: https://p.test
+    sources:
+      - backend: b
+        cloud: c
+        regions:
+`
+	tests := []struct {
+		name, regions, want string
+	}{
+		{"located", `
+          - { key: a, id: us-cp, name: US control plane, location: US }
+          - { key: b, id: eu-dp, name: EU data plane (US-managed), location: EU }
+`, ""},
+		{"none located", `
+          - { key: a, id: us, name: US }
+          - { key: b, id: eu, name: EU }
+`, ""},
+		{"one without", `
+          - { key: a, id: us-cp, name: US control plane, location: US }
+          - { key: b, id: eu, name: EU }
+`, "product p: every region needs a location, or none may have one"},
+		{"name without the location", `
+          - { key: a, id: us-cp, name: Control plane, location: US }
+`, `name "Control plane" must be its location "US", a space and more`},
+		{"name that is only the location", `
+          - { key: a, id: us-cp, name: "US ", location: US }
+`, `name "US " must be its location "US"`},
+		{"location without a letter", `
+          - { key: a, id: x, name: "- x", location: "-" }
+`, `location "-" needs a letter or digit`},
+		{"two names, one id", `
+          - { key: a, id: us-cp, name: US control plane, location: US }
+          - { key: b, id: us-dp, name: us data plane, location: us }
+`, `locations "US" and "us" have the same id "us"`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			_, err := Parse([]byte(head + tt.regions))
+			if tt.want == "" && err != nil {
+				t.Fatalf("err = %v, want none", err)
+			}
+			if tt.want != "" && (err == nil || !strings.Contains(err.Error(), tt.want)) {
+				t.Fatalf("err = %v, want it to contain %s", err, tt.want)
+			}
+		})
+	}
+}
+
 // TestTimeoutBounds: a request timeout at or below zero, or of a few
 // milliseconds, would fail every fetch while the file reads as valid; a
 // shutdown timeout below a second cuts requests in flight at every deploy,

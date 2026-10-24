@@ -74,6 +74,15 @@ export const PARTIAL_HEADLINE = "Some status data is unavailable";
 export const PARTIAL_LABEL = "Some data unavailable";
 export const UPTIME_LABEL = "Uptime (outages only, updated daily)";
 export const UPTIME_SHORT_LABEL = "Uptime";
+/**
+ * The window of the one uptime figure a home row shows per region: the
+ * upstream's 90 days, the length of the history strip on a wide screen.
+ */
+export const HOME_UPTIME_WINDOW = "90d";
+/** What a screen reader hears for the home row's figure, shown as "99.994% (90d)". */
+export function uptimeFigure(percent: string): string {
+  return `90-day uptime ${percent}`;
+}
 export const COMPONENTS_UNAVAILABLE = "some component data is unavailable";
 
 /** The text with its first letter in upper case, for a fragment that starts a line. */

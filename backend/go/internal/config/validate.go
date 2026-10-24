@@ -285,6 +285,47 @@ func (c *Config) validateSources(e *errs, p Product) {
 		}
 		validateRegions(e, p.ID, s, c.readsOf(s), regionIDs, regionKeys)
 	}
+	validateLocations(e, p)
+}
+
+// validateLocations checks the product's region locations: every region has
+// one or none does, so the page never lists a lone plane beside places; a
+// located region's name starts with its location, so the page can show the
+// rest ("Data plane") under it; and two location names may not share an id.
+func validateLocations(e *errs, p Product) {
+	located, unlocated := 0, 0
+	names := map[string]string{}
+	for _, s := range p.Sources {
+		for _, r := range s.Regions {
+			if r.Location == "" {
+				unlocated++
+				continue
+			}
+			located++
+			validateLocation(e, p.ID, r, names)
+		}
+	}
+	if located > 0 && unlocated > 0 {
+		e.addf("product %s: every region needs a location, or none may have one", p.ID)
+	}
+}
+
+// validateLocation checks one located region; names holds, per location id,
+// the first location name that took it.
+func validateLocation(e *errs, productID string, r RegionRef, names map[string]string) {
+	id := r.LocationID()
+	if id == "" {
+		e.addf("product %s region %s: location %q needs a letter or digit", productID, r.ID, r.Location)
+		return
+	}
+	if rest, found := strings.CutPrefix(r.Name, r.Location+" "); !found || strings.TrimSpace(rest) == "" {
+		e.addf("product %s region %s: name %q must be its location %q, a space and more", productID, r.ID, r.Name, r.Location)
+	}
+	if first, taken := names[id]; taken && first != r.Location {
+		e.addf("product %s: locations %q and %q have the same id %q", productID, first, r.Location, id)
+	} else {
+		names[id] = r.Location
+	}
 }
 
 // validateRegions checks one source's regions. ids holds the region ids the

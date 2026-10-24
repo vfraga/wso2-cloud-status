@@ -21,7 +21,8 @@ import type { Incident, ProductSummary } from "../api/types";
 import { completeUntil } from "../lib/dataNotes";
 import { missingDataText } from "../lib/headline";
 import { Link } from "../lib/router";
-import { PARTIAL_LABEL, STATUS_LABEL, capitalise, regionsAffected } from "../lib/status";
+import { productRows, rowStatus } from "../lib/regions";
+import { PARTIAL_LABEL, STATUS_LABEL, capitalise, isProblem, regionsAffected } from "../lib/status";
 import { earliest } from "../lib/time";
 import { ExternalAnchor } from "./ExternalAnchor";
 import { HistoryStrip } from "./HistoryStrip";
@@ -49,7 +50,8 @@ function RowStatus({ product }: { product: ProductSummary }) {
 }
 
 export function ProductRow({ product, incidents, knownUntil = null }: ProductRowProps) {
-  const total = product.regions.length;
+  const rows = productRows(product);
+  const affected = rows.filter((row) => isProblem(rowStatus(row))).length;
   return (
     <Box component="li" sx={{ listStyle: "none", px: { xs: 2.5, sm: 3 }, py: { xs: 2.5, sm: 3 } }}>
       <Stack
@@ -76,9 +78,9 @@ export function ProductRow({ product, incidents, knownUntil = null }: ProductRow
           <div>
             <RowStatus product={product} />
           </div>
-          {product.affectedRegions > 0 && (
+          {affected > 0 && (
             <Typography variant="caption" sx={captionSx}>
-              {regionsAffected(product.affectedRegions, total)}
+              {regionsAffected(affected, rows.length)}
             </Typography>
           )}
           {product.status !== "unknown" && !product.dataComplete && (
@@ -88,12 +90,11 @@ export function ProductRow({ product, incidents, knownUntil = null }: ProductRow
           )}
           <ProductNotes
             product={product}
-            // The home page has incidents at hand, and shows no uptime.
+            // The home page has incidents at hand, and each region's 90-day uptime.
             partly={{
               incidents: [...incidents.values()].some((i) => i.productId === product.id),
-              uptime: false,
+              uptime: product.regions.some((r) => r.uptime.length > 0),
             }}
-            uptime={false}
             alignEnd
           />
         </Box>

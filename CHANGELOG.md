@@ -9,6 +9,20 @@ section here. The public API has its own version, in `api/openapi.yaml`.
 
 ## [Unreleased]
 
+### Added
+
+- API 1.1.0: each product lists its `locations` (US, EU) with a status
+  that fails closed over their regions, and each region names its
+  `location`; summary regions carry their `uptime`.
+- The home page shows each region's 90-day uptime, as the source reports
+  it.
+
+### Changed
+
+- Control and data planes are parts of a region: US and EU open into them,
+  on the home page and on each product's page, and the region counts count
+  US and EU. Region names are in sentence case ("EU data plane").
+
 ### Fixed
 
 - While a product's incident feed is stale, an open incident's daily

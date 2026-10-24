@@ -51,8 +51,8 @@ products:
       - backend: cloudservices
         cloud: agent-manager
         regions:
-          - { key: "cp - us", id: us-control-plane, name: US Control Plane }
-          - { key: "dp - us", id: us-data-plane, name: US Data Plane }
+          - { key: "cp - us", id: us-control-plane, name: US control plane, location: US }
+          - { key: "dp - us", id: us-data-plane, name: US data plane, location: US }
 
   - id: api-platform
     name: API Platform
@@ -62,10 +62,10 @@ products:
       - backend: cloudservices
         cloud: bijira
         regions:
-          - { key: "cp - us", id: us-control-plane, name: US Control Plane }
-          - { key: "dp - us", id: us-data-plane, name: US Data Plane }
-          - { key: "cp - eu", id: eu-control-plane, name: EU Control Plane }
-          - { key: "dp - eu", id: eu-data-plane, name: EU Data Plane }
+          - { key: "cp - us", id: us-control-plane, name: US control plane, location: US }
+          - { key: "dp - us", id: us-data-plane, name: US data plane, location: US }
+          - { key: "cp - eu", id: eu-control-plane, name: EU control plane, location: EU }
+          - { key: "dp - eu", id: eu-data-plane, name: EU data plane, location: EU }
 
   - id: integration-platform
     name: Integration Platform
@@ -75,10 +75,10 @@ products:
       - backend: cloudservices
         cloud: devant
         regions:
-          - { key: "cp - us", id: us-control-plane, name: US Control Plane }
-          - { key: "dp - us", id: us-data-plane, name: US Data Plane }
-          - { key: "cp - eu", id: eu-control-plane, name: EU Control Plane }
-          - { key: "dp - eu", id: eu-data-plane, name: EU Data Plane }
+          - { key: "cp - us", id: us-control-plane, name: US control plane, location: US }
+          - { key: "dp - us", id: us-data-plane, name: US data plane, location: US }
+          - { key: "cp - eu", id: eu-control-plane, name: EU control plane, location: EU }
+          - { key: "dp - eu", id: eu-data-plane, name: EU data plane, location: EU }
 
   - id: identity-platform
     name: Identity Platform
@@ -99,15 +99,15 @@ products:
       - backend: cloudservices
         cloud: choreo
         regions:
-          - { key: cp, id: us-control-plane, name: US Control Plane }
-          - { key: "us - dp", id: us-data-plane, name: US Data Plane }
-          - { key: "eu - dp", id: eu-data-plane-us-managed, name: EU Data Plane (US-managed) }
+          - { key: cp, id: us-control-plane, name: US control plane, location: US }
+          - { key: "us - dp", id: us-data-plane, name: US data plane, location: US }
+          - { key: "eu - dp", id: eu-data-plane-us-managed, name: EU data plane (US-managed), location: EU }
       - backend: cloudservices
         cloud: choreo-eu
         page_url: https://status.eu.choreo.dev
         regions:
-          - { key: "eu - cp", id: eu-control-plane, name: EU Control Plane }
-          - { key: "eu - dp - eu", id: eu-data-plane, name: EU Data Plane }
+          - { key: "eu - cp", id: eu-control-plane, name: EU control plane, location: EU }
+          - { key: "eu - dp - eu", id: eu-data-plane, name: EU data plane, location: EU }
 
   - id: moesif
     name: Moesif

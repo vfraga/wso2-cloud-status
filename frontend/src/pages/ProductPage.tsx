@@ -28,7 +28,7 @@ import { HistoryStrip } from "../components/HistoryStrip";
 import { IncidentItem } from "../components/IncidentMeta";
 import { IncidentsUnavailable } from "../components/IncidentsUnavailable";
 import { ProductNotes } from "../components/ProductNotes";
-import { RegionDetailPanel } from "../components/RegionDetailPanel";
+import { LocationPanel, RegionDetailPanel } from "../components/RegionDetailPanel";
 import { ProductListSkeleton } from "../components/Skeletons";
 import { pageTitle, useDocumentTitle } from "../hooks/useDocumentTitle";
 import { PageNowProvider, usePageNow } from "../hooks/useNow";
@@ -43,6 +43,7 @@ import {
 } from "../lib/dataNotes";
 import { productHeadline, type Headline } from "../lib/headline";
 import { isOngoing } from "../lib/incidents";
+import { regionRows } from "../lib/regions";
 import { Link } from "../lib/router";
 import { BANNER_LABEL, NO_INCIDENTS, NO_OTHER_INCIDENTS } from "../lib/status";
 import { earliest } from "../lib/time";
@@ -159,9 +160,17 @@ function ProductBody({
           Regions
         </Typography>
         <Box component="ul" sx={{ m: 0, mt: 1, p: 0 }}>
-          {product.regionDetails.map((region) => (
-            <RegionDetailPanel key={region.id} region={region} />
-          ))}
+          {regionRows(product.locations, product.regionDetails).map((row) =>
+            row.kind === "location" ? (
+              <LocationPanel
+                key={`location-${row.location.id}`}
+                location={row.location}
+                regions={row.regions}
+              />
+            ) : (
+              <RegionDetailPanel key={row.region.id} region={row.region} />
+            ),
+          )}
         </Box>
       </Box>
       <RecentIncidents product={product} now={now} />

@@ -38,6 +38,19 @@ import (
 
 // Minimal views for semantic invariants; the schema checks cover the rest.
 type region struct {
+	ID       string   `json:"id"`
+	Location string   `json:"location"`
+	Name     string   `json:"name"`
+	Status   string   `json:"status"`
+	Uptime   []uptime `json:"uptime"`
+}
+
+type uptime struct {
+	Window  string  `json:"window"`
+	Percent float64 `json:"percent"`
+}
+
+type location struct {
 	ID     string `json:"id"`
 	Status string `json:"status"`
 }
@@ -58,10 +71,12 @@ type day struct {
 }
 
 type regionDetail struct {
-	ID     string `json:"id"`
-	Name   string `json:"name"`
-	Status string `json:"status"`
-	Groups []struct {
+	ID       string   `json:"id"`
+	Location string   `json:"location"`
+	Name     string   `json:"name"`
+	Status   string   `json:"status"`
+	Uptime   []uptime `json:"uptime"`
+	Groups   []struct {
 		Components []struct {
 			Name   string `json:"name"`
 			Status string `json:"status"`
@@ -91,6 +106,7 @@ type product struct {
 	Outdated        bool           `json:"outdated"`
 	CheckedAt       checkedAt      `json:"checked_at"`
 	Stale           staleFlags     `json:"stale"`
+	Locations       []location     `json:"locations"`
 	Regions         []region       `json:"regions"`
 	History         []day          `json:"history"`
 	GeneratedAt     string         `json:"generated_at"`
@@ -230,12 +246,8 @@ func TestRollUpInvariants(t *testing.T) {
 	}
 	// The overall status fails closed: unknown when data is missing and no
 	// problem is known, otherwise the worst known product status.
-	want := worst(productStatuses...)
-	if !complete && severity[want] <= severity["operational"] {
-		want = "unknown"
-	}
-	if sum.Status != want {
-		t.Errorf("overall status = %s, want %s (worst of products %v, data complete %v)", sum.Status, want, productStatuses, complete)
+	if want := failClosed(productStatuses, complete); sum.Status != want {
+		t.Errorf("overall status = %s, want %s (worst of products %v, data complete %v)", sum.Status, failClosed(productStatuses, complete), productStatuses, complete)
 	}
 	if sum.DataComplete != complete {
 		t.Errorf("summary data_complete = %v, want %v (every product complete and its status known)", sum.DataComplete, complete)
@@ -287,9 +299,70 @@ func checkProductInvariants(t *testing.T, base string, p product, historyLen int
 	if want := worst(statuses...); p.Status != want {
 		t.Errorf("%s: status = %s, want worst of regions and active incidents (unknown impact as degraded) = %s", p.ID, p.Status, want)
 	}
-	if detail.Status != p.Status || detail.DataComplete != p.DataComplete || detail.Outdated != p.Outdated || detail.Stale != p.Stale || !reflect.DeepEqual(detail.Regions, p.Regions) {
+	if detail.Status != p.Status || detail.DataComplete != p.DataComplete || detail.Outdated != p.Outdated || detail.Stale != p.Stale ||
+		!reflect.DeepEqual(detail.Regions, p.Regions) || !reflect.DeepEqual(detail.Locations, p.Locations) {
 		t.Errorf("%s: detail disagrees with the summary row", p.ID)
 	}
+	checkLocations(t, p, detail.RegionDetails)
+}
+
+// checkLocations: every region's location is one of the product's, each
+// location has regions and they are listed together, in the locations'
+// order and by name, before the regions without one; a location's status
+// fails closed over theirs; each summary region matches its detail, uptime
+// included.
+func checkLocations(t *testing.T, p product, details []regionDetail) {
+	t.Helper()
+	index := map[string]int{}
+	statuses := make([][]string, len(p.Locations))
+	complete := make([]bool, len(p.Locations))
+	for i, l := range p.Locations {
+		if _, dup := index[l.ID]; dup {
+			t.Errorf("%s: location id %q is not unique", p.ID, l.ID)
+		}
+		index[l.ID] = i
+		complete[i] = true
+	}
+	last, lastName := -1, ""
+	for i, r := range p.Regions {
+		if i >= len(details) || details[i].ID != r.ID || details[i].Location != r.Location || !reflect.DeepEqual(details[i].Uptime, r.Uptime) {
+			t.Errorf("%s: region %d (%s) differs from region_details[%d]", p.ID, i, r.ID, i)
+		}
+		if r.Location == "" {
+			last = len(p.Locations)
+			continue
+		}
+		at, ok := index[r.Location]
+		switch {
+		case !ok:
+			t.Errorf("%s: region %s names location %q, which is not listed", p.ID, r.ID, r.Location)
+			continue
+		case at < last || (at == last && r.Name < lastName):
+			t.Errorf("%s: region %s is out of order: want each location's regions together, by name, before those without one", p.ID, r.ID)
+		}
+		last, lastName = at, r.Name
+		statuses[at] = append(statuses[at], r.Status)
+		complete[at] = complete[at] && r.Status != "unknown"
+	}
+	for i, l := range p.Locations {
+		if len(statuses[i]) == 0 {
+			t.Errorf("%s: location %s has no region", p.ID, l.ID)
+		}
+		if want := failClosed(statuses[i], complete[i]); l.Status != want {
+			t.Errorf("%s: location %s = %s, want %s (worst of %v, unknown when one is and no problem is known)", p.ID, l.ID, l.Status, want, statuses[i])
+		}
+	}
+}
+
+// failClosed is the roll-up of the overall status and of each location:
+// unknown when data is missing and no problem (maintenance or worse) is
+// known, otherwise the worst known status.
+func failClosed(statuses []string, complete bool) string {
+	w := worst(statuses...)
+	if !complete && severity[w] <= severity["operational"] {
+		return "unknown"
+	}
+	return w
 }
 
 // sameEvent reports whether two incidents of one product are records of one

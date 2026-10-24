@@ -19,35 +19,44 @@
 import { Box, Button, Collapse, Stack, Typography } from "@wso2/oxygen-ui";
 import { ChevronDown } from "@wso2/oxygen-ui-icons-react";
 import { useId } from "react";
-import type { RegionDetail } from "../api/types";
+import type { Location, RegionDetail } from "../api/types";
 import { useAutoExpanded } from "../hooks/useAutoExpanded";
+import { shortName } from "../lib/regions";
 import { STATUS_LABEL } from "../lib/status";
 import { StatusLabel } from "./StatusIcon";
 import { UptimeList } from "./UptimeList";
 
 const regionNameSx = { fontSize: "1rem", fontWeight: 600 } as const;
 
+/** The heading level of a region: h3 on its own, h4 under its location. Its groups are one below. */
+type Level = 3 | 4;
+const heading = (level: number) => `h${String(level)}` as "h3" | "h4" | "h5";
+
 /** A region with nothing to expand shows its name as plain text, never an empty panel. */
 function RegionName({
   region,
+  name,
+  level,
   expanded,
   panelId,
   onToggle,
 }: {
   region: RegionDetail;
+  name: string;
+  level: Level;
   expanded: boolean;
   panelId: string;
   onToggle: () => void;
 }) {
   if (region.groups.length === 0) {
     return (
-      <Typography component="h3" sx={regionNameSx}>
-        {region.name}
+      <Typography component={heading(level)} sx={regionNameSx}>
+        {name}
       </Typography>
     );
   }
   return (
-    <Typography component="h3" sx={regionNameSx}>
+    <Typography component={heading(level)} sx={regionNameSx}>
       <Button
         variant="text"
         aria-expanded={expanded}
@@ -63,13 +72,22 @@ function RegionName({
         }
         sx={{ color: "var(--cs-text)", ml: -1, textTransform: "none", ...regionNameSx }}
       >
-        {region.name}
+        {name}
       </Button>
     </Typography>
   );
 }
 
-export function RegionDetailPanel({ region }: { region: RegionDetail }) {
+export function RegionDetailPanel({
+  region,
+  name = region.name,
+  level = 3,
+}: {
+  region: RegionDetail;
+  /** Shown name: the short one under a location ("Data plane"). */
+  name?: string;
+  level?: Level;
+}) {
   const [expanded, setExpanded] = useAutoExpanded(region.status !== "operational");
   const panelId = useId();
   return (
@@ -84,6 +102,8 @@ export function RegionDetailPanel({ region }: { region: RegionDetail }) {
       >
         <RegionName
           region={region}
+          name={name}
+          level={level}
           expanded={expanded}
           panelId={panelId}
           onToggle={() => {
@@ -101,7 +121,7 @@ export function RegionDetailPanel({ region }: { region: RegionDetail }) {
       <Collapse in={expanded && region.groups.length > 0} id={panelId} unmountOnExit>
         {region.groups.map((group) => (
           <Box key={group.name} sx={{ mt: 2 }}>
-            <Typography component="h4" variant="body2" sx={{ fontWeight: 700 }}>
+            <Typography component={heading(level + 1)} variant="body2" sx={{ fontWeight: 700 }}>
               {group.name}
             </Typography>
             <Box component="ul" sx={{ m: 0, p: 0 }}>
@@ -151,6 +171,46 @@ export function RegionDetailPanel({ region }: { region: RegionDetail }) {
           </Box>
         ))}
       </Collapse>
+    </Box>
+  );
+}
+
+/**
+ * A location (US) with its parts as h4 panels under its h3 name and status.
+ * The parts are listed, never folded away: the page is about this product.
+ */
+export function LocationPanel({
+  location,
+  regions,
+}: {
+  location: Location;
+  regions: readonly RegionDetail[];
+}) {
+  return (
+    <Box
+      component="li"
+      sx={{ listStyle: "none", pt: 1.5, borderTop: "1px solid var(--cs-border)" }}
+    >
+      <Stack
+        direction="row"
+        useFlexGap
+        sx={{ justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 1 }}
+      >
+        <Typography component="h3" sx={{ fontSize: "1.125rem", fontWeight: 600 }}>
+          {location.name}
+        </Typography>
+        <StatusLabel status={location.status}>{STATUS_LABEL[location.status]}</StatusLabel>
+      </Stack>
+      <Box component="ul" sx={{ m: 0, mt: 0.5, p: 0, pl: 2 }}>
+        {regions.map((region) => (
+          <RegionDetailPanel
+            key={region.id}
+            region={region}
+            name={shortName(region, location)}
+            level={4}
+          />
+        ))}
+      </Box>
     </Box>
   );
 }

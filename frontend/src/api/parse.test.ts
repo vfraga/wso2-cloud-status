@@ -66,7 +66,10 @@ describe("parseSummary", () => {
     expect(p).toBeDefined();
     expect(p).not.toHaveProperty("description");
     expect(p?.name).toBe("x");
-    expect(p?.regions).toEqual([{ id: "r", name: "r", status: "unknown", pageUrl: "" }]);
+    expect(p?.regions).toEqual([
+      { id: "r", name: "r", status: "unknown", pageUrl: "", uptime: [] },
+    ]);
+    expect(p?.locations).toEqual([]);
     expect(p?.history).toEqual([]);
     expect(s.activeIncidents).toEqual([]);
   });

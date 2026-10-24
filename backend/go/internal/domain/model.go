@@ -44,7 +44,7 @@ type Uptime struct {
 	Percent float64 `json:"percent"`
 }
 
-// Region is one deployment of a product, such as "US Control Plane".
+// Region is one deployment of a product, such as "US control plane".
 //
 // It carries no fetch timestamp on purpose: freshness is per product and per
 // kind of data (checked_at, at minute granularity), so a body changes at most

@@ -34,16 +34,22 @@ test.describe("one degraded component and an active incident", () => {
     await expect(page.getByRole("heading", { level: 1 })).toHaveText("Degraded performance");
     // The banner names the affected product and region.
     await expect(page.getByRole("region", { name: "Overall status" })).toContainText(
-      `Affected: API Platform (EU Data Plane). ${ALL_BUT_ONE_OPERATIONAL}`,
+      `Affected: API Platform (EU data plane). ${ALL_BUT_ONE_OPERATIONAL}`,
     );
     const rows = productRows(page);
     const api = rows.filter({ has: page.getByRole("heading", { level: 2, name: "API Platform" }) });
-    await expect(api.getByRole("button", { name: /4 regions/ })).toHaveAttribute(
+    await expect(api.getByRole("button", { name: /^2 regions/ })).toHaveAttribute(
       "aria-expanded",
       "true",
     );
-    await expect(api.getByText("1 of 4 regions affected")).toBeVisible();
-    await expect(api.getByText("EU Data Plane")).toBeVisible();
+    await expect(api.getByText("1 of 2 regions affected")).toBeVisible();
+    // The place with the problem opens into its parts; the healthy one stays closed.
+    await expect(api.getByRole("button", { name: /^EU/ })).toHaveAttribute("aria-expanded", "true");
+    await expect(api.getByRole("button", { name: /^US/ })).toHaveAttribute(
+      "aria-expanded",
+      "false",
+    );
+    await expect(api.getByText("Data plane", { exact: true })).toBeVisible();
     for (const name of PRODUCT_NAMES.filter((n) => n !== "API Platform")) {
       const row = rows.filter({ has: page.getByRole("heading", { level: 2, name }) });
       await expect(row.getByRole("button", { name: /regions?$/ })).toHaveAttribute(
@@ -63,10 +69,10 @@ test.describe("one degraded component and an active incident", () => {
     const api = productRows(page).filter({
       has: page.getByRole("heading", { level: 2, name: "API Platform" }),
     });
-    const toggle = api.getByRole("button", { name: /4 regions/ });
+    const toggle = api.getByRole("button", { name: /^2 regions/ });
     await toggle.click();
     await expect(toggle).toHaveAttribute("aria-expanded", "false");
-    await expect(api.getByText("EU Data Plane")).toBeHidden();
+    await expect(api.getByText("Data plane", { exact: true })).toBeHidden();
   });
 
   test("the active incident is listed above the products, with UTC in the time title", async ({
@@ -129,15 +135,18 @@ test.describe("one degraded component and an active incident", () => {
       has: page.getByRole("heading", { level: 2, name: "API Platform" }),
     });
     const name = await api.getByRole("link", { name: "API Platform", exact: true }).boundingBox();
-    const toggle = await api.getByRole("button", { name: /4 regions/ }).boundingBox();
+    const toggle = await api.getByRole("button", { name: /^2 regions/ }).boundingBox();
     const strip = await api.getByRole("listbox").boundingBox();
     expect(Math.abs((toggle?.x ?? 0) - (name?.x ?? 99))).toBeLessThanOrEqual(0.5);
     expect(Math.abs((strip?.x ?? 0) - (name?.x ?? 99))).toBeLessThanOrEqual(0.5);
 
-    const region = api.getByRole("listitem").first();
-    const regionName = await region.getByText("US Control Plane").boundingBox();
-    expect((regionName?.x ?? 0) - (toggle?.x ?? 0)).toBeGreaterThanOrEqual(15.5);
-    expect((regionName?.x ?? 0) - (toggle?.x ?? 0)).toBeLessThanOrEqual(16.5);
+    // Places sit one step in from the toggle, and their parts one more.
+    const place = await api.getByRole("button", { name: /^EU/ }).boundingBox();
+    expect((place?.x ?? 0) - (toggle?.x ?? 0)).toBeGreaterThanOrEqual(15.5);
+    expect((place?.x ?? 0) - (toggle?.x ?? 0)).toBeLessThanOrEqual(16.5);
+    const part = await api.getByText("Data plane", { exact: true }).boundingBox();
+    expect((part?.x ?? 0) - (place?.x ?? 0)).toBeGreaterThanOrEqual(15.5);
+    expect((part?.x ?? 0) - (place?.x ?? 0)).toBeLessThanOrEqual(16.5);
     const productStatus = await api.getByText("Degraded performance").first().boundingBox();
     const regionStatus = await api.getByText("Degraded performance").last().boundingBox();
     const right = (b: typeof productStatus): number => (b?.x ?? 0) + (b?.width ?? 0);
@@ -201,7 +210,7 @@ test.describe("one degraded component and an active incident", () => {
     await expect(banner.getByRole("heading", { level: 1 })).toHaveAccessibleName(
       "API Platform: Degraded performance",
     );
-    await expect(banner).toContainText("Affected: EU Data Plane.");
+    await expect(banner).toContainText("Affected: EU data plane.");
     // The ongoing incident comes first, above the history and the regions.
     const active = page.getByRole("region", { name: "Active incidents" });
     await expect(active.getByRole("heading", { level: 3 })).toHaveText(

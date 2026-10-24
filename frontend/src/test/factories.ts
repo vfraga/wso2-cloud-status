@@ -16,7 +16,14 @@
  * under the License.
  */
 
-import type { Day, Incident, ProductFreshness, ProductSummary } from "../api/types";
+import type {
+  Day,
+  Incident,
+  ProductFreshness,
+  ProductSummary,
+  RegionSummary,
+  Status,
+} from "../api/types";
 
 /** A server time `msAgo` before now, floored to the minute as the API sends it. */
 export function apiTime(msAgo = 0): Date {
@@ -59,16 +66,60 @@ export function product(overrides: Partial<ProductSummary> = {}): ProductSummary
     name: "API Platform",
     pageUrl: "https://status.example.test/api",
     status: "operational",
-    affectedRegions: 0,
     dataComplete: true,
     freshness: current(),
+    locations: [],
     regions: [
-      { id: "us", name: "US", status: "operational", pageUrl: "https://status.example.test/api" },
-      { id: "eu", name: "EU", status: "operational", pageUrl: "https://status.example.test/eu" },
+      {
+        id: "us",
+        name: "US",
+        status: "operational",
+        pageUrl: "https://status.example.test/api",
+        uptime: [],
+      },
+      {
+        id: "eu",
+        name: "EU",
+        status: "operational",
+        pageUrl: "https://status.example.test/eu",
+        uptime: [],
+      },
     ],
     history: days(90),
     ...overrides,
   };
+}
+
+/** A part of a place, as the API lists it: "EU data plane" in location "eu", with a 90-day figure. */
+export function part(name: string, status: Status = "operational", percent = 100): RegionSummary {
+  return {
+    id: name.toLowerCase().replaceAll(" ", "-"),
+    name,
+    status,
+    pageUrl: "https://status.example.test/api",
+    uptime: [
+      { window: "7d", percent: 100 },
+      { window: "90d", percent },
+    ],
+    location: name.slice(0, 2).toLowerCase(),
+  };
+}
+
+/** API Platform as configured: US and EU, each a control and a data plane. */
+export function locatedProduct(overrides: Partial<ProductSummary> = {}): ProductSummary {
+  return product({
+    locations: [
+      { id: "us", name: "US", status: "operational" },
+      { id: "eu", name: "EU", status: "operational" },
+    ],
+    regions: [
+      part("US control plane", "operational", 99.994),
+      part("US data plane"),
+      part("EU control plane"),
+      part("EU data plane"),
+    ],
+    ...overrides,
+  });
 }
 
 export function incident(overrides: Partial<Incident> = {}): Incident {

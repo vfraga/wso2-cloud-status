@@ -30,7 +30,9 @@ func TestSchemaRejectsContractViolations(t *testing.T) {
 		t.Fatal(err)
 	}
 	checked := `"checked_at":{"components":"2026-10-21T14:05:00Z","incidents":null,"uptime":"2026-10-21T14:00:00Z"},"stale":{"components":false,"incidents":true,"uptime":false}`
-	row := `{"id":"p","name":"P","page_url":"https://p.test","status":"operational","affected_regions":0,"data_complete":true,"outdated":true,` + checked + `,"regions":[],"history":[]}`
+	locations := `"locations":[{"id":"us","name":"US","status":"operational"}]`
+	regions := `"regions":[{"id":"us-cp","location":"us","name":"US control plane","status":"operational","uptime":[{"window":"90d","percent":99.994}],"page_url":"https://p.test"}]`
+	row := `{"id":"p","name":"P","page_url":"https://p.test","status":"operational","affected_regions":0,"data_complete":true,"outdated":true,` + checked + `,` + locations + `,` + regions + `,"history":[]}`
 	generated := `"generated_at":"2026-10-21T14:06:00Z"`
 	valid := `{"status":"operational","data_complete":true,` + generated + `,"products":[` + row + `],"active_incidents":[]}`
 	detail := row[:len(row)-1] + `,` + generated + `,"region_details":[],"incidents":[]}`
@@ -66,7 +68,12 @@ func TestSchemaRejectsContractViolations(t *testing.T) {
 		"missing stale":                 {"Summary", withRow(strings.Replace(row, `,"stale":{"components":false,"incidents":true,"uptime":false}`, "", 1))},
 		"stale kind missing":            {"Summary", withRow(strings.Replace(row, `"uptime":false}`, `}`, 1))},
 		"stale kind not a boolean":      {"Summary", withRow(strings.Replace(row, `"incidents":true`, `"incidents":"yes"`, 1))},
-		"bad region id":                 {"RegionSummary", `{"id":"AP 1","name":"AP 1","status":"operational","page_url":"https://p.test"}`},
+		"bad region id":                 {"RegionSummary", `{"id":"AP 1","name":"AP 1","status":"operational","uptime":[],"page_url":"https://p.test"}`},
+		"missing locations":             {"Summary", withRow(strings.Replace(row, locations+",", "", 1))},
+		"region without uptime":         {"RegionSummary", `{"id":"us","name":"US","status":"operational","page_url":"https://p.test"}`},
+		"bad region location":           {"RegionSummary", `{"id":"us","location":"U S","name":"US","status":"operational","uptime":[],"page_url":"https://p.test"}`},
+		"location without status":       {"Location", `{"id":"us","name":"US"}`},
+		"extra location field":          {"Location", `{"id":"us","name":"US","status":"operational","uptime":[]}`},
 		"bad page_url":                  {"Summary", withRow(strings.Replace(row, "https://p.test", "not a url", 1))},
 		"extra detail field":            {"ProductDetail", detail[:len(detail)-1] + `,"surprise":true}`},
 		"bad date":                      {"IncidentList", `{` + generated + `,"incidents":[{"id":"i","product_id":"p","title":"t","impact":"outage","state":"resolved","started_at":"yesterday","resolved_at":null}]}`},
