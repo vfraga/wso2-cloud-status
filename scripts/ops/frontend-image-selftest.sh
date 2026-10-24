@@ -31,8 +31,13 @@
 #                         immutable
 #   a missing asset       404 with no-store: a cached 404 for a bundle a deploy
 #                         has not reached yet leaves the page blank
+#   an asset with an oversized header, or an oversized URI
+#                         400 or 414 with no-store: nginx answers before it
+#                         picks a location, so a cached copy would replace
+#                         the file
 #   /api/x                404 with no-store, not the HTML shell; with
-#                         /etc/nginx/api.conf replaced, that file answers it
+#                         /etc/nginx/api.conf replaced, that file answers it,
+#                         with no Cache-Control added by nginx
 #   /healthz              200 "ok", no-store
 #   /.well-known/security.txt
 #                         200 text/plain; charset=utf-8 (RFC 9116) with
@@ -243,6 +248,13 @@ get missing "$missing"
 expect missing "missing asset $missing" 404 "no-store"
 security missing "missing asset"
 
+# Past nginx's 8 KB header buffers: errors written before any location.
+long="$(printf '%9000s' '' | tr ' ' a)"
+get bigheader "${assets[0]:-/}" -H "X-Selftest: $long"
+expect bigheader "${assets[0]:-/} with a 9000-byte header" 400 "no-store"
+get biguri "/assets/$long.js"
+expect biguri "a 9000-character URI" 414 "no-store"
+
 get api /api/x
 expect api "/api/x" 404 "no-store"
 security api "/api/x"
@@ -319,6 +331,12 @@ for _ in $(seq 1 50); do
 done
 verdict "a replaced /etc/nginx/api.conf answers /api/" \
   "a replaced /etc/nginx/api.conf does not answer /api/ (got \"$replaced\")" [ "$replaced" = replaced ]
+# The server-level Cache-Control for early errors adds nothing to a location
+# without add_header, which leaves the API's own Cache-Control alone.
+added="$(curl -sS --max-time 2 -o /dev/null -D - "http://127.0.0.1:$((port + 1))/api/x" | tr -d '\r' |
+  grep -i '^cache-control:' || true)"
+verdict "a replaced /etc/nginx/api.conf gets no Cache-Control from nginx" \
+  "a replaced /etc/nginx/api.conf gets \"$added\" from nginx" [ -z "$added" ]
 
 echo
 if [[ "$failures" -gt 0 ]]; then
