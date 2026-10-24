@@ -101,7 +101,7 @@ pack's paths unchanged.
 - `build/stubs.ts` aliases `@mui/x-data-grid`, `@mui/x-date-pickers`,
   `@mui/x-tree-view` and `prismjs` to stubs, for the build and the tests alike. Oxygen
   UI ships one non-tree-shakable bundle that imports them, and this page uses none of
-  those components. The alias removes about 125 kB gzip. Do not use Oxygen's data
+  those components. The alias removes about 138 kB gzip. Do not use Oxygen's data
   grid, date pickers or tree view without removing it. The same bundle keeps about
   40 kB gzip of MUI components the page never renders; only an ES module build of
   Oxygen UI would drop them.

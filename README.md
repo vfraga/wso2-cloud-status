@@ -11,7 +11,8 @@ This repository holds the status API (`backend/go`), the web frontend
 
 ## Quick start
 
-Requires Go 1.27, golangci-lint 2.14, jq, curl and python3; Node per
+Requires Go 1.27, golangci-lint (the `GOLANGCI_LINT_VERSION` in
+`.github/workflows/ci.yml`), jq, curl and python3; Node per
 `frontend/.nvmrc` for the frontend (and `npm run e2e:install` once for the
 end-to-end tests); Docker for the Docker-based gates.
 
