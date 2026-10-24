@@ -305,8 +305,23 @@ jobs:
           tags: wso2-cloud-statusd:ci
           load: true
           push: false
-      - name: Image smoke test
-        run: docker run --rm wso2-cloud-statusd:ci -version
+      # The image is distroless (no shell), so its default STATUSD_CONFIG is
+      # read from the image and passed to -check-config. That file holds the
+      # origin lock: valid with FRONT_DOOR_ID, invalid (exit 1) without it.
+      - name: Image smoke test (version, default configuration with and without FRONT_DOOR_ID, unlocked file)
+        run: |
+          image=wso2-cloud-statusd:ci
+          docker run --rm "$image" -version
+          config="$(docker image inspect --format '{{range .Config.Env}}{{println .}}{{end}}' "$image" | sed -n 's/^STATUSD_CONFIG=//p')"
+          [[ -n "$config" ]] || { echo "the image sets no STATUSD_CONFIG" >&2; exit 1; }
+          docker run --rm -e FRONT_DOOR_ID=00000000-0000-0000-0000-000000000000 "$image" -check-config "$config"
+          rc=0
+          docker run --rm "$image" -check-config "$config" || rc=$?
+          if [[ "$rc" != 1 ]]; then
+            echo "$config without FRONT_DOOR_ID: exit $rc, want 1 (the origin lock must fail closed)" >&2
+            exit 1
+          fi
+          docker run --rm "$image" -check-config /etc/statusd/statusd.yaml
       - name: Image vulnerabilities, report only (Grype)
         continue-on-error: true
         run: scripts/grype-report.sh wso2-cloud-statusd:ci

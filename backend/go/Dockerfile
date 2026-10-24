@@ -32,12 +32,13 @@ LABEL org.opencontainers.image.title="wso2-cloud-statusd" \
       org.opencontainers.image.created="${CREATED}" \
       org.opencontainers.image.source="${SOURCE}"
 COPY --from=build /out/statusd /statusd
-# The default configuration, with the origin lock off, and the production one
-# (origin lock on): production sets STATUSD_CONFIG to the second, or mounts
-# its own file, and sets FRONT_DOOR_ID.
+# The default configuration is the production one, with the origin lock on:
+# without FRONT_DOOR_ID it fails validation and statusd does not start.
+# Local runs and the demo set STATUSD_CONFIG=/etc/statusd/statusd.yaml, the
+# same file with the lock off.
 COPY config/statusd.yaml /etc/statusd/statusd.yaml
 COPY config/statusd.production.yaml /etc/statusd/statusd.production.yaml
-ENV STATUSD_CONFIG=/etc/statusd/statusd.yaml
+ENV STATUSD_CONFIG=/etc/statusd/statusd.production.yaml
 EXPOSE 8080 9090
 # A numeric non-root user, so runtimes can verify it, between 10000 and 20000
 # and without a group: Choreo's build accepts nothing else.
