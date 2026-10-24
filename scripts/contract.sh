@@ -28,9 +28,10 @@
 # testdata/contract-<name> over those files first; the "edge" scenario holds
 # upstream data the captured fixtures do not (null and missing statuses, an
 # unrecognised incident type, colliding region keys, an empty incidents
-# response, a source that answers {} for components, and a second source of a
-# two-source product that answers {} for components and incidents), and the
-# tests it enables check how the backend reads it.
+# response, outage, maintenance and degraded components, a region key the
+# configuration does not name, an active Maintenance incident, and a second
+# source of a two-source product that answers {} for components and
+# incidents), and the tests it enables check how the backend reads it.
 set -euo pipefail
 
 root="$(cd "$(dirname "$0")/.." && pwd)"

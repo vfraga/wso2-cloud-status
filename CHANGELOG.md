@@ -71,6 +71,11 @@ section here. The public API has its own version, in `api/openapi.yaml`.
 - A percent-encoded spelling of an API path (`/api/v1/%73ummary`) is
   answered with the cacheable 404, not a second copy of the body.
 - The plain and gzip bodies have distinct strong ETags.
+- The external check also fetches the incident list and a product page,
+  so an edge fault on either route alerts instead of passing.
+- The frontend image sends nginx's early errors (a request with oversized
+  headers or URI) with `no-store`, so a CDN cannot keep one in place of a
+  file.
 - While a product's incident feed is stale, an open incident's daily
   minutes stop at `checked_at.incidents` instead of running to
   `generated_at` (ADR 0009).
@@ -95,6 +100,9 @@ section here. The public API has its own version, in `api/openapi.yaml`.
 - The statusd image starts with the origin-locked production configuration
   by default and does not start without `FRONT_DOOR_ID`. Local runs and the
   demo select `/etc/statusd/statusd.yaml` with `STATUSD_CONFIG`.
+- The release workflow's image scans no longer restore an Actions cache: a
+  job holding signing credentials must not run a tool that any job on
+  `main` could have planted. `make pins` checks every privileged job.
 - The frontend image applies Alpine's security updates when it is built,
   instead of waiting for a new base image, and no longer contains curl or
   the six libraries only curl used.
