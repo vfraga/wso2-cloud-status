@@ -46,6 +46,10 @@
 #                 at the same point.
 #   product       GET <api>/api/v1/products/<id> answers 200 with that
 #                 product as JSON.
+#   incidents     GET <api>/api/v1/incidents answers 200 with a JSON object
+#                 whose generated_at is no older than MAX_AGE_SECONDS.
+#   deep-link     GET <base>/products/<id> answers 200 with HTML that holds
+#                 the app root: a link to a product's page.
 # Prints one PASS, FAIL or SKIP line per check (SKIP when a failed check
 # leaves nothing to check), INFO lines for what the page currently shows
 # (each product that is unknown, incomplete or stale, with the age of its
@@ -66,7 +70,8 @@
 #                    poll (30 s) and floors the time to the minute, so a
 #                    healthy age is under about 2 minutes including CDN
 #                    caching.
-#   PRODUCT_ID       product to fetch; default the first one in the summary
+#   PRODUCT_ID       product to fetch and link to; default the first one in
+#                    the summary
 #   TIMEOUT_SECONDS  limit per request; default 15
 #   MAX_ASSETS       most page assets to fetch; default 5
 set -u
@@ -187,6 +192,16 @@ why() {
   [ -n "$title" ] && out=" (\"$title\")"
   [ -n "$ref" ] && out="$out, X-Azure-Ref $ref"
   printf '%s' "$out"
+}
+
+# generated_at NAME prints the generated_at of fetch NAME's JSON object.
+generated_at() {
+  jq -r 'if type == "object" then .generated_at // empty else empty end' "$work/$1.body" 2>/dev/null
+}
+
+# age_of TIME prints how many seconds ago TIME, RFC 3339 in UTC, was.
+age_of() {
+  jq -nr --arg t "$1" '(now | floor) - ($t | fromdateiso8601)' 2>/dev/null
 }
 
 check_page() {
@@ -312,10 +327,10 @@ check_summary() {
     fail cache-control "the summary has no Cache-Control header"
   fi
 
-  generated=$(jq -r 'if type == "object" then .generated_at // empty else empty end' "$work/summary.body" 2>/dev/null)
+  generated=$(generated_at summary)
   if [ -z "$generated" ]; then
     fail freshness "the summary has no generated_at"
-  elif ! age=$(jq -nr --arg t "$generated" '(now | floor) - ($t | fromdateiso8601)' 2>/dev/null) || [ -z "$age" ]; then
+  elif ! age=$(age_of "$generated") || [ -z "$age" ]; then
     fail freshness "generated_at \"$generated\" is not an RFC 3339 UTC time"
   elif [ "$age" -gt "$max_age" ]; then
     fail freshness "generated_at $generated is ${age}s old, limit ${max_age}s"
@@ -389,12 +404,56 @@ check_product() {
   fi
 }
 
+check_incidents() {
+  url="$api/api/v1/incidents"
+  if ! fetch incidents "$url"; then
+    fail incidents "$url $fetch_error"
+    return
+  fi
+  if [ "$code" != 200 ]; then
+    fail incidents "$url answered HTTP $code, want 200$(why incidents)"
+    return
+  fi
+  generated=$(generated_at incidents)
+  if ! jq -e 'type == "object"' "$work/incidents.body" >/dev/null 2>&1; then
+    fail incidents "$url answered 200 but the body is not a JSON object"
+  elif [ -z "$generated" ]; then
+    fail incidents "$url answered 200 but the body has no generated_at"
+  elif ! age=$(age_of "$generated") || [ -z "$age" ]; then
+    fail incidents "$url generated_at \"$generated\" is not an RFC 3339 UTC time"
+  elif [ "$age" -gt "$max_age" ]; then
+    fail incidents "$url generated_at $generated is ${age}s old, limit ${max_age}s"
+  else
+    pass incidents "$url answered 200, generated_at $generated is ${age}s old"
+  fi
+}
+
+# check_deep_link fetches the page of the product check_product fetched.
+check_deep_link() {
+  if [ -z "$id" ]; then
+    skip deep-link "PRODUCT_ID is unset and there is no summary to take a product from"
+    return
+  fi
+  url="$base/products/$id"
+  if ! fetch deeplink "$url"; then
+    fail deep-link "$url $fetch_error"
+  elif [ "$code" != 200 ]; then
+    fail deep-link "$url answered HTTP $code, want 200$(why deeplink)"
+  elif ! grep -q 'id="root"' "$work/deeplink.body"; then
+    fail deep-link "$url answered 200 but the HTML has no app root (id=\"root\")"
+  else
+    pass deep-link "$url answered 200 with the app root"
+  fi
+}
+
 echo "synthetic check of $base (API $api), request ids $rid-*"
 check_page
 check_assets
 check_summary
 describe
 check_product
+check_incidents
+check_deep_link
 
 if [ "$failed" -gt 0 ]; then
   echo "synthetic check: $failed failed, $skipped skipped, $passed passed"

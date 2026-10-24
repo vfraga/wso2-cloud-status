@@ -40,7 +40,8 @@
 #   the security headers (CSP, nosniff, Referrer-Policy, X-Frame-Options, COOP,
 #   Permissions-Policy, Strict-Transport-Security) on every page, asset, 404
 #   and security.txt; no nginx version in Server
-#   the page and assets lines of scripts/ops/synthetic-check.sh pass against it
+#   the page, assets and deep-link lines of scripts/ops/synthetic-check.sh
+#   pass against it
 #   the image runs as user 10001, carries the OCI version, revision and source
 #   labels, and its HEALTHCHECK reports healthy
 # Stops the containers it started. Needs docker and curl. Ports
@@ -271,10 +272,12 @@ else
   bad "/.well-known/security.txt lacks: $(printf '%s; ' "${missing_fields[@]}")"
 fi
 
-# The external check's page and asset lines against the real build. Its API
-# checks fail here (nginx does not serve /api), so only those two lines count.
-STATUS_BASE_URL="http://127.0.0.1:${port}" sh "$root/scripts/ops/synthetic-check.sh" >"$work/synthetic.out" 2>&1 || true
-for check in page assets; do
+# The external check's page, asset and deep-link lines against the real
+# build. Its API checks fail here (nginx does not serve /api), so only those
+# three lines count.
+STATUS_BASE_URL="http://127.0.0.1:${port}" PRODUCT_ID=moesif sh "$root/scripts/ops/synthetic-check.sh" \
+  >"$work/synthetic.out" 2>&1 || true
+for check in page assets deep-link; do
   if grep -Eq "^PASS $check " "$work/synthetic.out"; then
     ok "synthetic-check.sh $check passes against the image"
   else

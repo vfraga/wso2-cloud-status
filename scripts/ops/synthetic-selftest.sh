@@ -26,8 +26,8 @@
 #   1. pass with everything up;
 #   2. fail on freshness when the summary's generated_at is older than the
 #      limit (MAX_AGE_SECONDS=1 once it is at least 2 seconds old);
-#   3. fail on freshness with the default limit (300 s, the page's own) when
-#      an old copy of the API is 7 to 8 minutes old;
+#   3. fail on freshness and incidents with the default limit (300 s, the
+#      page's own) when an old copy of the API is 7 to 8 minutes old;
 #   4. pass, with an INFO line naming the product, when one upstream source
 #      has never answered (one dead source is not a status page failure);
 #   5. fail on data when most products have no known status, although
@@ -42,11 +42,14 @@
 #      SPA fallback answering for a missing file), and on page when the HTML
 #      has no app root;
 #   8b. fail on cache-control when the summary carries none, on product when
-#      the product endpoint answers with another product, and with a
-#      timeout when the API hangs;
+#      the product endpoint answers with another product, on incidents alone
+#      when only the incident list is missing, and with a timeout when the
+#      API hangs;
 #   9. print a problem title that holds newlines and workflow commands on
 #      one line, so a response cannot add GitHub workflow commands;
 #  10. fail when the API is stopped, while the page still passes.
+# Before those, it fails when the page polls an API path (the paths in
+# frontend/src/hooks/useResources.ts) that the check does not fetch.
 # Then scripts/ops/synthetic-notify.sh:
 #  11. its decision (page, recover or quiet) for a table of results and
 #      earlier runs;
@@ -166,6 +169,20 @@ expect() {
   fi
 }
 
+# The API paths the page polls, with each ${...} as <id>, against the ones
+# the check fetches, with each $variable as <id>.
+cases=$((cases + 1))
+echo "== the check fetches every API path the page polls"
+polled="$(grep -oE '["`]/api/v1/[^"`]*' "$root/frontend/src/hooks/useResources.ts" |
+  sed -E 's/^.//; s/\$\{[^}]*\}/<id>/g' | sort -u)"
+fetched="$(grep -oE '"\$api/api/v1/[^"]*' "$check" | sed -E 's/^"\$api//; s/\$[a-z_]+/<id>/g' | sort -u)"
+printf 'polled:  %s\nfetched: %s\n' "$(paste -sd ' ' - <<<"$polled")" "$(paste -sd ' ' - <<<"$fetched")"
+[[ -n "$polled" ]] || broken "found no /api/v1 path in frontend/src/hooks/useResources.ts"
+while IFS= read -r path; do
+  [[ -z "$path" ]] || grep -qxF -- "$path" <<<"$fetched" ||
+    broken "the page polls $path, which synthetic-check.sh does not fetch"
+done <<<"$polled"
+
 (cd "$root/backend/go" && go build -o "$work/statusd" ./cmd/statusd)
 (cd "$root/tests/contract" && go build -o "$work/upstream" ./cmd/upstream)
 
@@ -217,8 +234,15 @@ for _ in $(seq 1 150); do
   sleep 0.2
 done
 
+# Deep links: the shell under /products/<id> for every product, as the
+# frontend image serves it.
+mkdir -p "$work/site/products"
+for id in $(curl -fsS "http://127.0.0.1:${api_port}/api/v1/summary" | jq -r '.products[].id'); do
+  cp "$work/site/index.html" "$work/site/products/$id"
+done
+
 total="$(curl -fsS "http://127.0.0.1:${api_port}/api/v1/summary" | jq '.products | length')"
-expect "everything up" 0 '^synthetic check: all 7 passed$'
+expect "everything up" 0 '^synthetic check: all 9 passed$'
 grep -Eq "^PASS data +$total of $total products have a known status$" "$work/out" ||
   broken "everything up: no PASS data line for $total of $total products"
 
@@ -231,13 +255,14 @@ done
 expect "generated_at older than the limit" 1 '^FAIL freshness +generated_at .* is [0-9]+s old, limit 1s$' MAX_AGE_SECONDS=1
 
 # A local server for answers statusd does not give: under /old, an old copy
-# of the API as an edge cache could serve it (the live summary and product
-# with generated_at moved 7 minutes back and floored to the minute, served
-# with the live Cache-Control); under /nocache, the live summary without
-# Cache-Control; under /wrongid, a product endpoint that answers with another
-# product; under /hang, nothing for 3 seconds; under /inject, a 503 whose
-# problem title holds newlines and workflow commands; under /unknown<N>, the
-# live summary with its first N products unknown.
+# of the API as an edge cache could serve it (the live summary, product and
+# incident list with generated_at moved 7 minutes back and floored to the
+# minute, served with the live Cache-Control); under /nocache, the live
+# summary without Cache-Control; under /wrongid, a product endpoint that
+# answers with another product; under /noincidents, the live API without its
+# incident list; under /hang, nothing for 3 seconds; under /inject, a 503
+# whose problem title holds newlines and workflow commands; under
+# /unknown<N>, the live summary with its first N products unknown.
 cat >"$work/copy.py" <<'PY'
 import http.server, json, os, sys, time
 
@@ -279,9 +304,12 @@ curl -fsS "http://127.0.0.1:${api_port}/api/v1/summary" | jq --arg t "$old" '.ge
   >"$work/copy/old_api_v1_summary"
 curl -fsS "http://127.0.0.1:${api_port}/api/v1/products/moesif" | jq --arg t "$old" '.generated_at = $t' \
   >"$work/copy/old_api_v1_products_moesif"
-for dir in nocache wrongid; do
+curl -fsS "http://127.0.0.1:${api_port}/api/v1/incidents" | jq --arg t "$old" '.generated_at = $t' \
+  >"$work/copy/old_api_v1_incidents"
+for dir in nocache wrongid noincidents; do
   curl -fsS "http://127.0.0.1:${api_port}/api/v1/summary" >"$work/copy/${dir}_api_v1_summary"
 done
+curl -fsS "http://127.0.0.1:${api_port}/api/v1/products/moesif" >"$work/copy/noincidents_api_v1_products_moesif"
 curl -fsS "http://127.0.0.1:${api_port}/api/v1/products/developer-platform" >"$work/copy/wrongid_api_v1_products_moesif"
 # The critical alert's point: more than half the products unknown.
 half=$((total / 2))
@@ -291,6 +319,7 @@ for n in "$half" "$((half + 1))"; do
       | .products |= [to_entries[] | if .key < $n then .value.status = "unknown" else . end | .value]' \
     >"$work/copy/unknown${n}_api_v1_summary"
   curl -fsS "http://127.0.0.1:${api_port}/api/v1/products/moesif" >"$work/copy/unknown${n}_api_v1_products_moesif"
+  curl -fsS "http://127.0.0.1:${api_port}/api/v1/incidents" >"$work/copy/unknown${n}_api_v1_incidents"
 done
 cache_control="$(curl -fsS -o /dev/null -D - "http://127.0.0.1:${api_port}/api/v1/summary" | tr -d '\r' |
   awk 'tolower($0) ~ /^cache-control:/ { sub(/^[^:]*:[ \t]*/, ""); print }')"
@@ -304,7 +333,9 @@ age="$(sed -nE 's/^FAIL freshness +generated_at .* is ([0-9]+)s old, limit 300s$
 if [[ -z "$age" || "$age" -le 300 || "$age" -gt 600 ]]; then
   broken "old copy: generated_at is ${age:-?}s old, want between 300 and 600"
 fi
-[[ "$(grep -c '^FAIL' "$work/out")" == 1 ]] || broken "old copy: freshness should be the only failure"
+grep -Eq '^FAIL incidents +.* generated_at .* is [0-9]+s old, limit 300s$' "$work/out" ||
+  broken "old copy: no FAIL incidents line for the old incident list"
+[[ "$(grep -c '^FAIL' "$work/out")" == 2 ]] || broken "old copy: freshness and incidents should be the only failures"
 expect "half the products unknown" 0 "^PASS data +$((total - half)) of $total products have a known status\$" \
   STATUS_API_URL="http://127.0.0.1:${copy_port}/unknown${half}" PRODUCT_ID=moesif
 expect "more than half the products unknown" 1 "^FAIL data +$((half + 1)) of $total products have no known status " \
@@ -321,7 +352,7 @@ wait_for "http://127.0.0.1:${dead_port}/readyz"
 expect "one source never answered" 0 \
   '^INFO summary +identity-platform: status unknown, .*last checked: components never, incidents never, uptime never$' \
   STATUS_API_URL="http://127.0.0.1:${dead_port}"
-grep -q '^synthetic check: all 7 passed$' "$work/out" || broken "one source never answered: every check should pass"
+grep -q '^synthetic check: all 9 passed$' "$work/out" || broken "one source never answered: every check should pass"
 kill "$dead_pid"
 wait "$dead_pid" 2>/dev/null || true
 
@@ -380,6 +411,10 @@ expect "the summary has no Cache-Control" 1 '^FAIL cache-control +the summary ha
 expect "the product endpoint answers with another product" 1 \
   '^FAIL product +.* answered 200 but the body is not product "moesif" with a string "status"$' \
   STATUS_API_URL="http://127.0.0.1:${copy_port}/wrongid" PRODUCT_ID=moesif
+expect "only the incident list fails" 1 \
+  '^FAIL incidents +http://127\.0\.0\.1:[0-9]+/noincidents/api/v1/incidents answered HTTP 404, want 200$' \
+  STATUS_API_URL="http://127.0.0.1:${copy_port}/noincidents" PRODUCT_ID=moesif
+[[ "$(grep -c '^FAIL' "$work/out")" == 1 ]] || broken "only the incident list fails: incidents should be the only failure"
 expect "the API hangs" 1 '^FAIL summary +.* request failed: curl: \(28\)' \
   STATUS_API_URL="http://127.0.0.1:${copy_port}/hang" TIMEOUT_SECONDS=1
 
