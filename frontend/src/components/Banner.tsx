@@ -87,33 +87,38 @@ function noticeText(
 }
 
 /**
- * The live region stays mounted, so the notice is announced when it appears,
- * and so is `announcement`, which only assistive technology reads.
+ * Two live regions that stay mounted: the notice, announced when it appears
+ * or changes, and `announcement`, which only assistive technology reads. Kept
+ * apart, a later notice does not repeat a status change already announced.
  */
 function Notice({ text, announcement }: { text: string | null; announcement: string }) {
   return (
-    <div role="status">
-      {announcement !== "" && <span className="cs-visually-hidden">{announcement}</span>}
-      {text !== null && (
-        <Stack
-          direction="row"
-          spacing={1}
-          sx={{
-            mt: 1.5,
-            alignItems: "flex-start",
-            color: "var(--cs-text)",
-            bgcolor: "var(--cs-surface)",
-            border: "1px solid var(--cs-border)",
-            borderRadius: CARD_RADIUS,
-            px: 1.5,
-            py: 1,
-          }}
-        >
-          <Info aria-hidden="true" size={18} style={{ marginTop: 2, flexShrink: 0 }} />
-          <Typography variant="body2">{text}</Typography>
-        </Stack>
-      )}
-    </div>
+    <>
+      <span aria-live="polite" className="cs-visually-hidden">
+        {announcement}
+      </span>
+      <div role="status">
+        {text !== null && (
+          <Stack
+            direction="row"
+            spacing={1}
+            sx={{
+              mt: 1.5,
+              alignItems: "flex-start",
+              color: "var(--cs-text)",
+              bgcolor: "var(--cs-surface)",
+              border: "1px solid var(--cs-border)",
+              borderRadius: CARD_RADIUS,
+              px: 1.5,
+              py: 1,
+            }}
+          >
+            <Info aria-hidden="true" size={18} style={{ marginTop: 2, flexShrink: 0 }} />
+            <Typography variant="body2">{text}</Typography>
+          </Stack>
+        )}
+      </div>
+    </>
   );
 }
 

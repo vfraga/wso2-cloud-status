@@ -989,21 +989,31 @@ describe("Banner", () => {
   });
 
   it("announces a change of the headline on an open page, not the first status", () => {
-    const { rerender } = wrap(<Banner {...base} loading headline={headline("unknown")} />);
-    const live = screen.getByRole("status");
+    const { container, rerender } = wrap(
+      <Banner {...base} loading headline={headline("unknown")} />,
+    );
+    const announcer = container.querySelector('[aria-live="polite"]')!;
     rerender(
       <ThemeRoot>
         <Banner {...base} headline={headline("operational")} />
       </ThemeRoot>,
     );
-    expect(live).toBeEmptyDOMElement();
+    expect(announcer).toBeEmptyDOMElement();
     rerender(
       <ThemeRoot>
         <Banner {...base} headline={headline("outage")} />
       </ThemeRoot>,
     );
-    expect(live).toHaveTextContent("Status changed: Service outage.");
+    expect(announcer).toHaveTextContent("Status changed: Service outage.");
     expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("Service outage");
+    // A later notice is its own region: it does not repeat the change.
+    rerender(
+      <ThemeRoot>
+        <Banner {...base} headline={headline("outage")} failed />
+      </ThemeRoot>,
+    );
+    expect(screen.getByRole("status")).toHaveTextContent("We could not refresh it just now");
+    expect(screen.getByRole("status")).not.toHaveTextContent("Status changed");
   });
 
   it("says the age line covers the other products when some are late", () => {

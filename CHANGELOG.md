@@ -56,6 +56,8 @@ section here. The public API has its own version, in `api/openapi.yaml`.
   stopped.
 - On a phone, a tapped legend description stays open until the reader taps
   elsewhere, instead of closing 1.5 s after the tap.
+- A screen reader no longer hears "Status changed" again with every later
+  notice: the change announcement has its own live region.
 - statusd lists each incident once at a cost that grows with the number of
   records rather than its square, and rejects an incident answer of more
   than 500 records as malformed: an upstream that filed one event
