@@ -1,6 +1,5 @@
 # How to report a security vulnerability in the WSO2 Cloud status page
-# (RFC 9116). The image build replaces the Expires placeholder with a time a
-# year after the commit it is built from.
+# (RFC 9116).
 Contact: mailto:cloud-security@wso2.com
 Encryption: https://keys.openpgp.org/vks/v1/by-fingerprint/5A401772ED46127D197B00AB754F670C18458E05
 Policy: https://security.docs.wso2.com/en/latest/security-reporting/vulnerability-reporting-guidelines/

@@ -274,7 +274,8 @@ grep -Eq '^Policy: https://[^ ]+$' "$work/securitytxt.body" || missing_fields+=(
 expires="$(sed -nE 's/^Expires: (.*)$/\1/p' "$work/securitytxt.body")"
 left="$(jq -nr --arg t "$expires" '($t | fromdateiso8601) - now | floor' 2>/dev/null || true)"
 # RFC 9116 wants Expires in the future and, recommended, less than a year
-# ahead; the build sets it a year after the commit time.
+# ahead; the build sets it a year after CREATED, or after the build when
+# CREATED is unset.
 if [[ ! "$left" =~ ^[0-9]+$ || "$left" -gt $((366 * 86400)) ]]; then
   missing_fields+=("Expires in the coming year (got \"$expires\")")
 fi
