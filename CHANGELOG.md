@@ -56,6 +56,21 @@ section here. The public API has its own version, in `api/openapi.yaml`.
   stopped.
 - On a phone, a tapped legend description stays open until the reader taps
   elsewhere, instead of closing 1.5 s after the tap.
+- statusd lists each incident once at a cost that grows with the number of
+  records rather than its square, and rejects an incident answer of more
+  than 500 records as malformed: an upstream that filed one event
+  thousands of times stalled every product's polling for minutes. A
+  shutdown no longer waits for the builds queued behind the one running.
+- A start, a reload and `statusd -check-config` read the configuration the
+  same way. Backend names must be slugs (two sources could share a key and
+  show each other's status), and listen addresses take an IP address or no
+  host, not a host name. A start refused by an adapter's setting exits 2
+  with `configuration rejected` and every problem, like a validation error.
+  A reload that is invalid together with the running restart-only settings
+  is rejected.
+- A percent-encoded spelling of an API path (`/api/v1/%73ummary`) is
+  answered with the cacheable 404, not a second copy of the body.
+- The plain and gzip bodies have distinct strong ETags.
 - While a product's incident feed is stale, an open incident's daily
   minutes stop at `checked_at.incidents` instead of running to
   `generated_at` (ADR 0009).
@@ -77,6 +92,9 @@ section here. The public API has its own version, in `api/openapi.yaml`.
 
 ### Security
 
+- The statusd image starts with the origin-locked production configuration
+  by default and does not start without `FRONT_DOOR_ID`. Local runs and the
+  demo select `/etc/statusd/statusd.yaml` with `STATUSD_CONFIG`.
 - The frontend image applies Alpine's security updates when it is built,
   instead of waiting for a new base image, and no longer contains curl or
   the six libraries only curl used.
