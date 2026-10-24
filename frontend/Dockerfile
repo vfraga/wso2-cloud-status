@@ -20,7 +20,12 @@ RUN npm ci
 COPY . .
 ARG VITE_API_BASE_URL=""
 ENV VITE_API_BASE_URL=$VITE_API_BASE_URL
-RUN npm run build
+# Each file nginx would compress, compressed once at the highest level; nginx
+# serves the .gz copy (gzip_static) instead of compressing every response at
+# its default level 1.
+RUN npm run build && \
+  find dist -type f \( -name '*.js' -o -name '*.css' -o -name '*.html' -o -name '*.svg' \) \
+    -size +511c -exec gzip -9 -k {} +
 ARG CREATED=""
 RUN node -e ' \
   const fs = require("node:fs"); \

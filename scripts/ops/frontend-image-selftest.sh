@@ -26,8 +26,9 @@
 #   /products/<id>        200, the same HTML (deep links are served by the shell)
 #   each module script and stylesheet index.html references
 #                         200, a JavaScript or CSS type, cached for a year
-#                         (immutable), gzip on request; 304 on revalidation,
-#                         still immutable
+#                         (immutable), gzip on request from the file the
+#                         build compressed; 304 on revalidation, still
+#                         immutable
 #   a missing asset       404 with no-store: a cached 404 for a bundle a deploy
 #                         has not reached yet leaves the page blank
 #   /api/x                404 with no-store, not the HTML shell; with
@@ -202,6 +203,13 @@ else
   [[ "$(hdr gzip Content-Encoding)" == gzip && "$(hdr gzip Vary)" == *Accept-Encoding* ]] && gzipped=true
   verdict "$first is gzipped on request, with Vary: Accept-Encoding" \
     "$first is not gzipped on request, or lacks Vary: Accept-Encoding" "$gzipped"
+  # Compressing on the fly sends no Content-Length and weakens the ETag; the
+  # file the build compressed has both, and holds the same bytes.
+  static=false
+  [[ -n "$(hdr gzip Content-Length)" && "$(hdr gzip ETag)" != W/* ]] &&
+    gzip -dc <"$work/gzip.body" | cmp -s - "$work/asset1.body" && static=true
+  verdict "$first is sent from the file the build compressed" \
+    "$first is compressed on the fly, or its .gz copy differs from the file" "$static"
   get revalidate "$first" -H "If-None-Match: $(hdr asset1 ETag)"
   expect revalidate "$first revalidated (If-None-Match)" 304 "$immutable"
 fi

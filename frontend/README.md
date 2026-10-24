@@ -107,9 +107,10 @@ pack's paths unchanged.
   Oxygen UI would drop them.
 - Oxygen UI inlines its Inter font as `data:` URIs in its JavaScript. `build/externalize-fonts.ts`
   moves each into a content-hashed `.woff2` under `/assets/` and preloads the Latin subset.
-- The build has three chunks: `index` (app code, about 17 kB gzip), `vendor`
-  (React, MUI, Oxygen, about 183 kB gzip; cached long-term) and a small
-  `rolldown-runtime` (under 1 kB).
+- The build has three chunks: `index` (app code, about 21 kB gzip), `vendor`
+  (React, MUI, Oxygen, about 180 kB gzip; cached long-term) and a small
+  `rolldown-runtime` (under 1 kB). The image compresses each file once at
+  level 9 and nginx sends the `.gz` copy (`gzip_static`).
 - `node scripts/transfer.mjs <url>` lists what a page requests on its first load,
   with each file's gzip size (raw for fonts) and the total; the proposal's
   first-load figure comes from it. It needs Playwright's Chromium
