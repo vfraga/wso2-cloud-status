@@ -21,7 +21,7 @@ import { clockSkew, freshness, staleOnArrival } from "./freshness";
 import { dayAriaLabel, dayDetail, historyText, stripCaptions, summariseHistory } from "./history";
 import { groupByDay, incidentDuration, isOngoing, stateLabel, worstImpact } from "./incidents";
 import {
-  formatAgo,
+  formatCheckAge,
   formatDuration,
   formatHistoryDate,
   formatMinutes,
@@ -49,18 +49,30 @@ describe("formatDuration", () => {
   });
 });
 
-describe("formatAgo", () => {
+describe("formatCheckAge", () => {
+  // Outdated: whole units since the start of the reported minute.
   it.each([
-    [2_000, "less than a minute ago"],
-    [59_000, "less than a minute ago"],
+    [-5_000, "just now"],
+    [59_000, "just now"],
     [60_000, "1 min ago"],
     [180_000, "3 min ago"],
     [3_600_000, "1 hour ago"],
     [2 * 3_600_000, "2 hours ago"],
     [86_400_000, "1 day ago"],
     [3 * 86_400_000, "3 days ago"],
-  ])("%d ms reads %s", (ms, text) => {
-    expect(formatAgo(ms)).toBe(text);
+  ])("%d ms outdated reads %s", (ms, text) => {
+    expect(formatCheckAge(ms, true)).toBe(text);
+  });
+
+  // Current: from the end of the reported minute, so a fresh load reads "just now".
+  it.each([
+    [-5_000, "just now"],
+    [119_999, "just now"],
+    [120_000, "1 min ago"],
+    [5 * 60_000, "4 min ago"],
+    [61 * 60_000, "1 hour ago"],
+  ])("%d ms current reads %s", (ms, text) => {
+    expect(formatCheckAge(ms, false)).toBe(text);
   });
 });
 

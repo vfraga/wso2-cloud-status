@@ -31,6 +31,10 @@ section here. The public API has its own version, in `api/openapi.yaml`.
 - A day's details put its status beside the date.
 - The home page's tab reads "WSO2 Cloud Status"; the status is no longer in
   it.
+- A fresh page reads "Status checked just now": while the data is current,
+  its age counts from the end of the minute the API reports, since those
+  times are floored and can trail the latest check by a minute. Data past
+  its limit is aged as before.
 
 ### Fixed
 

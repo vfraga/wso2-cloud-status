@@ -164,9 +164,7 @@ describe("body freshness on the home page", () => {
       await screen.findByRole("heading", { level: 1, name: "Status unavailable for Moesif" }),
     ).toBeInTheDocument();
     expect(within(banner()).getByText("The other 2 products are operational.")).toBeInTheDocument();
-    expect(
-      within(banner()).getByText(/^Other products checked (less than a minute|1 min) ago$/),
-    ).toBeInTheDocument();
+    expect(within(banner()).getByText(/^Other products checked just now$/)).toBeInTheDocument();
     const notice = screen.getByRole("status");
     expect(notice).toHaveTextContent(
       `Status data for Moesif was last checked at ${formatUtcClock(old)}.`,

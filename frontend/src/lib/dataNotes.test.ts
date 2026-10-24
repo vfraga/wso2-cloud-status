@@ -31,13 +31,7 @@ import {
 } from "./dataNotes";
 import { componentFreshness, freshness, incidentCoverage } from "./freshness";
 import { dayAriaLabel, dayDetail } from "./history";
-import {
-  formatAgo,
-  formatHistoryDate,
-  formatUtcClock,
-  formatUtcDateTime,
-  formatUtcTime,
-} from "./time";
+import { formatHistoryDate, formatUtcClock, formatUtcDateTime, formatUtcTime } from "./time";
 
 const now = new Date("2026-10-21T14:17:30Z");
 const at = (hhmm: string, date = "2026-10-21") => new Date(`${date}T${hhmm}:00Z`);
@@ -61,7 +55,7 @@ const named = (name: string, overrides: Partial<ProductSummary> = {}): ProductSu
   product({ id: name.toLowerCase(), name, freshness: fresh(), ...overrides });
 
 describe("time formats for data freshness", () => {
-  it("writes UTC times, with the date only when it is not today, and short ages", () => {
+  it("writes UTC times, with the date only when it is not today", () => {
     expect(formatUtcClock(at("09:05"))).toMatch(/^0?9:05 /);
     expect(formatUtcClock(at("09:05")).endsWith(" UTC")).toBe(true);
     expect(formatUtcDateTime(at("14:05"))).toContain(formatHistoryDate("2026-10-21"));
@@ -70,13 +64,6 @@ describe("time formats for data freshness", () => {
     expect(formatUtcTime(at("23:55", "2026-10-20"), now)).toBe(
       formatUtcDateTime(at("23:55", "2026-10-20")),
     );
-    expect(formatAgo(-5_000)).toBe("less than a minute ago");
-    expect(formatAgo(59_999)).toBe("less than a minute ago");
-    expect(formatAgo(60_000)).toBe("1 min ago");
-    expect(formatAgo(12 * 60_000 + 59_000)).toBe("12 min ago");
-    expect(formatAgo(60 * 60_000)).toBe("1 hour ago");
-    expect(formatAgo(5 * 3_600_000)).toBe("5 hours ago");
-    expect(formatAgo(50 * 3_600_000)).toBe("2 days ago");
   });
 });
 

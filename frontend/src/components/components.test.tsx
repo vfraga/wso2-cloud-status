@@ -869,7 +869,20 @@ describe("Banner", () => {
       />,
     );
     expect(screen.getByRole("status")).toBeEmptyDOMElement();
-    expect(screen.getByText("Status checked less than a minute ago")).toBeInTheDocument();
+    expect(screen.getByText("Status checked just now")).toBeInTheDocument();
+  });
+
+  it.each([
+    // checked_at is floored and can trail the latest check by a minute.
+    [100_000, "Status checked just now"],
+    [170_000, "Status checked 1 min ago"],
+    [4 * 60_000 + 50_000, "Status checked 3 min ago"],
+  ])("counts current data's age from the end of its minute (%d ms)", (ms, text) => {
+    wrap(
+      <Banner {...base} headline={headline("operational")} checkedAt={new Date(Date.now() - ms)} />,
+    );
+    expect(screen.getByText(text)).toBeInTheDocument();
+    expect(screen.getByRole("status")).toBeEmptyDOMElement();
   });
 
   it("reads Status unavailable once the page has not refreshed for longer than the limit", () => {

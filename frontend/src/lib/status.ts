@@ -191,7 +191,7 @@ export function statusDataLastChecked(names: string, time: string, partly: boole
 
 /**
  * The banner's age line: when the statuses shown were last checked, in whole
- * minutes ("less than a minute ago"), as precise as the API's times.
+ * minutes ("just now", "3 min ago"), as precise as the API's times.
  */
 export function statusChecked(ago: string): string {
   return `Status checked ${ago}`;

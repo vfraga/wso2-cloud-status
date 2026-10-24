@@ -189,9 +189,7 @@ describe("home page", () => {
       within(active).getByRole("link", { name: "Updates on the API Platform status page" }),
     ).toHaveAttribute("href", "https://status.example.test/api");
     expect(screen.getByText(/Ongoing for 1h/)).toBeInTheDocument();
-    expect(
-      await screen.findByText(/^Status checked (less than a minute|1 min) ago$/),
-    ).toBeInTheDocument();
+    expect(await screen.findByText(/^Status checked just now$/)).toBeInTheDocument();
   });
 
   it("joins history day incident ids to incident titles from /incidents", async () => {
@@ -369,9 +367,7 @@ describe("home page", () => {
       expect(
         await screen.findByRole("heading", { level: 1, name: "All systems operational" }),
       ).toBeInTheDocument();
-      expect(
-        screen.getByText(/^Status checked (less than a minute|1 min) ago$/),
-      ).toBeInTheDocument();
+      expect(screen.getByText(/^Status checked just now$/)).toBeInTheDocument();
       expect(screen.getByRole("status")).toBeEmptyDOMElement();
     });
 
@@ -606,9 +602,7 @@ describe("home page", () => {
         await vi.advanceTimersByTimeAsync(0);
       });
       await waitFor(() => {
-        expect(
-          screen.getByText(/^Status checked (less than a minute|1 min) ago$/),
-        ).toBeInTheDocument();
+        expect(screen.getByText(/^Status checked just now$/)).toBeInTheDocument();
       });
       expect(heading).toHaveTextContent("Degraded performance");
       expect(seen).not.toContain("Status unavailable");

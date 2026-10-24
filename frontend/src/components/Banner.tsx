@@ -32,7 +32,7 @@ import {
   statusChanged,
   statusChecked,
 } from "../lib/status";
-import { formatAgo, formatMinutes } from "../lib/time";
+import { formatCheckAge, formatMinutes } from "../lib/time";
 import { CARD_RADIUS } from "../theme/shape";
 import { statusVar } from "../theme/tokens";
 import { StatusIcon } from "./StatusIcon";
@@ -140,12 +140,12 @@ function headingText(subject: string | undefined, label: string): string {
 }
 
 /** "Status checked 3 min ago", or "Other products ..." when some are late and named in the notice. */
-function AgeLine({ ageMs, someLate }: { ageMs: number | null; someLate: boolean }) {
-  if (ageMs === null) return null;
+function AgeLine({ fresh, someLate }: { fresh: Freshness; someLate: boolean }) {
+  if (fresh.ageMs === null) return null;
   const text = someLate ? othersChecked : statusChecked;
   return (
     <Typography variant="body2" sx={{ color: "var(--cs-muted)", mt: 0.5 }}>
-      {text(formatAgo(ageMs))}
+      {text(formatCheckAge(fresh.ageMs, fresh.outdated))}
     </Typography>
   );
 }
@@ -216,7 +216,7 @@ export function Banner({
       <Detail headline={shown} />
       {/* The secondary line describes the data, so it goes when the headline does. */}
       <Line text={loading || fresh.unavailable ? undefined : secondary} />
-      <AgeLine ageMs={fresh.ageMs} someLate={someLate} />
+      <AgeLine fresh={fresh} someLate={someLate} />
       <Notice
         text={noticeText(notice, inputs.lastSuccessAt !== null, loading ? [] : notes)}
         announcement={announcement}

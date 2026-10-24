@@ -106,17 +106,27 @@ function plural(n: number, unit: string): string {
   return `${String(n)} ${unit}${n === 1 ? "" : "s"}`;
 }
 
-/**
- * "less than a minute ago", "12 min ago", "3 hours ago", "2 days ago". Whole
- * minutes at most, because the API floors its times to the minute.
- */
-export function formatAgo(ms: number): string {
+/** "just now", "12 min ago", "3 hours ago", "2 days ago": whole units. */
+function formatAgo(ms: number): string {
   const minutes = Math.floor(Math.max(0, ms) / MINUTE);
-  if (minutes < 1) return "less than a minute ago";
+  if (minutes < 1) return "just now";
   if (minutes < 60) return `${String(minutes)} min ago`;
   const hours = Math.floor(minutes / 60);
   if (hours < 24) return `${plural(hours, "hour")} ago`;
   return `${plural(Math.floor(hours / 24), "day")} ago`;
+}
+
+/**
+ * The age of a check time, which the API floors to the minute: the check
+ * was made during that minute, and the time can trail the latest check by
+ * up to a minute more. While the data is current the age counts from the
+ * end of the minute, the time known to have passed, so a fresh load reads
+ * "just now". Once the data is past its limit the age counts from the start
+ * of the minute, as the limits do, so it never reads under a limit the page
+ * says has passed, and agrees with the time shown beside it.
+ */
+export function formatCheckAge(ms: number, outdated: boolean): string {
+  return formatAgo(outdated ? ms : ms - MINUTE);
 }
 
 /** "1h 12m", "45m", "2d 3h", "under 1m". */

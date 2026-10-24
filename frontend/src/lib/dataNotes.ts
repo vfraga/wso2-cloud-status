@@ -37,7 +37,7 @@ import {
   statusDataLastChecked,
   uptimeLastUpdated,
 } from "./status";
-import { earliest, formatAgo, formatUtcTime } from "./time";
+import { earliest, formatCheckAge, formatUtcTime } from "./time";
 
 /*
  * Sentences that name what is late, from the body's checked_at and stale.
@@ -162,7 +162,7 @@ export function staleFeedLines(
   ): string[] => {
     if (!isStale) return [];
     if (at === null) return [never];
-    return [updated(formatUtcTime(at, now), formatAgo(now.getTime() - at.getTime()))];
+    return [updated(formatUtcTime(at, now), formatCheckAge(now.getTime() - at.getTime(), true))];
   };
   return [
     ...line(

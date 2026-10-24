@@ -86,7 +86,7 @@ test.describe("feeds that stop after answering", () => {
     await expect(
       // The short e2e budgets can make the feed stale within its first minute.
       moesif.getByText(
-        new RegExp(`^Incidents last updated ${CLOCK} \\((\\d+ min|less than a minute) ago\\)$`),
+        new RegExp(`^Incidents last updated ${CLOCK} \\((\\d+ min ago|just now)\\)$`),
       ),
     ).toBeVisible();
     // Today, the day of the last successful fetch, has no incidents: No data, not green.
