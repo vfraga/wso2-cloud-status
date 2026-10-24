@@ -43,6 +43,9 @@ section here. The public API has its own version, in `api/openapi.yaml`.
 - The frontend image sends its files compressed once at the highest level
   instead of at the lowest level on every request: about 37 KB less on a
   first visit, and far less CPU per request.
+- An open home page no longer redraws every product row on each 5-second
+  tick of the banner's clock: about 60% less script time while it stays
+  open.
 
 ### Fixed
 

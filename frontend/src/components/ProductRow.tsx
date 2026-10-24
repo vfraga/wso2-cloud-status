@@ -17,6 +17,7 @@
  */
 
 import { Box, Stack, Typography } from "@wso2/oxygen-ui";
+import { memo } from "react";
 import type { Incident, ProductSummary } from "../api/types";
 import { completeUntil } from "../lib/dataNotes";
 import { missingDataText } from "../lib/headline";
@@ -49,7 +50,15 @@ function RowStatus({ product }: { product: ProductSummary }) {
   );
 }
 
-export function ProductRow({ product, incidents, knownUntil = null }: ProductRowProps) {
+/**
+ * Memoised: the home page re-renders on every tick of the banner's 5-second
+ * clock, and a row's props change only when its data does.
+ */
+export const ProductRow = memo(function ProductRow({
+  product,
+  incidents,
+  knownUntil = null,
+}: ProductRowProps) {
   const rows = productRows(product);
   const affected = rows.filter((row) => isProblem(rowStatus(row))).length;
   return (
@@ -119,4 +128,4 @@ export function ProductRow({ product, incidents, knownUntil = null }: ProductRow
       />
     </Box>
   );
-}
+});
