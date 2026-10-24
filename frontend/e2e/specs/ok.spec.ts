@@ -312,15 +312,41 @@ test.describe("all operational", () => {
       "No incidents",
       "No data: information for this day is unavailable",
     ];
+    const intro = await page.getByText("Each bar is one UTC day.").boundingBox();
+    const middle = (b: typeof intro): number => (b?.y ?? 0) + (b?.height ?? 0) / 2;
+    const swatches = new Set<string>();
     for (const name of names) {
       const label = legend.getByText(name, { exact: true });
       await expect(label).toBeVisible();
-      // Each swatch is centred on its label's line.
-      const swatch = await label.locator("xpath=preceding-sibling::*[1]").boundingBox();
+      // The entries start on the line below the intro.
       const text = await label.boundingBox();
-      const middle = (b: typeof text): number => (b?.y ?? 0) + (b?.height ?? 0) / 2;
+      expect(text?.y ?? 0).toBeGreaterThanOrEqual((intro?.y ?? 0) + (intro?.height ?? 0));
+      // Each swatch is centred on its label's line, and all are one size.
+      const swatch = await label.locator("xpath=preceding-sibling::*[1]").boundingBox();
       expect(Math.abs(middle(swatch) - middle(text))).toBeLessThanOrEqual(1);
+      swatches.add(`${String(swatch?.width)}x${String(swatch?.height)}`);
     }
+    expect(swatches.size).toBe(1);
+    // The intro's text and each line of entries are centred under the strips.
+    const offCentre = await legend.evaluate((el) => {
+      const outer = el.getBoundingClientRect();
+      const mid = outer.left + outer.width / 2;
+      const range = document.createRange();
+      range.selectNodeContents(el.firstElementChild!);
+      const lines = new Map<number, { left: number; right: number }>([
+        [-1, range.getBoundingClientRect()],
+      ]);
+      for (const entry of el.lastElementChild!.children) {
+        const b = entry.getBoundingClientRect();
+        const line = lines.get(Math.round(b.top)) ?? { left: b.left, right: b.right };
+        lines.set(Math.round(b.top), {
+          left: Math.min(line.left, b.left),
+          right: Math.max(line.right, b.right),
+        });
+      }
+      return Math.max(...[...lines.values()].map((l) => Math.abs((l.left + l.right) / 2 - mid)));
+    });
+    expect(offCentre).toBeLessThanOrEqual(1);
     // A colour says what it means on hover.
     await legend.getByText("Under maintenance", { exact: true }).hover();
     await expect(page.getByRole("tooltip")).toHaveText(

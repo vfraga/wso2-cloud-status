@@ -18,13 +18,7 @@
 
 import { Box, Stack, Tooltip, Typography } from "@wso2/oxygen-ui";
 import type { Status } from "../api/types";
-import {
-  DAY_LABEL,
-  LEGEND_DESCRIPTION,
-  LEGEND_INTRO,
-  LEGEND_NO_DATA,
-  isProblem,
-} from "../lib/status";
+import { DAY_LABEL, LEGEND_DESCRIPTION, LEGEND_INTRO, LEGEND_NO_DATA } from "../lib/status";
 import { CARD_RADIUS } from "../theme/shape";
 import { dayFill } from "./dayFill";
 
@@ -32,9 +26,8 @@ import { dayFill } from "./dayFill";
 const ENTRIES: readonly Status[] = ["outage", "degraded", "maintenance", "operational", "unknown"];
 
 /**
- * Drawn like a strip cell, a problem day taller than the rest, but each mark
- * is its own box centred on the text line: the strip's 60% cells sit at the
- * foot of a full-height box, which would look low beside the text.
+ * Drawn like a strip cell, one size for every colour so the entries read
+ * alike, and centred on the text line.
  */
 function Swatch({ status }: { status: Status }) {
   return (
@@ -43,7 +36,7 @@ function Swatch({ status }: { status: Status }) {
       sx={{
         display: "inline-block",
         width: 8,
-        height: isProblem(status) ? 18 : 11,
+        height: 14,
         borderRadius: "1px",
         flexShrink: 0,
         ...dayFill(status),
@@ -97,28 +90,32 @@ function Entry({ status }: { status: Status }) {
 }
 
 /**
- * One line under the strips that says what their bars mean, drawn with the
- * same marks, so a grey "No data" day is not read as an outage.
+ * Under the strips, centred: what a bar is, then what each colour means,
+ * drawn with the same marks, so a grey "No data" day is not read as an outage.
  */
 export function HistoryLegend() {
   return (
     <Typography
       component="div"
       variant="caption"
-      sx={{
-        display: "flex",
-        flexWrap: "wrap",
-        alignItems: "center",
-        columnGap: 2,
-        rowGap: 0.5,
-        mt: 1.5,
-        color: "var(--cs-muted)",
-      }}
+      sx={{ mt: 1.5, color: "var(--cs-muted)", textAlign: "center" }}
     >
-      <span>{LEGEND_INTRO}</span>
-      {ENTRIES.map((status) => (
-        <Entry key={status} status={status} />
-      ))}
+      <div>{LEGEND_INTRO}</div>
+      <Box
+        sx={{
+          display: "flex",
+          flexWrap: "wrap",
+          justifyContent: "center",
+          alignItems: "center",
+          columnGap: 2,
+          rowGap: 0.5,
+          mt: 0.5,
+        }}
+      >
+        {ENTRIES.map((status) => (
+          <Entry key={status} status={status} />
+        ))}
+      </Box>
     </Typography>
   );
 }

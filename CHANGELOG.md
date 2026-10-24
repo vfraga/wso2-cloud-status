@@ -35,6 +35,8 @@ section here. The public API has its own version, in `api/openapi.yaml`.
   its age counts from the end of the minute the API reports, since those
   times are floored and can trail the latest check by a minute. Data past
   its limit is aged as before.
+- The history legend says what a bar is on its own line, with the colours
+  centred below it, each drawn the same size.
 
 ### Fixed
 
