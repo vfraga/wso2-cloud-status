@@ -107,7 +107,8 @@ func splitListen(addr string) (host string, port int, ok bool) {
 	return host, port, err == nil
 }
 
-// validateCacheControl applies ADR 0003 to server.cache_control. A CDN copy
+// validateCacheControl checks server.cache_control against the page's poll
+// and the staleness limit. A CDN copy
 // kept for max-age plus stale-while-revalidate at or past the browser's poll
 // hands each poll the copy from before the previous one, so every change
 // reaches readers a poll late. A copy served on error after

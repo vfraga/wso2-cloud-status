@@ -261,7 +261,7 @@ func all(line string, parts []string) bool {
 // configuration file and statusd keeps serving, SIGTERM shuts it down with
 // exit 0, and a configuration rejected at startup, whether by validation or
 // by a backend's adapter, exits 2 and logs "configuration rejected" with
-// every problem. The runbook relies on all three.
+// every problem. Operators read the exit code and that message.
 func TestServeLifecycle(t *testing.T) {
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		bodies := map[string]string{

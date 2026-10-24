@@ -117,8 +117,7 @@ pack's paths unchanged.
   showed an old status as just checked. An end-to-end test checks that both
   cases fetch the status anew.
 - `node scripts/transfer.mjs <url>` lists what a page requests on its first load,
-  with each file's gzip size (raw for fonts) and the total; the proposal's
-  first-load figure comes from it. It needs Playwright's Chromium
+  with each file's gzip size (raw for fonts) and the total. It needs Playwright's Chromium
   (`npm run e2e:install`) and a running site, such as `npm run preview`.
 - Routing is 60 lines of History API code: the current `react-router` requires
   React 19.2.7 or later, and Oxygen UI pins React 19.2.3 exactly.

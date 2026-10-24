@@ -28,7 +28,7 @@ cd frontend && nvm use && npm ci && npm run dev   # http://localhost:5173, proxi
 | Target | What it does |
 |---|---|
 | `make verify` | every local gate, in order; `make -k verify` reports every failure. Only CI runs gitleaks, Trivy and the statusd image build and smoke test |
-| `make ci` | the CI go job: lint (backend and contract tests), cover, vuln, licenses, check-config, contract, contract-edge, synthetic-selftest, gates-selftest, docgen-test |
+| `make ci` | the CI go job: lint (backend and contract tests), cover, vuln, licenses, check-config, contract, contract-edge, synthetic-selftest, gates-selftest |
 | `make lint` | vet, staticcheck, gosec, cyclomatic (10) and cognitive (15) complexity, license headers |
 | `make test` | unit and integration tests with the race detector |
 | `make cover` | tests plus the coverage gate (85%) |

@@ -59,7 +59,7 @@ export const DAY_LABEL: Record<Status, string> = {
 
 /**
  * Impact of an incident. An impact the API does not know counts as degraded
- * in the roll-up (ADR 0004); it is a declared incident, not missing data.
+ * in the roll-up; it is a declared incident, not missing data.
  */
 export const IMPACT_LABEL: Record<Status, string> = {
   ...STATUS_LABEL,

@@ -6,8 +6,8 @@
 
 *                               @wso2/status-page-maintainers
 
-# What SRE runs and is paged for: configuration, alerts, the runbook and
-# the operations documents, the external check.
+# What SRE runs and is paged for: configuration, alerts and the external
+# check.
 /config/                        @wso2/status-page-maintainers @wso2/status-page-sre
 /deploy/observability/          @wso2/status-page-maintainers @wso2/status-page-sre
 /scripts/ops/                   @wso2/status-page-maintainers @wso2/status-page-sre

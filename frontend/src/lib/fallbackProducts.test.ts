@@ -78,8 +78,8 @@ describe("fallback product links", () => {
   });
 
   // The page holds two of statusd's settings as fixed numbers. Changing either in
-  // the configuration needs a new frontend build (runbook, "Changing the
-  // configuration"); this keeps the shipped pair equal.
+  // the configuration needs a new frontend build; this keeps the shipped pair
+  // equal.
   it("keep the page's limits equal to config/statusd.yaml", () => {
     const value = (key: string): string => {
       const found = new RegExp(`^ {2}${key}: (\\S+)$`, "m").exec(config)?.[1];
@@ -95,7 +95,7 @@ describe("fallback product links", () => {
   });
 
   // statusd rejects a cache_control that holds a CDN copy for a whole poll of the
-  // page (ADR 0003); it holds the page's poll as browserPoll.
+  // page; it holds the page's poll as browserPoll.
   it("keep the page's poll equal to the one statusd validates the cache against", () => {
     const go = readFileSync(
       resolve(here, "../../../backend/go/internal/config/validate.go"),

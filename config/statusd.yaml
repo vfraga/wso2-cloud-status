@@ -22,7 +22,8 @@ server:
   addr: ":8080"
   # Metrics and probes; never route this port through the public ingress.
   admin_addr: ":9090"
-  # Why these values, and the limits a test keeps: ADR 0003 amendments.
+  # max-age plus stale-while-revalidate must stay under the page's 30 s poll,
+  # and stale-if-error at most polling.stale_after; -check-config enforces both.
   cache_control: "public, max-age=10, stale-while-revalidate=10, stale-if-error=300"
   # 404s are cacheable so the CDN absorbs floods of random paths.
   not_found_cache_control: "public, max-age=60"

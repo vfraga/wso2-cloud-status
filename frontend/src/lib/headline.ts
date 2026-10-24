@@ -54,7 +54,7 @@ export interface Headline {
 
 /*
  * The status is the API's: statusd computes it once and fails closed, so it
- * is unknown when data is missing and no problem is known (ADR 0004). The
+ * is unknown when data is missing and no problem is known. The
  * page renders it and never computes its own. What the headline adds is
  * words: a problem keeps its status as the headline, and the line under it
  * names what is affected, grouped by status when there is more than one,
