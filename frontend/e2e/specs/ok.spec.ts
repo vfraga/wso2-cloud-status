@@ -304,10 +304,43 @@ test.describe("all operational", () => {
     page,
   }) => {
     await ready(page);
-    await expect(
-      page.getByText("No data: information for this day is unavailable", { exact: true }),
-    ).toBeVisible();
+    const legend = page.getByText("Each bar is one UTC day.").locator("..");
+    const names = [
+      "Service outage",
+      "Degraded performance",
+      "Under maintenance",
+      "No incidents",
+      "No data: information for this day is unavailable",
+    ];
+    for (const name of names) {
+      const label = legend.getByText(name, { exact: true });
+      await expect(label).toBeVisible();
+      // Each swatch is centred on its label's line.
+      const swatch = await label.locator("xpath=preceding-sibling::*[1]").boundingBox();
+      const text = await label.boundingBox();
+      const middle = (b: typeof text): number => (b?.y ?? 0) + (b?.height ?? 0) / 2;
+      expect(Math.abs(middle(swatch) - middle(text))).toBeLessThanOrEqual(1);
+    }
+    // A colour says what it means on hover.
+    await legend.getByText("Under maintenance", { exact: true }).hover();
+    await expect(page.getByRole("tooltip")).toHaveText(
+      "Planned maintenance that day, and no outage or degraded performance.",
+    );
     await expect(page.locator("footer")).toContainText("History bars are UTC calendar days.");
+  });
+
+  test("links to other sites take the text colour, never a status colour", async ({ page }) => {
+    await ready(page);
+    const link = productRows(page)
+      .first()
+      .getByRole("link", { name: /View status page for Agent Platform/ });
+    const [linkColour, textColour] = await Promise.all([
+      link.evaluate((el) => getComputedStyle(el).color),
+      page.locator("body").evaluate((el) => getComputedStyle(el).color),
+    ]);
+    expect(linkColour).toBe(textColour);
+    expect(await link.evaluate((el) => getComputedStyle(el).textDecorationLine)).toBe("underline");
+    expect(await link.evaluate((el) => getComputedStyle(el).textDecorationColor)).toBe(textColour);
   });
 
   test("axe finds no serious or critical issues at 360 px, home and product page", async ({
@@ -353,6 +386,8 @@ test.describe("all operational", () => {
     ).toBeVisible();
     await expect(page.getByText("12mo").first()).toBeVisible();
     await expectNoSeriousViolations(page);
+    // The pointer stayed where the link was, over a legend entry: move it off for the picture.
+    await page.mouse.move(0, 0);
     await page.screenshot({
       path: shotPath("e2e-product"),
       fullPage: true,

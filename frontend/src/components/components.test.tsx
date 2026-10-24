@@ -30,6 +30,7 @@ import {
   formatUtcDateTime,
 } from "../lib/time";
 import { apiTime, days, incident, locatedProduct, part, product } from "../test/factories";
+import { HistoryLegend } from "./HistoryLegend";
 import { Banner } from "./Banner";
 import { HistoryStrip } from "./HistoryStrip";
 import { IncidentItem } from "./IncidentMeta";
@@ -246,6 +247,14 @@ describe("HistoryStrip", () => {
     expect(items[0]).toHaveTextContent(`${formatHistoryDate("2026-10-19")} (UTC)`);
     expect(items[0]).toHaveTextContent("Elevated latency");
     expect(items[1]).toHaveTextContent("Service outage: 1h 2m");
+    // The day's status shares the line of its date.
+    const date = within(items[0] as HTMLElement).getByText(
+      `${formatHistoryDate("2026-10-19")} (UTC)`,
+    );
+    expect(date.parentElement).toContainElement(
+      within(items[0] as HTMLElement).getByText("Degraded performance"),
+    );
+    expect(getComputedStyle(date.parentElement!).flexDirection).toBe("row");
     await user.click(toggle);
     expect(toggle).toHaveAttribute("aria-expanded", "false");
   });
@@ -506,6 +515,35 @@ describe("UptimeFigure", () => {
       </ThemeRoot>,
     );
     expect(container).toHaveTextContent("");
+  });
+});
+
+describe("HistoryLegend", () => {
+  it("names every colour and describes it on focus, hover and tap, closing on Escape", async () => {
+    const user = userEvent.setup();
+    wrap(<HistoryLegend />);
+    const entries = [
+      "Service outage",
+      "Degraded performance",
+      "Under maintenance",
+      "No incidents",
+      "No data: information for this day is unavailable",
+    ].map((name) => screen.getByText(name).parentElement!);
+    for (const entry of entries) expect(entry).toHaveAttribute("tabindex", "0");
+    await user.tab();
+    expect(entries[0]).toHaveFocus();
+    expect(await screen.findByRole("tooltip")).toHaveTextContent(
+      "An incident that day was a service outage.",
+    );
+    expect(entries[0]).toHaveAccessibleDescription("An incident that day was a service outage.");
+    await user.keyboard("{Escape}");
+    await waitFor(() => {
+      expect(screen.queryByRole("tooltip")).not.toBeInTheDocument();
+    });
+    await user.hover(entries[2]!);
+    expect(await screen.findByRole("tooltip")).toHaveTextContent(
+      "Planned maintenance that day, and no outage or degraded performance.",
+    );
   });
 });
 

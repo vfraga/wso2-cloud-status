@@ -221,9 +221,21 @@ export function pastIncidentsStale(limit: string): string {
 
 /** The history strip legend. */
 export const LEGEND_INTRO = "Each bar is one UTC day.";
-export const LEGEND_INCIDENTS = "Incidents";
-export const LEGEND_QUIET = "No incidents";
 export const LEGEND_NO_DATA = "No data: information for this day is unavailable";
+/**
+ * What each colour of the history means, shown when a legend entry is
+ * hovered, focused or tapped. A day takes the most severe impact among its
+ * incidents; an impact the source did not state counts as degraded.
+ */
+export const LEGEND_DESCRIPTION: Record<Status, string> = {
+  outage: "An incident that day was a service outage.",
+  degraded:
+    "The most severe incident that day was degraded performance, or an incident that did not state its impact.",
+  maintenance: "Planned maintenance that day, and no outage or degraded performance.",
+  operational: "No incident or maintenance was reported that day.",
+  unknown:
+    "There is no incident data for that day, so the page cannot say whether anything happened.",
+};
 
 /** The page that replaces the app when rendering fails. */
 export const RENDER_FAILED = "Something went wrong showing this page";

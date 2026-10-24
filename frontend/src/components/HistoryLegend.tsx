@@ -16,11 +16,26 @@
  * under the License.
  */
 
-import { Box, Stack, Typography } from "@wso2/oxygen-ui";
+import { Box, Stack, Tooltip, Typography } from "@wso2/oxygen-ui";
 import type { Status } from "../api/types";
-import { LEGEND_INCIDENTS, LEGEND_INTRO, LEGEND_NO_DATA, LEGEND_QUIET } from "../lib/status";
+import {
+  DAY_LABEL,
+  LEGEND_DESCRIPTION,
+  LEGEND_INTRO,
+  LEGEND_NO_DATA,
+  isProblem,
+} from "../lib/status";
+import { CARD_RADIUS } from "../theme/shape";
 import { dayFill } from "./dayFill";
 
+/** Worst first, then a quiet day and a day without data. */
+const ENTRIES: readonly Status[] = ["outage", "degraded", "maintenance", "operational", "unknown"];
+
+/**
+ * Drawn like a strip cell, a problem day taller than the rest, but each mark
+ * is its own box centred on the text line: the strip's 60% cells sit at the
+ * foot of a full-height box, which would look low beside the text.
+ */
 function Swatch({ status }: { status: Status }) {
   return (
     <Box
@@ -28,25 +43,56 @@ function Swatch({ status }: { status: Status }) {
       sx={{
         display: "inline-block",
         width: 8,
-        height: 18,
+        height: isProblem(status) ? 18 : 11,
         borderRadius: "1px",
         flexShrink: 0,
         ...dayFill(status),
+        backgroundSize: "100% 100%",
       }}
     />
   );
 }
 
-function Entry({ statuses, text }: { statuses: readonly Status[]; text: string }) {
+/** The strip's tooltip look: a card in the surface colour. */
+const tipSx = {
+  bgcolor: "var(--cs-surface)",
+  color: "var(--cs-text)",
+  border: "1px solid var(--cs-border)",
+  borderRadius: CARD_RADIUS,
+  boxShadow: "0 6px 24px rgb(0 0 0 / 0.18)",
+  px: 1.5,
+  py: 1,
+  maxWidth: 300,
+  fontSize: "0.875rem",
+  fontWeight: 400,
+  lineHeight: 1.43,
+} as const;
+
+/**
+ * One colour and its name. Its description opens on hover, on keyboard focus
+ * and on a tap, can be hovered, and closes on Escape (WCAG 1.4.13); a screen
+ * reader hears it as the entry's description.
+ */
+function Entry({ status }: { status: Status }) {
   return (
-    <Stack component="span" direction="row" useFlexGap sx={{ alignItems: "flex-end", gap: 0.75 }}>
-      <Stack component="span" direction="row" useFlexGap sx={{ gap: "2px" }}>
-        {statuses.map((s) => (
-          <Swatch key={s} status={s} />
-        ))}
+    <Tooltip
+      title={LEGEND_DESCRIPTION[status]}
+      describeChild
+      enterTouchDelay={0}
+      placement="top"
+      slotProps={{ tooltip: { sx: tipSx } }}
+    >
+      <Stack
+        component="span"
+        tabIndex={0}
+        direction="row"
+        useFlexGap
+        sx={{ alignItems: "center", gap: 0.75, cursor: "help" }}
+      >
+        <Swatch status={status} />
+        <span>{status === "unknown" ? LEGEND_NO_DATA : DAY_LABEL[status]}</span>
       </Stack>
-      <span>{text}</span>
-    </Stack>
+    </Tooltip>
   );
 }
 
@@ -70,9 +116,9 @@ export function HistoryLegend() {
       }}
     >
       <span>{LEGEND_INTRO}</span>
-      <Entry statuses={["outage", "degraded", "maintenance"]} text={LEGEND_INCIDENTS} />
-      <Entry statuses={["operational"]} text={LEGEND_QUIET} />
-      <Entry statuses={["unknown"]} text={LEGEND_NO_DATA} />
+      {ENTRIES.map((status) => (
+        <Entry key={status} status={status} />
+      ))}
     </Typography>
   );
 }

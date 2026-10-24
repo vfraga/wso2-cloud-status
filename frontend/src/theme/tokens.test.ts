@@ -41,7 +41,6 @@ describe.each([
     for (const bg of [p.surface, p.page]) {
       expect(contrast(p.text, bg)).toBeGreaterThanOrEqual(4.5);
       expect(contrast(p.muted, bg)).toBeGreaterThanOrEqual(4.5);
-      expect(contrast(p.link, bg)).toBeGreaterThanOrEqual(4.5);
     }
     expect(contrast(p.focus, p.surface)).toBeGreaterThanOrEqual(3);
   });

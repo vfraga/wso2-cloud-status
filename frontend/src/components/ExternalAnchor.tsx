@@ -37,9 +37,10 @@ const blockSx = { display: "inline-flex", alignItems: "center", gap: 0.5, minHei
 const inlineSx = { display: "inline", "& svg": { ml: 0.5, verticalAlign: "-2px" } } as const;
 
 /**
- * A link to another site, marked with an icon and an accessible name. On its
- * own it is at least 24 px tall, so links that wrap onto several lines on a
- * phone keep the WCAG 2.2 minimum target size (SC 2.5.8).
+ * A link to another site, marked with an icon and an accessible name. It
+ * takes the text colour and an underline, so it never reads as a status
+ * colour. On its own it is at least 24 px tall, so links that wrap onto
+ * several lines on a phone keep the WCAG 2.2 minimum target size (SC 2.5.8).
  */
 export function ExternalAnchor({
   href,
@@ -52,10 +53,15 @@ export function ExternalAnchor({
     <MuiLink
       href={href}
       variant="body2"
-      // Inside text, colour alone would not set the link apart (WCAG 1.4.1).
-      underline={inline ? "always" : "hover"}
+      underline="always"
       aria-label={label}
-      sx={{ ...(inline ? inlineSx : blockSx), color: "var(--cs-link)", fontWeight: weight }}
+      sx={{
+        ...(inline ? inlineSx : blockSx),
+        color: "var(--cs-text)",
+        // MUI tints the underline with the theme's primary colour (orange).
+        textDecorationColor: "currentColor",
+        fontWeight: weight,
+      }}
     >
       {children}
       <ExternalLink aria-hidden="true" size={14} />

@@ -16,12 +16,17 @@ section here. The public API has its own version, in `api/openapi.yaml`.
   `location`; summary regions carry their `uptime`.
 - The home page shows each region's 90-day uptime, as the source reports
   it.
+- Each colour in the history legend has its own label, and a description
+  on hover, keyboard focus or tap.
 
 ### Changed
 
 - Control and data planes are parts of a region: US and EU open into them,
   on the home page and on each product's page, and the region counts count
   US and EU. Region names are in sentence case ("EU data plane").
+- Links to other sites take the text colour with an underline, so they no
+  longer look like a status.
+- A day's details put its status beside the date.
 
 ### Fixed
 

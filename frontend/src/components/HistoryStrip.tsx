@@ -85,12 +85,17 @@ function cellSx(status: Day["status"]) {
 function DayContent({ detail }: { detail: DayDetail }) {
   return (
     <>
-      <Typography variant="body2" sx={{ fontWeight: 700 }}>
-        {detail.heading}
-      </Typography>
-      <Box sx={{ mt: 0.25 }}>
+      {/* The date and its status share a line, wrapping when the space is narrow. */}
+      <Stack
+        direction="row"
+        useFlexGap
+        sx={{ flexWrap: "wrap", alignItems: "center", columnGap: 1.5, rowGap: 0.25 }}
+      >
+        <Typography variant="body2" sx={{ fontWeight: 700 }}>
+          {detail.heading}
+        </Typography>
         <StatusLabel status={detail.status}>{detail.statusLabel}</StatusLabel>
-      </Box>
+      </Stack>
       {detail.minutes.map((m) => (
         <Typography key={m.label} variant="body2" sx={{ color: "var(--cs-muted)" }}>
           {m.label}: {m.text}
