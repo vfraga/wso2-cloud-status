@@ -173,8 +173,10 @@ expect() {
 # the check fetches, with each $variable as <id>.
 cases=$((cases + 1))
 echo "== the check fetches every API path the page polls"
+# shellcheck disable=SC2016 # the patterns match a literal $ and backquote
 polled="$(grep -oE '["`]/api/v1/[^"`]*' "$root/frontend/src/hooks/useResources.ts" |
   sed -E 's/^.//; s/\$\{[^}]*\}/<id>/g' | sort -u)"
+# shellcheck disable=SC2016 # the patterns match a literal $
 fetched="$(grep -oE '"\$api/api/v1/[^"]*' "$check" | sed -E 's/^"\$api//; s/\$[a-z_]+/<id>/g' | sort -u)"
 printf 'polled:  %s\nfetched: %s\n' "$(paste -sd ' ' - <<<"$polled")" "$(paste -sd ' ' - <<<"$fetched")"
 [[ -n "$polled" ]] || broken "found no /api/v1 path in frontend/src/hooks/useResources.ts"
