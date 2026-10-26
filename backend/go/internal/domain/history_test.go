@@ -136,6 +136,23 @@ func TestDailyHistoryOpenIncidentMinutesMoveWithTheMinute(t *testing.T) {
 	}
 }
 
+// TestDailyHistoryOpenIncidentMarksTodayFromMidnight: in the first minute of
+// a UTC day, an incident open since the day before already marks today, with
+// 0 minutes, so today never reads quiet while it is open.
+func TestDailyHistoryOpenIncidentMarksTodayFromMidnight(t *testing.T) {
+	t.Parallel()
+	inc := Incident{ID: "open", Impact: StatusOutage, StartedAt: at("2026-10-19 21:00:00")}
+	for now, want := range map[string]int{"2026-10-20 00:00:00": 0, "2026-10-20 00:00:30": 0, "2026-10-20 00:01:00": 1} {
+		days := DailyHistory([]Incident{inc}, 2, Coverage{}, at(now))
+		if today := days[1]; today.Status != StatusOutage || !slices.Equal(today.IncidentIDs, []string{"open"}) || today.Minutes[StatusOutage] != want {
+			t.Errorf("at %s: today = %+v, want outage listing the open incident for %d minutes", now, today, want)
+		}
+		if yesterday := days[0]; yesterday.Minutes[StatusOutage] != 180 {
+			t.Errorf("at %s: yesterday = %+v, want 180 minutes of outage", now, yesterday)
+		}
+	}
+}
+
 func TestDailyHistoryZeroLengthIncidentTouchesItsDay(t *testing.T) {
 	t.Parallel()
 	now := at("2026-10-20 12:00:00")

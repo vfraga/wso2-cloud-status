@@ -82,6 +82,14 @@ section here. The public API has its own version, in `api/openapi.yaml`.
 
 ### Fixed
 
+- Today's history bar no longer reads quiet in the first minute after
+  midnight UTC while an incident is open.
+- statusd rejects an upstream answer that holds far more regions, groups,
+  components, uptime figures or text than real answers do, or a time
+  outside 2000 to 2099, as it rejects a malformed one: one faulty source can
+  no longer inflate every response or stop every product's snapshot.
+- A request that panics is counted as the 500 it answers, so the
+  server-error alert sees it.
 - When the page's own data stops, the history no longer paints the days
   after that point green: a day not fully covered reads "No data" unless a
   problem is known, as it already did when a product's incident feed

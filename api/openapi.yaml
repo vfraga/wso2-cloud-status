@@ -253,7 +253,10 @@ components:
       description: Caching policy for browsers and the CDN.
       schema: { type: string }
     RequestID:
-      description: Request correlation id; a well-formed incoming X-Request-ID is echoed.
+      description: >-
+        Request correlation id; a well-formed incoming X-Request-ID is echoed. On
+        a copy served by a cache it names the origin request that filled the
+        cache, not the reader's.
       schema: { type: string }
 
   responses:

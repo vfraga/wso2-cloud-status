@@ -453,6 +453,23 @@ func TestPanicBecomesProblem(t *testing.T) {
 	}
 }
 
+// TestPanicIsCounted: a request that panics behind the public middleware is
+// observed as the 500 it gets, so the server-error alert sees it, and the
+// answer still carries the security headers.
+func TestPanicIsCounted(t *testing.T) {
+	t.Parallel()
+	obs := &codes{}
+	h := withMiddleware(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { panic("boom") }),
+		Options{Logger: slog.New(slog.DiscardHandler), Observer: obs}, noStore)
+	rec := do(h, http.MethodGet, "/api/v1/summary", nil)
+	if rec.Code != http.StatusInternalServerError || rec.Header().Get("X-Content-Type-Options") != "nosniff" {
+		t.Fatalf("code %d, headers %v; want 500 with the security headers", rec.Code, rec.Header())
+	}
+	if !slices.Equal(obs.seen, []string{"unmatched 500"}) {
+		t.Fatalf("observed %v, want one unmatched 500", obs.seen)
+	}
+}
+
 func TestAbortHandlerPanicIsRepanicked(t *testing.T) {
 	t.Parallel()
 	h := recoverer(slog.New(slog.DiscardHandler))(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { panic(http.ErrAbortHandler) }))

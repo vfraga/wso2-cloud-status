@@ -40,7 +40,8 @@ type Coverage struct {
 // records how many minutes of each impact it saw, by EffectiveImpact. An open
 // incident counts up to the start of now's minute, or of coverage.Until's once
 // the incident data has stopped, so its minutes change when generated_at
-// does, rather than at the second it started, and never run past the data.
+// does, rather than at the second it started, and never run past the data;
+// it marks today from midnight, with 0 minutes until the first has passed.
 // A day with no incidents is operational only when
 // coverage spans all of it (up to now for today): days that start after
 // coverage.Until are unknown, because no incidents there means no data, not
@@ -124,9 +125,10 @@ type span struct{ from, to time.Time }
 
 // clip returns the part of the incident inside [start, end) and whether it
 // touches the window at all. An open incident runs until the start of the
-// known instant's minute, or is an instant at its start when it began within
-// that minute. An incident that starts and ends at the same instant inside
-// the window touches it with zero length.
+// known instant's minute, and touches every day up to the one that holds
+// known even before its first whole minute there, so a day never reads
+// quiet while an incident is open. An incident that starts and ends at the
+// same instant inside the window touches it with zero length.
 func clip(inc Incident, start, end, known time.Time) (span, bool) {
 	incEnd := maxTime(known.Truncate(time.Minute), inc.StartedAt)
 	if inc.ResolvedAt != nil {
@@ -135,6 +137,9 @@ func clip(inc Incident, start, end, known time.Time) (span, bool) {
 	s := span{from: maxTime(inc.StartedAt, start), to: minTime(incEnd, end)}
 	if s.to.After(s.from) {
 		return s, true
+	}
+	if inc.ResolvedAt == nil {
+		return span{from: s.from, to: s.from}, inc.StartedAt.Before(end) && !known.Before(start)
 	}
 	instant := inc.StartedAt.Equal(incEnd)
 	inWindow := !inc.StartedAt.Before(start) && inc.StartedAt.Before(end)

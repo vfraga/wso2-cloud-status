@@ -22,6 +22,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/wso2/wso2-cloud-status/backend/go/internal/domain"
 	"github.com/wso2/wso2-cloud-status/backend/go/internal/source"
@@ -176,33 +177,123 @@ func toRegionUptime(raw map[string][]wireAvailability) source.Uptime {
 	return out
 }
 
-// MaxIncidents caps the incident records one answer may hold, at least ten
-// times as many as the largest captured real answer. Each build compares the
-// records of one event with each other to list them once, so an answer above
-// the cap is rejected like a malformed one: only that source's incidents
-// read as not received, and a faulty upstream cannot slow every product's
-// build.
-const MaxIncidents = 500
+// Limits on one answer, each at least ten times what the largest captured
+// real answer holds. An answer above one is rejected like a malformed one:
+// only that source's data of that kind reads as not received, and a faulty
+// upstream cannot inflate every response or slow every product's build (each
+// build compares the records of one event with each other, and every region
+// key the upstream reports is shown).
+const (
+	MaxIncidents  = 500  // incident records, across months
+	MaxRegions    = 50   // region keys
+	MaxGroups     = 200  // component groups, across regions
+	MaxComponents = 500  // components, across groups
+	MaxFigures    = 1000 // uptime figures, across regions or components
+	MaxText       = 1000 // characters in one key, name, description, message, title or window
+)
 
-// incidentCount is the number of incident records in an answer.
-func incidentCount(raw map[string]wireMonth) int {
-	total := 0
-	for _, m := range raw {
-		total += len(m.Incidents)
+// The times an answer may hold. JSON cannot encode a year outside 0-9999,
+// so one such time would stop every product's snapshot; nothing real falls
+// outside these.
+var (
+	earliest = time.Date(2000, 1, 1, 0, 0, 0, 0, time.UTC)
+	latest   = time.Date(2100, 1, 1, 0, 0, 0, 0, time.UTC)
+)
+
+func checkTime(what string, t time.Time) error {
+	if t.Before(earliest) || !t.Before(latest) {
+		return fmt.Errorf("legacyapi: %s %s is outside %d-%d", what, t.UTC().Format(time.DateTime), earliest.Year(), latest.Year()-1)
 	}
-	return total
+	return nil
+}
+
+// measure counts what one answer holds against the limits above and keeps
+// the first limit it passes in err.
+type measure struct {
+	counts  map[string]int
+	limit   map[string]int
+	longest int
+	err     error
+}
+
+func (m *measure) count(what string, n, most int) {
+	if m.counts == nil {
+		m.counts, m.limit = map[string]int{}, map[string]int{}
+	}
+	m.counts[what] += n
+	m.limit[what] = most
+	if m.err == nil && m.counts[what] > most {
+		m.err = fmt.Errorf("legacyapi: %d %s, more than the %d one answer may hold", m.counts[what], what, most)
+	}
+}
+
+func (m *measure) text(values ...string) {
+	for _, v := range values {
+		n := utf8.RuneCountInString(v)
+		m.longest = max(m.longest, n)
+		if m.err == nil && n > MaxText {
+			m.err = fmt.Errorf("legacyapi: a value of %d characters, more than the %d one may hold", n, MaxText)
+		}
+	}
+}
+
+func (m *measure) figures(entries []wireAvailability) {
+	m.count("uptime figures", len(entries), MaxFigures)
+	for _, e := range entries {
+		m.text(e.Duration, string(e.Availability))
+	}
+}
+
+func measureComponents(raw map[string][]wireGroup) measure {
+	var m measure
+	for region, groups := range raw {
+		m.count("region keys", 1, MaxRegions)
+		m.count("component groups", len(groups), MaxGroups)
+		m.text(region)
+		for _, g := range groups {
+			m.count("components", len(g.Subgroups), MaxComponents)
+			m.text(g.DisplayName)
+			for _, c := range g.Subgroups {
+				m.text(c.DisplayName, c.Description, c.Message)
+				m.figures(c.Availability)
+			}
+		}
+	}
+	return m
+}
+
+func measureUptime(raw map[string][]wireAvailability) measure {
+	var m measure
+	for region, entries := range raw {
+		m.count("region keys", 1, MaxRegions)
+		m.text(region)
+		m.figures(entries)
+	}
+	return m
+}
+
+func measureIncidents(raw map[string]wireMonth) measure {
+	var m measure
+	for month, w := range raw {
+		m.count("incidents", len(w.Incidents), MaxIncidents)
+		m.text(month)
+		for _, inc := range w.Incidents {
+			m.text(inc.ID, inc.Type, inc.Status, inc.ShortDescription)
+		}
+	}
+	return m
 }
 
 func toIncidents(raw map[string]wireMonth, loc *time.Location) (source.Incidents, error) {
-	if n := incidentCount(raw); n > MaxIncidents {
-		return source.Incidents{}, fmt.Errorf("legacyapi: %d incidents, more than the %d one answer may hold", n, MaxIncidents)
+	if err := measureIncidents(raw).err; err != nil {
+		return source.Incidents{}, err
 	}
 	var res source.Incidents
 	seen := map[string]bool{}
 	for month, m := range raw {
-		start, err := time.ParseInLocation("2006-1", month, loc)
+		start, err := monthStart(month, loc)
 		if err != nil {
-			return source.Incidents{}, fmt.Errorf("legacyapi: incident month key %q: %w", month, err)
+			return source.Incidents{}, err
 		}
 		if res.CoverageStart.IsZero() || start.Before(res.CoverageStart) {
 			res.CoverageStart = start.UTC()
@@ -225,6 +316,15 @@ func toIncidents(raw map[string]wireMonth, loc *time.Location) (source.Incidents
 	return res, nil
 }
 
+// monthStart reads a month key such as "2026-10" as the start of that month.
+func monthStart(month string, loc *time.Location) (time.Time, error) {
+	start, err := time.ParseInLocation("2006-1", month, loc)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("legacyapi: incident month key %q: %w", month, err)
+	}
+	return start, checkTime("incident month", start)
+}
+
 func toIncident(w wireIncident, loc *time.Location) (domain.Incident, error) {
 	id := strings.TrimSpace(w.ID)
 	if id == "" {
@@ -233,6 +333,9 @@ func toIncident(w wireIncident, loc *time.Location) (domain.Incident, error) {
 	started, err := time.ParseInLocation(time.DateTime, strings.TrimSpace(w.Begin), loc)
 	if err != nil {
 		return domain.Incident{}, fmt.Errorf("legacyapi: incident %s begin %q: %w", id, w.Begin, err)
+	}
+	if err := checkTime("incident "+id+" begin", started); err != nil {
+		return domain.Incident{}, err
 	}
 	inc := domain.Incident{
 		ID:        id,
@@ -265,6 +368,9 @@ func resolvedAt(w wireIncident, started time.Time, loc *time.Location) (time.Tim
 	end, err := time.ParseInLocation(time.DateTime, strings.TrimSpace(*w.End), loc)
 	if err != nil {
 		return time.Time{}, fmt.Errorf("legacyapi: incident %s end %q: %w", w.ID, *w.End, err)
+	}
+	if err := checkTime("incident "+w.ID+" end", end); err != nil {
+		return time.Time{}, err
 	}
 	if end.Before(started) {
 		return started.UTC(), nil

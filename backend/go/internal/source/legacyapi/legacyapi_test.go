@@ -320,6 +320,10 @@ func TestMalformedUpstreamDataFails(t *testing.T) {
 		{"subgroups as an object", `{"us":[{"display_name":"G","subgroups":{}}]}`, componentsCall},
 		{"uptime not json", `<html>`, uptimeCall},
 		{"uptime duration as a number", `{"us":[{"availability":"99.5","duration":7}]}`, uptimeCall},
+		// A time JSON cannot encode would stop every product's snapshot.
+		{"begin before 2000", `{"2026-10":{"incidents":[{"id":"x","begin":"0001-01-01 00:00:00","status":"Investigating"}]}}`, incidentsCall},
+		{"end in 2100", `{"2026-10":{"incidents":[{"id":"x","begin":"2026-10-01 00:00:00","end":"2100-01-01 00:00:00","status":"Resolved"}]}}`, incidentsCall},
+		{"month before 2000", `{"1999-12":{"incidents":[]}}`, incidentsCall},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -332,17 +336,42 @@ func TestMalformedUpstreamDataFails(t *testing.T) {
 	}
 }
 
-// TestIncidentCountIsBounded: an answer with more than MaxIncidents records,
-// counted across its months, fails like a malformed one; one at the cap is
-// read.
-func TestIncidentCountIsBounded(t *testing.T) {
+// TestAnswerLimits: an answer at each limit is read, and one above it fails
+// like a malformed one, whatever kind it is.
+func TestAnswerLimits(t *testing.T) {
 	t.Parallel()
-	for n, wantErr := range map[int]bool{MaxIncidents: false, MaxIncidents + 1: true} {
-		srv := serveJSON(t, http.StatusOK, incidentAnswer(n))
-		got, err := NewSource(newTestClient(t, srv.URL, nil), "c").Incidents(context.Background())
-		if (err != nil) != wantErr || err == nil && len(got.Items) != n {
-			t.Errorf("%d records: %d read, err %v; want an error %v", n, len(got.Items), err, wantErr)
-		}
+	long := strings.Repeat("\u00e9", MaxText) // runes, not bytes, are counted
+	tests := []struct {
+		name     string
+		at, over string
+		call     func(*Source) error
+	}{
+		{"incidents", incidentAnswer(MaxIncidents), incidentAnswer(MaxIncidents + 1), incidentsCall},
+		{"monitors region keys", monitors(MaxRegions, 1, 1), monitors(MaxRegions+1, 1, 1), componentsCall},
+		{"component groups", monitors(1, MaxGroups, 1), monitors(1, MaxGroups+1, 1), componentsCall},
+		{"components", monitors(1, 1, MaxComponents), monitors(1, 1, MaxComponents+1), componentsCall},
+		{"uptime region keys", uptime(MaxRegions, 1), uptime(MaxRegions+1, 1), uptimeCall},
+		{"uptime figures", uptime(1, MaxFigures), uptime(1, MaxFigures+1), uptimeCall},
+		{"title", titled(long), titled(long + "x"), incidentsCall},
+		{
+			"component name", `{"us":[{"display_name":"G","subgroups":[{"display_name":"` + long + `","status":0}]}]}`,
+			`{"us":[{"display_name":"G","subgroups":[{"display_name":"` + long + `x","status":0}]}]}`, componentsCall,
+		},
+		{
+			"region key", `{"` + long + `":[{"availability":"99.5","duration":"Last 7 days"}]}`,
+			`{"` + long + `x":[{"availability":"99.5","duration":"Last 7 days"}]}`, uptimeCall,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			for body, wantErr := range map[string]bool{tt.at: false, tt.over: true} {
+				srv := serveJSON(t, http.StatusOK, body)
+				if err := tt.call(NewSource(newTestClient(t, srv.URL, nil), "c")); (err != nil) != wantErr {
+					t.Errorf("err %v; want an error %v", err, wantErr)
+				}
+			}
+		})
 	}
 }
 
@@ -356,30 +385,87 @@ func incidentAnswer(n int) string {
 	return `{"2026-10":{"incidents":[` + strings.Join(months[0], ",") + `]},"2026-9":{"incidents":[` + strings.Join(months[1], ",") + `]}}`
 }
 
-// TestIncidentCapLeavesRoomAboveTheCapturedAnswers: the cap is at least ten
-// times the largest captured real answer, so a heavy stretch of real
-// incidents is never rejected.
-func TestIncidentCapLeavesRoomAboveTheCapturedAnswers(t *testing.T) {
-	t.Parallel()
-	names, err := filepath.Glob(filepath.Join(fixtureDir, "*.incidents.json"))
-	if err != nil || len(names) == 0 {
-		t.Fatalf("no captured incident answers in %s: %v", fixtureDir, err)
+func titled(title string) string {
+	return `{"2026-10":{"incidents":[{"id":"x","begin":"2026-10-01 00:00:00","short_description":"` + title + `","status":"Investigating"}]}}`
+}
+
+// monitors is a monitors answer with the given region keys, groups per
+// region and components per group.
+func monitors(regions, groups, components int) string {
+	rs := make([]string, 0, regions)
+	for r := range regions {
+		gs := make([]string, 0, groups)
+		for g := range groups {
+			cs := make([]string, 0, components)
+			for c := range components {
+				cs = append(cs, fmt.Sprintf(`{"display_name":"c%d","status":0}`, c))
+			}
+			gs = append(gs, fmt.Sprintf(`{"display_name":"g%d","subgroups":[%s]}`, g, strings.Join(cs, ",")))
+		}
+		rs = append(rs, fmt.Sprintf(`"r%d":[%s]`, r, strings.Join(gs, ",")))
 	}
-	largest := 0
+	return "{" + strings.Join(rs, ",") + "}"
+}
+
+// uptime is an availabilities answer with the given region keys and figures per region.
+func uptime(regions, figures int) string {
+	rs := make([]string, 0, regions)
+	for r := range regions {
+		fs := make([]string, 0, figures)
+		for range figures {
+			fs = append(fs, `{"availability":"99.5","duration":"Last 7 days"}`)
+		}
+		rs = append(rs, fmt.Sprintf(`"r%d":[%s]`, r, strings.Join(fs, ",")))
+	}
+	return "{" + strings.Join(rs, ",") + "}"
+}
+
+// TestLimitsLeaveRoomAboveTheCapturedAnswers: every limit, and the body cap,
+// is at least ten times what the largest captured real answer holds, so a
+// heavy stretch of real data is never rejected.
+func TestLimitsLeaveRoomAboveTheCapturedAnswers(t *testing.T) {
+	t.Parallel()
+	names, err := filepath.Glob(filepath.Join(fixtureDir, "*.json"))
+	if err != nil || len(names) == 0 {
+		t.Fatalf("no captured answers in %s: %v", fixtureDir, err)
+	}
 	for _, name := range names {
 		body, err := os.ReadFile(filepath.Clean(name))
 		if err != nil {
 			t.Fatal(err)
 		}
-		var raw map[string]wireMonth
-		if err := json.Unmarshal(body, &raw); err != nil {
-			t.Fatalf("%s: %v", name, err)
+		if 10*len(body) > maxBody {
+			t.Errorf("%s: %d bytes, more than a tenth of the %d byte cap", name, len(body), maxBody)
 		}
-		largest = max(largest, incidentCount(raw))
+		var m measure
+		switch {
+		case strings.HasSuffix(name, ".monitors.json"):
+			m = measureComponents(decode[map[string][]wireGroup](t, name, body))
+		case strings.HasSuffix(name, ".availabilities.json"):
+			m = measureUptime(decode[map[string][]wireAvailability](t, name, body))
+		case strings.HasSuffix(name, ".incidents.json"):
+			m = measureIncidents(decode[map[string]wireMonth](t, name, body))
+		default:
+			t.Fatalf("%s: unknown kind of answer", name)
+		}
+		for what, n := range m.counts {
+			if 10*n > m.limit[what] {
+				t.Errorf("%s: %d %s, more than a tenth of the limit %d", name, n, what, m.limit[what])
+			}
+		}
+		if 10*m.longest > MaxText {
+			t.Errorf("%s: a value of %d characters, more than a tenth of MaxText %d", name, m.longest, MaxText)
+		}
 	}
-	if largest == 0 || MaxIncidents < 10*largest {
-		t.Fatalf("MaxIncidents = %d, want at least ten times the largest captured answer (%d)", MaxIncidents, largest)
+}
+
+func decode[T any](t *testing.T, name string, body []byte) T {
+	t.Helper()
+	var v T
+	if err := json.Unmarshal(body, &v); err != nil {
+		t.Fatalf("%s: %v", name, err)
 	}
+	return v
 }
 
 func incidentsCall(s *Source) error {

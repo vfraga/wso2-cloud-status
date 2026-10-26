@@ -51,6 +51,9 @@ func (s *Source) Components(ctx context.Context) (source.Components, error) {
 	if len(raw) == 0 {
 		return nil, s.empty("monitors")
 	}
+	if err := measureComponents(raw).err; err != nil {
+		return nil, err
+	}
 	return toComponents(raw), nil
 }
 
@@ -62,6 +65,9 @@ func (s *Source) Uptime(ctx context.Context) (source.Uptime, error) {
 	}
 	if len(raw) == 0 {
 		return nil, s.empty("availabilities")
+	}
+	if err := measureUptime(raw).err; err != nil {
+		return nil, err
 	}
 	return toRegionUptime(raw), nil
 }

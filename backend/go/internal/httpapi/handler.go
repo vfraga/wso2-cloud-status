@@ -77,14 +77,21 @@ func NewHandler(opts Options) http.Handler {
 	})
 	registerProbes(mux, opts.Store)
 	mux.HandleFunc("/", h.fallback(mux))
-	return chain(h.canonicalOnly(mux),
-		recoverer(opts.Logger),
+	return withMiddleware(h.canonicalOnly(mux), opts, h.notFoundCache)
+}
+
+// withMiddleware wraps the public routes, outermost first. The access log
+// sits outside the recoverer, so a request that panics is logged and counted
+// as the 500 it gets.
+func withMiddleware(next http.Handler, opts Options, notFoundCache string) http.Handler {
+	return chain(next,
 		securityHeaders,
-		defaultCacheControl(h.notFoundCache),
+		defaultCacheControl(notFoundCache),
 		corsHeaders(opts.AllowedOrigins),
 		requestID,
 		shed(opts.MaxInFlight, opts.Observer),
 		accessLog(opts.Logger, opts.Observer),
+		recoverer(opts.Logger),
 		originLock(opts.RequiredHeaders),
 		preflight,
 	)

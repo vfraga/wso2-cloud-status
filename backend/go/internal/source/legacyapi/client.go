@@ -33,8 +33,9 @@ import (
 )
 
 // maxBody caps how much of a response we read. The largest real response is
-// under 10 KiB; anything near this cap is a fault, not data.
-const maxBody = 4 << 20
+// about 12 KiB, and the limits in wire.go bound what an answer may hold; a
+// response near this cap is a fault, not data.
+const maxBody = 1 << 20
 
 // ErrUnexpectedStatus is wrapped by errors for non-200 responses.
 var ErrUnexpectedStatus = errors.New("legacyapi: unexpected HTTP status")
