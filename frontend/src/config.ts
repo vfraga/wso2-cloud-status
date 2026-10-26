@@ -26,11 +26,9 @@ export function trimTrailingSlashes(value: string): string {
 export const config = {
   apiBaseUrl: trimTrailingSlashes(import.meta.env.VITE_API_BASE_URL ?? ""),
   summaryIntervalMs: 30_000,
-  incidentsIntervalMs: 60_000,
   productIntervalMs: 30_000,
   maxBackoffMs: 120_000,
   /** A request that has not answered by then is aborted and counts as a failure. */
   requestTimeoutMs: 15_000,
   staleAfterMs: 5 * 60_000,
-  historyDays: 14,
 } as const;

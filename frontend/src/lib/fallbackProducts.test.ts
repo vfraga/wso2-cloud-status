@@ -90,8 +90,6 @@ describe("fallback product links", () => {
     const [, amount = "", unit = ""] = /^(\d+)([smh])$/.exec(value("stale_after")) ?? [];
     // The page calls data unavailable at the API's own stale_after.
     expect(Number(amount) * (units[unit] ?? Number.NaN)).toBe(pageConfig.staleAfterMs);
-    // Past incidents lists historyDays local days; the API's UTC window must cover them.
-    expect(Number(value("days"))).toBeGreaterThanOrEqual(pageConfig.historyDays + 1);
   });
 
   // statusd rejects a cache_control that holds a CDN copy for a whole poll of the

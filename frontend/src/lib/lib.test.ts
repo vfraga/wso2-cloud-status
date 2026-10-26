@@ -27,14 +27,7 @@ import {
   stripCaptions,
   summariseHistory,
 } from "./history";
-import {
-  caughtUp,
-  groupByDay,
-  incidentDuration,
-  isOngoing,
-  stateLabel,
-  worstImpact,
-} from "./incidents";
+import { incidentDuration, isOngoing, stateLabel, worstImpact } from "./incidents";
 import {
   formatCheckAge,
   formatDuration,
@@ -43,12 +36,10 @@ import {
   formatClock,
   formatUtcClock,
   formatUtcDateTime,
-  lastLocalDays,
-  localDayKey,
   utcDayKey,
 } from "./time";
-import { days, incident, locatedProduct, part } from "../test/factories";
-import { productRows, regionRows, rowStatus, shortName } from "./regions";
+import { days, incident, locatedProduct, part, product } from "../test/factories";
+import { placeNames, placeStatus, productRows, regionRows, rowStatus, shortName } from "./regions";
 
 describe("formatDuration", () => {
   it.each([
@@ -116,11 +107,6 @@ describe("dates", () => {
   it("keys a UTC calendar day", () => {
     expect(utcDayKey(new Date("2026-10-20T23:59:59Z"))).toBe("2026-10-20");
     expect(utcDayKey(new Date("2026-10-21T00:00:00Z"))).toBe("2026-10-21");
-  });
-
-  it("lists local days newest first", () => {
-    const list = lastLocalDays(new Date(2026, 2, 1, 12), 3).map(localDayKey);
-    expect(list).toEqual(["2026-03-01", "2026-02-28", "2026-02-27"]);
   });
 });
 
@@ -219,57 +205,6 @@ describe("freshness", () => {
 
 describe("incidents", () => {
   const now = new Date("2026-10-20T12:00:00Z");
-
-  it("groups by local day with empty days kept", () => {
-    const at = (day: number, hour: number) => new Date(2026, 9, day, hour);
-    const now = at(20, 12);
-    const span = (id: string, from: Date, to: Date | null) =>
-      incident({ id, startedAt: from, resolvedAt: to });
-    const groups = groupByDay(
-      [
-        span("a", at(20, 8), at(20, 9)),
-        span("b", at(20, 10), at(20, 11)),
-        span("c", at(18, 10), at(18, 11)),
-      ],
-      now,
-      3,
-    );
-    expect(groups.map((g) => g.incidents.map((i) => i.id))).toEqual([["b", "a"], [], ["c"]]);
-    expect(groups.map((g) => [g.start, g.end])).toEqual([
-      [at(20, 0), at(21, 0)],
-      [at(19, 0), at(20, 0)],
-      [at(18, 0), at(19, 0)],
-    ]);
-    expect(groups[0]?.label).toBe(
-      new Intl.DateTimeFormat(undefined, { year: "numeric", month: "long", day: "numeric" }).format(
-        now,
-      ),
-    );
-  });
-
-  it("lists an incident under every local day it covers, an open one up to today", () => {
-    const at = (day: number, hour: number, minute = 0) => new Date(2026, 9, day, hour, minute);
-    const now = at(21, 9);
-    const groups = groupByDay(
-      [
-        // Open since the evening before last: it covers all three days.
-        incident({ id: "open", startedAt: at(19, 23, 50), resolvedAt: null }),
-        // Across midnight: both days.
-        incident({ id: "night", startedAt: at(20, 23), resolvedAt: at(21, 1) }),
-        // Ends exactly at midnight: only the day it started.
-        incident({ id: "eve", startedAt: at(19, 22), resolvedAt: at(20, 0) }),
-        // Started and ended at the same instant, at midnight: that day.
-        incident({ id: "blip", startedAt: at(20, 0), resolvedAt: at(20, 0) }),
-      ],
-      now,
-      3,
-    );
-    expect(groups.map((g) => g.incidents.map((i) => i.id))).toEqual([
-      ["night", "open"],
-      ["night", "blip", "open"],
-      ["open", "eve"],
-    ]);
-  });
 
   it("measures open incidents to now", () => {
     const open = incident({ resolvedAt: null, startedAt: new Date("2026-10-20T10:30:00Z") });
@@ -433,22 +368,58 @@ describe("region rows", () => {
     expect(shortName(part("Europe"), eu)).toBe("Europe");
     expect(shortName({ ...part("EU "), name: "EU " }, eu)).toBe("EU ");
   });
-});
 
-describe("caughtUp", () => {
-  const at = (iso: string) => new Date(`2026-10-21T${iso}:00Z`);
-  const open = incident({ id: "a", title: "Now", resolvedAt: null });
-  const listed = incident({ id: "a", title: "Before" });
-
-  it("adds or updates the active incidents of a newer summary", () => {
-    expect(caughtUp([], at("14:00"), [open], at("14:01"))).toEqual([open]);
-    expect(caughtUp([listed], null, [open], at("14:01"))).toEqual([open]);
+  it("lists every product's places once, in the API's order", () => {
+    const usOnly = product({ id: "moesif", regions: product().regions.slice(0, 1) });
+    expect(placeNames([usOnly, locatedProduct()])).toEqual(["US", "EU"]);
+    expect(placeNames([product({ regions: [] })])).toEqual([]);
   });
 
-  it("takes a list as new as the summary as it is", () => {
-    expect(caughtUp([listed], at("14:01"), [open], at("14:01"))).toEqual([listed]);
-    expect(caughtUp([listed], at("14:02"), [open], at("14:01"))).toEqual([listed]);
-    expect(caughtUp([listed], at("14:00"), [open], null)).toEqual([listed]);
+  it("gives a place's own status, and names the parts that carry it only when they differ", () => {
+    const degraded = locatedProduct({
+      locations: [
+        { id: "us", name: "US", status: "operational" },
+        { id: "eu", name: "EU", status: "degraded" },
+      ],
+      regions: [
+        part("US control plane"),
+        part("US data plane"),
+        part("EU control plane"),
+        part("EU data plane", "degraded"),
+      ],
+    });
+    expect(placeStatus(degraded, "US")).toEqual({ status: "operational", parts: [] });
+    expect(placeStatus(degraded, "EU")).toEqual({
+      status: "degraded",
+      parts: [{ name: "Data plane", status: "degraded" }],
+    });
+    expect(placeStatus(degraded, "AP")).toBeUndefined();
+    // Every part in the same state: the place says it all.
+    const down = locatedProduct({
+      locations: [{ id: "us", name: "US", status: "outage" }],
+      regions: [part("US control plane", "outage"), part("US data plane", "outage")],
+    });
+    expect(placeStatus(down, "US")).toEqual({ status: "outage", parts: [] });
+    // A part without data makes the place unknown, and is named.
+    const silent = locatedProduct({
+      locations: [{ id: "us", name: "US", status: "unknown" }],
+      regions: [part("US control plane"), part("US data plane", "unknown")],
+    });
+    expect(placeStatus(silent, "US")).toEqual({
+      status: "unknown",
+      parts: [{ name: "Data plane", status: "unknown" }],
+    });
+    // Every part that is not operational is named, with its own status.
+    const mixed = locatedProduct({
+      locations: [{ id: "eu", name: "EU", status: "outage" }],
+      regions: [part("EU control plane", "maintenance"), part("EU data plane", "outage")],
+    });
+    expect(placeStatus(mixed, "EU")?.parts).toEqual([
+      { name: "Data plane", status: "outage" },
+      { name: "Control plane", status: "maintenance" },
+    ]);
+    // A region that is a place itself.
+    expect(placeStatus(product(), "US")).toEqual({ status: "operational", parts: [] });
   });
 });
 

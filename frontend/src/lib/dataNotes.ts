@@ -141,17 +141,15 @@ export interface PartlyShown {
 }
 
 /**
- * The row's lines for stale incident and uptime feeds: "Incidents last
+ * A product's lines for stale incident and uptime feeds: "Incidents last
  * updated 2:05 PM UTC (12 min ago)", or "Incident information unavailable"
  * when the feed never answered ("incomplete" when other sources' data of
- * that kind is shown). Empty when both are current. `uptime` false leaves
- * out the uptime line, where no uptime is shown.
+ * that kind is shown). Empty when both are current.
  */
 export function staleFeedLines(
   product: ProductSummary,
   now: Date,
   partly: PartlyShown = { incidents: false, uptime: false },
-  uptime = true,
 ): string[] {
   const { stale, checkedAt } = product.freshness;
   const line = (
@@ -172,7 +170,7 @@ export function staleFeedLines(
       incidentsLastUpdated,
     ),
     ...line(
-      uptime && stale.uptime,
+      stale.uptime,
       checkedAt.uptime,
       partly.uptime ? UPTIME_INCOMPLETE_LABEL : UPTIME_UNAVAILABLE_LABEL,
       uptimeLastUpdated,
@@ -237,8 +235,8 @@ export interface MissingIncidents {
 }
 
 /**
- * The products whose incident data is not complete, for the Past incidents
- * and Recent incidents notes. `known` are the incidents at hand, which tell
+ * The products whose incident data is not complete, for the Recent
+ * incidents note. `known` are the incidents at hand, which tell
  * whether another of a product's sources answered.
  */
 export function missingIncidents(
@@ -250,16 +248,6 @@ export function missingIncidents(
     if (coverage.state === "current") return [];
     return [{ product, coverage, partly: someIncidentsKnown(product, known) }];
   });
-}
-
-/** Of `missing`, the products whose incident data does not cover everything before `end`. */
-export function notCoveredBefore(
-  missing: readonly MissingIncidents[],
-  end: Date,
-): MissingIncidents[] {
-  return missing.filter(
-    (m) => m.coverage.state === "never" || m.coverage.at.getTime() < end.getTime(),
-  );
 }
 
 /** The last successful fetch of a product's incidents that stopped answering, else null. */

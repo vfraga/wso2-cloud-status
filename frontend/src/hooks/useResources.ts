@@ -16,16 +16,12 @@
  * under the License.
  */
 
-import { parseIncidentList, parseProductDetail, parseSummary } from "../api/parse";
+import { parseProductDetail, parseSummary } from "../api/parse";
 import { config } from "../config";
 import { usePolled } from "./usePolled";
 
 export const useSummary = () =>
   usePolled("/api/v1/summary", parseSummary, config.summaryIntervalMs);
-
-/** `activeKey` names the summary's active incidents: when it changes, the list is fetched at once. */
-export const useIncidents = (activeKey: string | null = null) =>
-  usePolled("/api/v1/incidents", parseIncidentList, config.incidentsIntervalMs, activeKey);
 
 export const useProduct = (id: string) =>
   usePolled(

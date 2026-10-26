@@ -36,7 +36,7 @@ const (
 	minRequestTimeout  = 100 * time.Millisecond
 	minShutdownTimeout = time.Second
 	maxShutdownTimeout = time.Minute
-	minHistoryDays     = 15
+	minHistoryDays     = 1
 	// browserPoll is how often the page polls the summary and a product
 	// (frontend/src/config.ts; fallbackProducts.test.ts keeps the two equal).
 	browserPoll = 30 * time.Second
@@ -50,8 +50,7 @@ func (c *Config) Validate() error {
 		e.addf("reload.watch_interval must be 0 (off) or at least 1s, got %s", c.Reload.Interval())
 	}
 	c.validatePolling(&e)
-	// The page lists 14 local days of past incidents (frontend/src/config.ts,
-	// historyDays); 15 UTC days cover them in every time zone.
+	// The history strip shows up to 90 of these UTC days; fewer make it shorter.
 	if c.History.Days < minHistoryDays || c.History.Days > 366 {
 		e.addf("history.days must be between %d and 366, got %d", minHistoryDays, c.History.Days)
 	}

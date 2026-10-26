@@ -18,94 +18,61 @@
 
 import { Box } from "@wso2/oxygen-ui";
 import { useEffect, useMemo } from "react";
-import type { Incident, Summary } from "../api/types";
+import type { Summary } from "../api/types";
 import { ActiveIncidents } from "../components/ActiveIncidents";
 import { Banner } from "../components/Banner";
 import { FallbackLinks } from "../components/FallbackLinks";
-import { HistoryLegend } from "../components/HistoryLegend";
-import { PastIncidents } from "../components/PastIncidents";
-import { ProductRow } from "../components/ProductRow";
-import { ProductListSkeleton } from "../components/Skeletons";
+import { StatusTable, StatusTableSkeleton } from "../components/StatusTable";
 import { pageTitle, useDocumentTitle } from "../hooks/useDocumentTitle";
 import { PageNowProvider, usePageNow } from "../hooks/useNow";
 import { useKnownUntil, type PolledState } from "../hooks/usePolled";
-import { useIncidents, useSummary } from "../hooks/useResources";
+import { useSummary } from "../hooks/useResources";
 import { bannerFreshness } from "../lib/dataNotes";
 import { rememberProducts } from "../lib/fallbackProducts";
 import { summaryHeadline, type Headline } from "../lib/headline";
 import { BANNER_LABEL } from "../lib/status";
-import { caughtUp } from "../lib/incidents";
-import { earliest } from "../lib/time";
 import { CARD_RADIUS } from "../theme/shape";
 
 const NO_DATA: Headline = { status: "unknown", label: BANNER_LABEL.unknown };
 const cardSx = {
+  mt: { xs: 3, sm: 4 },
   bgcolor: "var(--cs-surface)",
   border: "1px solid var(--cs-border)",
   borderRadius: CARD_RADIUS,
+  overflow: "hidden",
 } as const;
-const NONE: readonly Incident[] = [];
 
-/** The summary's active incidents as a key that changes when one starts or ends. */
-function activeKey(summary: Summary | null): string | null {
-  return summary === null
-    ? null
-    : summary.activeIncidents
-        .map((i) => i.id)
-        .toSorted((a, b) => a.localeCompare(b))
-        .join(" ");
-}
-
+/**
+ * The current status at a glance: the headline, the incidents going on now,
+ * and a table of each product's status per region. History, uptime and past
+ * incidents are on each product's own page.
+ */
 export function HomePage() {
   const summary = useSummary();
-  const incidents = useIncidents(activeKey(summary.data));
   // The site's name alone: a tab is short, and the status is the h1 and announced.
   useDocumentTitle(pageTitle());
   return (
     <PageNowProvider skewMs={summary.skewMs}>
-      <HomeBody summary={summary} incidents={incidents} />
+      <HomeBody summary={summary} />
     </PageNowProvider>
   );
 }
 
-function HomeBody({
-  summary,
-  incidents,
-}: {
-  summary: PolledState<Summary>;
-  incidents: PolledState<Incident[]>;
-}) {
+function HomeBody({ summary }: { summary: PolledState<Summary> }) {
   const data = summary.data;
-  // Null while the list is loading; once loaded, caught up with a newer summary.
-  const listed = useMemo(
-    () =>
-      incidents.data &&
-      caughtUp(
-        incidents.data,
-        incidents.generatedAt,
-        data?.activeIncidents ?? NONE,
-        summary.generatedAt,
-      ),
-    [incidents.data, incidents.generatedAt, data, summary.generatedAt],
-  );
-  const incidentById = useMemo(() => new Map((listed ?? NONE).map((i) => [i.id, i])), [listed]);
   const products = useMemo(() => new Map((data?.products ?? []).map((p) => [p.id, p])), [data]);
   useEffect(() => {
     if (data) rememberProducts(data.products);
   }, [data]);
-  // When the page cannot vouch for its data, nothing shown runs past it. The
-  // rows and Past incidents read both resources, so they stop at the earlier.
-  const summaryUntil = useKnownUntil(summary);
-  const bothUntil = earliest(summaryUntil, useKnownUntil(incidents));
-  const banner = <HomeBanner summary={summary} known={listed ?? NONE} />;
-  // Until the summary answers, only a placeholder: the sections that replace
-  // it are new to the page, so nothing on screen moves when they arrive.
+  // When the page cannot vouch for its data, an ongoing incident's duration stops there.
+  const knownUntil = useKnownUntil(summary);
+  const banner = <HomeBanner summary={summary} />;
   if (data === null && !summary.failed) {
     return (
       <>
         {banner}
-        <Box sx={{ ...cardSx, mt: { xs: 3, sm: 4 } }}>
-          <ProductListSkeleton />
+        <Box sx={cardSx}>
+          <StatusTableSkeleton />
         </Box>
       </>
     );
@@ -117,75 +84,31 @@ function HomeBody({
         <ActiveIncidents
           incidents={data.activeIncidents}
           products={products}
-          knownUntil={summaryUntil}
+          knownUntil={knownUntil}
         />
       )}
-      <Box component="section" aria-label="Products" sx={{ ...cardSx, mt: { xs: 3, sm: 4 } }}>
-        <ProductList data={data} incidents={incidentById} knownUntil={bothUntil} />
+      <Box component="section" aria-label="Products" sx={cardSx}>
+        {/* Without products, from a failed summary or a 200 from something other
+            than the service, the links are what is left. */}
+        {data && data.products.length > 0 ? (
+          <StatusTable products={data.products} />
+        ) : (
+          <FallbackLinks />
+        )}
       </Box>
-      {data && data.products.length > 0 && <HistoryLegend />}
-      <PastIncidents
-        state={{
-          incidents: listed,
-          // generated_at, the age of the snapshot the list comes from.
-          checkedAt: incidents.generatedAt,
-          lastSuccessAt: incidents.lastSuccessAt,
-          failed: incidents.failed,
-          servedStale: incidents.staleOnArrival,
-          skewMs: incidents.skewMs,
-          knownUntil: bothUntil,
-        }}
-        products={data?.products ?? []}
-      />
     </>
   );
 }
 
-function HomeBanner({
-  summary,
-  known,
-}: {
-  summary: PolledState<Summary>;
-  known: readonly Incident[];
-}) {
+function HomeBanner({ summary }: { summary: PolledState<Summary> }) {
   const now = usePageNow();
   const data = summary.data;
   return (
     <Banner
       headline={data ? summaryHeadline(data) : NO_DATA}
       loading={data === null && !summary.failed}
-      {...bannerFreshness(summary, data?.products ?? null, known, now)}
+      // The incidents the page shows are the active ones.
+      {...bannerFreshness(summary, data?.products ?? null, data?.activeIncidents ?? [], now)}
     />
   );
-}
-
-function ProductList({
-  data,
-  incidents,
-  knownUntil,
-}: {
-  data: Summary | null;
-  incidents: ReadonlyMap<string, Incident>;
-  knownUntil: Date | null;
-}) {
-  // Without products, from a failed summary or a 200 from something other
-  // than the service, the links are what is left.
-  if (data && data.products.length > 0) {
-    return (
-      <Box
-        component="ul"
-        sx={{ m: 0, p: 0, "& > li + li": { borderTop: "1px solid var(--cs-border)" } }}
-      >
-        {data.products.map((product) => (
-          <ProductRow
-            key={product.id}
-            product={product}
-            incidents={incidents}
-            knownUntil={knownUntil}
-          />
-        ))}
-      </Box>
-    );
-  }
-  return <FallbackLinks />;
 }

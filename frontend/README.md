@@ -1,9 +1,10 @@
 # WSO2 Cloud Status, frontend
 
-The status page for the WSO2 Cloud products: one banner, one row per product with a
-90-day strip, active incidents, and the last 14 days of incidents. It reads the
-status API in `../backend/go` (contract: `../api/openapi.yaml`) and links each
-product to its own status page, where the full history lives.
+The status page for the WSO2 Cloud products. The home page is the current status:
+one banner, the active incidents, and a table of each product's status per region.
+Each product's page has its 90-day history, regions with uptime, and incidents. It
+reads the status API in `../backend/go` (contract: `../api/openapi.yaml`) and links
+each product to its own status page, where the full history lives.
 
 ## Run
 
@@ -60,8 +61,9 @@ How the frontend behaves in each state, data missing included:
   (`src/lib/time.ts`), data times and history days in UTC.
 - Accessibility: the banner's live region announces late data and headline
   changes; after an in-page navigation focus moves to the new view's h1 once
-  it shows data or a failure; the history strip is one tab stop with arrow
-  keys; status is never colour alone. axe runs in the end-to-end tests.
+  it shows data or a failure; the home page's table states every role, so a
+  phone layout keeps it a table; the history strip is one tab stop with
+  arrow keys; status is never colour alone. axe runs in the end-to-end tests.
 - Without JavaScript, or when the app's scripts do not load, `index.html`
   lists every product's own status page (hidden for 3 seconds so a normal
   load does not flash it); the same list appears when the API cannot be

@@ -76,8 +76,8 @@ function usePageClock(): { fine: Date; coarse: Date } {
 }
 
 /**
- * One "now" for everything a page shows: incident durations, the local days
- * of past incidents and the strip's "Today". It is this browser's clock
+ * One "now" for everything a page shows: incident durations and the strip's
+ * "Today". It is this browser's clock
  * corrected by `skewMs` (its clock minus the server's, from the last
  * response), so a visitor's wrong clock changes none of them, and every part
  * of one render uses the same instant. The banner reads the same clock at a

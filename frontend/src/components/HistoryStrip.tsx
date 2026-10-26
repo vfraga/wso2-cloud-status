@@ -58,8 +58,7 @@ interface HistoryStripProps {
 const CLOSE_DELAY_MS = 120;
 
 /**
- * Below the strip, so it never covers the row's own name and status above
- * it. It flips above only at the end of the document, not of the screen: near
+ * Below the strip, so it never covers what sits above it. It flips above only at the end of the document, not of the screen: near
  * the bottom of the screen it still opens below, and a tooltip opened by a
  * tap or the keyboard is scrolled into view (see useTip). A constant, so the
  * Popper is not rebuilt on every render.

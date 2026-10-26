@@ -16,58 +16,31 @@
  * under the License.
  */
 
-import { useState, type FocusEvent } from "react";
+import { useState } from "react";
 
 interface Held {
   auto: boolean;
   expanded: boolean;
   /** The reader opened or closed it. */
   toggled: boolean;
-  /** Focus is inside the panel. */
-  focused: boolean;
-}
-
-/** Handlers for the panel, so the state knows when focus is inside it. */
-export interface PanelFocus {
-  onFocus: () => void;
-  onBlur: (event: FocusEvent<HTMLElement>) => void;
 }
 
 /**
- * Expanded state that opens by itself when `auto` turns true (a product that
+ * Expanded state that opens by itself when `auto` turns true (a region that
  * degrades opens itself) and closes by itself when it turns false, unless the
- * reader has toggled it or focus is inside the panel: a list never collapses
- * under the reader, taking their focus with it.
+ * reader has toggled it.
  */
-export function useAutoExpanded(auto: boolean): [boolean, (next: boolean) => void, PanelFocus] {
-  const [state, setState] = useState<Held>({
-    auto,
-    expanded: auto,
-    toggled: false,
-    focused: false,
-  });
+export function useAutoExpanded(auto: boolean): [boolean, (next: boolean) => void] {
+  const [state, setState] = useState<Held>({ auto, expanded: auto, toggled: false });
   let current = state;
   if (state.auto !== auto) {
-    current = {
-      ...state,
-      auto,
-      expanded: auto || (state.expanded && (state.toggled || state.focused)),
-    };
+    current = { ...state, auto, expanded: auto || (state.expanded && state.toggled) };
     setState(current);
   }
   return [
     current.expanded,
     (next) => {
       setState((s) => ({ ...s, expanded: next, toggled: true }));
-    },
-    {
-      onFocus: () => {
-        setState((s) => (s.focused ? s : { ...s, focused: true }));
-      },
-      onBlur: (event) => {
-        if (event.currentTarget.contains(event.relatedTarget)) return;
-        setState((s) => (s.focused ? { ...s, focused: false } : s));
-      },
     },
   ];
 }

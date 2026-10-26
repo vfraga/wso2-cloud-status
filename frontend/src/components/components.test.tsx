@@ -19,7 +19,7 @@
 import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { Incident, Status } from "../api/types";
+import type { Status } from "../api/types";
 import type { Headline } from "../lib/headline";
 import { BANNER_LABEL } from "../lib/status";
 import {
@@ -29,34 +29,22 @@ import {
   formatUtcClock,
   formatUtcDateTime,
 } from "../lib/time";
-import { apiTime, days, incident, locatedProduct, part, product } from "../test/factories";
+import { days, incident, locatedProduct, part, product } from "../test/factories";
 import { HistoryLegend } from "./HistoryLegend";
 import { Banner } from "./Banner";
 import { HistoryStrip } from "./HistoryStrip";
 import { IncidentItem } from "./IncidentMeta";
-import { ProductRow } from "./ProductRow";
 import { LocationPanel, RegionDetailPanel } from "./RegionDetailPanel";
-import { Regions } from "./Regions";
 import { ThemeRoot } from "../theme/ThemeRoot";
-import { UptimeFigure, UptimeList, formatPercent } from "./UptimeList";
+import { UptimeList, formatPercent } from "./UptimeList";
 import { ErrorBoundary } from "./ErrorBoundary";
 import { ProductListSkeleton } from "./Skeletons";
 import { StatusLabel } from "./StatusIcon";
 import { ActiveIncidents } from "./ActiveIncidents";
-import { PastIncidents } from "./PastIncidents";
+import { StatusTable, StatusTableSkeleton } from "./StatusTable";
 import { PageNowProvider } from "../hooks/useNow";
 
 const wrap = (ui: React.ReactElement) => render(<ThemeRoot>{ui}</ThemeRoot>);
-
-/** The incident list's polling state as HomePage passes it. */
-function listState(incidents: Incident[] | null, failed: boolean) {
-  return {
-    incidents,
-    checkedAt: null,
-    lastSuccessAt: incidents === null ? null : new Date(),
-    failed,
-  };
-}
 
 afterEach(() => {
   vi.useRealTimers();
@@ -331,187 +319,6 @@ describe("HistoryStrip", () => {
   });
 });
 
-describe("Regions", () => {
-  it("is collapsed when operational and complete, and the user can toggle", async () => {
-    const user = userEvent.setup();
-    wrap(<Regions product={product()} trailing={null} />);
-    const toggle = screen.getByRole("button", { name: /2 regions/ });
-    expect(toggle).toHaveAttribute("aria-expanded", "false");
-    expect(toggle).not.toHaveAttribute("aria-controls");
-    await user.click(toggle);
-    expect(toggle).toHaveAttribute("aria-expanded", "true");
-    const panel = document.getElementById(toggle.getAttribute("aria-controls") ?? "");
-    expect(panel).toContainElement(screen.getByText("EU"));
-    await user.click(toggle);
-    expect(toggle).toHaveAttribute("aria-expanded", "false");
-    expect(toggle).not.toHaveAttribute("aria-controls");
-  });
-
-  it("opens itself when degraded or incomplete, and links only regions with their own page", () => {
-    wrap(<Regions product={product({ status: "degraded" })} trailing={null} />);
-    expect(screen.getByRole("button", { name: /2 regions/ })).toHaveAttribute(
-      "aria-expanded",
-      "true",
-    );
-    expect(screen.getAllByRole("link")).toHaveLength(1);
-    expect(screen.getByRole("link", { name: "Status page for EU, API Platform" })).toHaveAttribute(
-      "href",
-      "https://status.example.test/eu",
-    );
-  });
-
-  it("stays closed when every region only repeats the product's unavailable status", () => {
-    const regions = product().regions.map((r) => ({ ...r, status: "unknown" as const }));
-    wrap(
-      <Regions
-        product={product({ status: "unknown", dataComplete: false, regions })}
-        trailing={null}
-      />,
-    );
-    expect(screen.getByRole("button", { name: /2 regions/ })).toHaveAttribute(
-      "aria-expanded",
-      "false",
-    );
-  });
-
-  it("opens for a region whose data is missing and re-opens when the product degrades after a manual close", async () => {
-    const user = userEvent.setup();
-    const [us, eu] = product().regions;
-    const partial = product({
-      dataComplete: false,
-      regions: [us!, { ...eu!, status: "unknown" }],
-    });
-    const { rerender } = wrap(<Regions product={partial} trailing={null} />);
-    const toggle = screen.getByRole("button", { name: /2 regions/ });
-    expect(toggle).toHaveAttribute("aria-expanded", "true");
-    await user.click(toggle);
-    expect(toggle).toHaveAttribute("aria-expanded", "false");
-    rerender(
-      <ThemeRoot>
-        <Regions product={product({ dataComplete: true })} trailing={null} />
-      </ThemeRoot>,
-    );
-    expect(screen.getByRole("button", { name: /2 regions/ })).toHaveAttribute(
-      "aria-expanded",
-      "false",
-    );
-    rerender(
-      <ThemeRoot>
-        <Regions product={product({ status: "outage" })} trailing={null} />
-      </ThemeRoot>,
-    );
-    expect(screen.getByRole("button", { name: /2 regions/ })).toHaveAttribute(
-      "aria-expanded",
-      "true",
-    );
-  });
-
-  it("stays open when the product recovers while focus is inside it", () => {
-    const { rerender } = wrap(
-      <Regions product={product({ status: "degraded" })} trailing={null} />,
-    );
-    const link = screen.getByRole("link", { name: "Status page for EU, API Platform" });
-    act(() => {
-      link.focus();
-    });
-    rerender(
-      <ThemeRoot>
-        <Regions product={product()} trailing={null} />
-      </ThemeRoot>,
-    );
-    expect(screen.getByRole("button", { name: /2 regions/ })).toHaveAttribute(
-      "aria-expanded",
-      "true",
-    );
-    expect(link).toHaveFocus();
-  });
-
-  it("handles one region and none", () => {
-    wrap(<Regions product={product({ regions: [] })} trailing={<span>link</span>} />);
-    expect(screen.queryByRole("button")).not.toBeInTheDocument();
-    expect(screen.getByText("link")).toBeInTheDocument();
-  });
-
-  it("uses the singular", () => {
-    wrap(
-      <Regions
-        product={product({
-          regions: [{ id: "us", name: "US", status: "operational", pageUrl: "", uptime: [] }],
-        })}
-        trailing={null}
-      />,
-    );
-    expect(screen.getByRole("button", { name: /1 region$/ })).toBeInTheDocument();
-  });
-});
-
-describe("Regions by location", () => {
-  it("lists places that open into their parts, each part with its 90-day uptime", async () => {
-    const user = userEvent.setup();
-    wrap(<Regions product={locatedProduct()} trailing={null} />);
-    await user.click(screen.getByRole("button", { name: /^2 regions/ }));
-    const us = screen.getByRole("button", { name: /^US/ });
-    expect(us).toHaveAttribute("aria-expanded", "false");
-    expect(screen.queryByText("Control plane")).not.toBeInTheDocument();
-    await user.click(us);
-    const panel = document.getElementById(us.getAttribute("aria-controls") ?? "");
-    const parts = within(panel!).getAllByRole("listitem");
-    expect(parts.map((li) => li.firstElementChild?.textContent)).toEqual([
-      "Control plane",
-      "Data plane",
-    ]);
-    // The figure as the upstream reports it, and words for a screen reader.
-    expect(within(parts[0]!).getByText("99.994% (90d)")).toHaveAttribute("aria-hidden", "true");
-    expect(within(parts[0]!).getByText("90-day uptime 99.994%")).toBeInTheDocument();
-    expect(within(parts[1]!).getByText("100% (90d)")).toBeInTheDocument();
-  });
-
-  it("opens the place whose part has a problem, and counts places as regions", () => {
-    const degraded = locatedProduct({
-      status: "degraded",
-      locations: [
-        { id: "us", name: "US", status: "operational" },
-        { id: "eu", name: "EU", status: "degraded" },
-      ],
-      regions: [
-        part("US control plane"),
-        part("US data plane"),
-        part("EU control plane"),
-        part("EU data plane", "degraded"),
-      ],
-    });
-    wrap(
-      <ul>
-        <ProductRow product={degraded} incidents={new Map()} />
-      </ul>,
-    );
-    expect(screen.getByText("1 of 2 regions affected")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /^2 regions/ })).toHaveAttribute(
-      "aria-expanded",
-      "true",
-    );
-    expect(screen.getByRole("button", { name: /^EU/ })).toHaveAttribute("aria-expanded", "true");
-    expect(screen.getByRole("button", { name: /^US/ })).toHaveAttribute("aria-expanded", "false");
-    expect(screen.getByText("Data plane")).toBeInTheDocument();
-  });
-
-  it("lists a part whose place it cannot read on its own, under its full name", async () => {
-    const user = userEvent.setup();
-    wrap(
-      <Regions
-        product={locatedProduct({
-          locations: [{ id: "us", name: "US", status: "operational" }],
-          regions: [part("US control plane"), part("EU data plane")],
-        })}
-        trailing={null}
-      />,
-    );
-    await user.click(screen.getByRole("button", { name: /^2 regions/ }));
-    expect(screen.getByRole("button", { name: /^US/ })).toBeInTheDocument();
-    expect(screen.getByText("EU data plane")).toBeInTheDocument();
-  });
-});
-
 describe("LocationPanel", () => {
   it("heads a place h3 and its parts h4, by their short names, with groups one level below", () => {
     const region = (name: string) => ({
@@ -536,21 +343,6 @@ describe("LocationPanel", () => {
     expect(screen.getByRole("heading", { level: 4, name: "Control plane" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { level: 4, name: "Data plane" })).toBeInTheDocument();
     expect(screen.getAllByRole("heading", { level: 5, name: "Runtime" })).toHaveLength(2);
-  });
-});
-
-describe("UptimeFigure", () => {
-  it("shows the 90-day figure, or nothing without one", () => {
-    const { container, rerender } = wrap(
-      <UptimeFigure uptime={[{ window: "90d", percent: 99.9996 }]} />,
-    );
-    expect(screen.getByText("99.999% (90d)")).toBeInTheDocument();
-    rerender(
-      <ThemeRoot>
-        <UptimeFigure uptime={[{ window: "30d", percent: 100 }]} />
-      </ThemeRoot>,
-    );
-    expect(container).toHaveTextContent("");
   });
 });
 
@@ -615,6 +407,28 @@ describe("RegionDetailPanel", () => {
     await user.click(toggle);
     expect(toggle).not.toHaveAttribute("aria-controls");
   });
+
+  it("opens when its status turns to a problem and closes when it recovers, unless the reader toggled it", async () => {
+    const user = userEvent.setup();
+    const panel = (status: "operational" | "degraded") => (
+      <ThemeRoot>
+        <ul>
+          <RegionDetailPanel region={{ ...region, status }} />
+        </ul>
+      </ThemeRoot>
+    );
+    const { rerender } = render(panel("operational"));
+    const toggle = () => screen.getByRole("button", { name: "EU" });
+    rerender(panel("degraded"));
+    expect(toggle()).toHaveAttribute("aria-expanded", "true");
+    rerender(panel("operational"));
+    expect(toggle()).toHaveAttribute("aria-expanded", "false");
+    // Opened by the reader: it stays open through a change of status.
+    await user.click(toggle());
+    rerender(panel("degraded"));
+    rerender(panel("operational"));
+    expect(toggle()).toHaveAttribute("aria-expanded", "true");
+  });
 });
 
 describe("RegionDetailPanel without components", () => {
@@ -647,174 +461,6 @@ describe("RegionDetailPanel without components", () => {
     );
     expect(screen.queryByText("No component data is available right now.")).not.toBeInTheDocument();
     expect(screen.getByText("Uptime (outages only, updated daily)")).toBeInTheDocument();
-  });
-});
-
-describe("ProductRow", () => {
-  it("renders the description, the status page link and no region count when healthy", () => {
-    wrap(
-      <ul>
-        <ProductRow product={product({ description: "Bijira" })} incidents={new Map()} />
-      </ul>,
-    );
-    expect(screen.getByText("Bijira")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "View status page for API Platform" })).toHaveAttribute(
-      "href",
-      "https://status.example.test/api",
-    );
-    expect(screen.getByRole("link", { name: "API Platform" })).toHaveAttribute(
-      "href",
-      "/products/api-platform",
-    );
-    expect(screen.queryByText(/regions affected/)).not.toBeInTheDocument();
-  });
-
-  it("renders nothing for an absent description", () => {
-    wrap(
-      <ul>
-        <ProductRow product={product()} incidents={new Map()} />
-      </ul>,
-    );
-    expect(screen.queryByText("Bijira")).not.toBeInTheDocument();
-  });
-
-  it("states how many regions are affected, with icon and text", () => {
-    wrap(
-      <ul>
-        <ProductRow
-          product={product({
-            status: "degraded",
-            regions: [
-              { id: "us", name: "US", status: "operational", pageUrl: "", uptime: [] },
-              { id: "eu", name: "EU", status: "degraded", pageUrl: "", uptime: [] },
-            ],
-          })}
-          incidents={new Map()}
-        />
-      </ul>,
-    );
-    expect(screen.getByText("1 of 2 regions affected")).toBeInTheDocument();
-    expect(screen.getAllByText("Degraded performance").length).toBeGreaterThan(0);
-  });
-
-  it("labels an operational product with missing data as unavailable, not Operational", () => {
-    const { rerender } = wrap(
-      <ul>
-        <ProductRow
-          product={product({
-            dataComplete: false,
-            regions: [
-              { id: "us", name: "US", status: "operational", pageUrl: "", uptime: [] },
-              { id: "eu", name: "EU", status: "unknown", pageUrl: "", uptime: [] },
-            ],
-          })}
-          incidents={new Map()}
-        />
-      </ul>,
-    );
-    expect(screen.getByText("Some data unavailable")).toBeInTheDocument();
-    // Only the US region reads Operational; the product does not.
-    expect(screen.getAllByText("Operational")).toHaveLength(1);
-    expect(screen.getByText("1 of 2 regions unavailable")).toBeInTheDocument();
-    expect(screen.queryByText(/last updated|^Incident information|^Uptime/)).toBeNull();
-    // Every region known, a component unknown.
-    rerender(
-      <ThemeRoot>
-        <ul>
-          <ProductRow product={product({ dataComplete: false })} incidents={new Map()} />
-        </ul>
-      </ThemeRoot>,
-    );
-    expect(screen.getByText("Some component data is unavailable")).toBeInTheDocument();
-  });
-
-  it("keeps a problem status and adds the missing regions under it", () => {
-    wrap(
-      <ul>
-        <ProductRow
-          product={product({
-            status: "degraded",
-            dataComplete: false,
-            regions: [
-              { id: "us", name: "US", status: "degraded", pageUrl: "", uptime: [] },
-              { id: "eu", name: "EU", status: "unknown", pageUrl: "", uptime: [] },
-            ],
-          })}
-          incidents={new Map()}
-        />
-      </ul>,
-    );
-    expect(screen.getAllByText("Degraded performance").length).toBeGreaterThan(0);
-    expect(screen.getByText("1 of 2 regions affected")).toBeInTheDocument();
-    expect(screen.getByText("1 of 2 regions unavailable")).toBeInTheDocument();
-  });
-
-  it("says which feeds are stale at any status, and since when", () => {
-    const stopped = apiTime(20 * 60_000);
-    const incidentsStale = {
-      checkedAt: { components: apiTime(), incidents: stopped, uptime: apiTime() },
-      stale: { components: false, incidents: true, uptime: false },
-    };
-    const { rerender } = wrap(
-      <ul>
-        <ProductRow
-          product={product({
-            status: "outage",
-            regions: [
-              { id: "us", name: "US", status: "outage", pageUrl: "", uptime: [] },
-              { id: "eu", name: "EU", status: "degraded", pageUrl: "", uptime: [] },
-            ],
-            freshness: incidentsStale,
-          })}
-          incidents={new Map()}
-        />
-      </ul>,
-    );
-    expect(
-      screen.getByText(/^Incidents last updated \S.* UTC \(2\d min ago\)$/),
-    ).toBeInTheDocument();
-    expect(screen.getByText("2 of 2 regions affected")).toBeInTheDocument();
-    rerender(
-      <ThemeRoot>
-        <ul>
-          <ProductRow
-            product={product({
-              dataComplete: false,
-              freshness: {
-                checkedAt: { components: apiTime(), incidents: null, uptime: null },
-                stale: { components: false, incidents: true, uptime: true },
-              },
-            })}
-            incidents={new Map()}
-          />
-        </ul>
-      </ThemeRoot>,
-    );
-    expect(screen.getByText("Some data unavailable")).toBeInTheDocument();
-    expect(screen.getByText("Incident information unavailable")).toBeInTheDocument();
-    // The home row shows each region's uptime, so it names a feed that never answered.
-    expect(screen.getByText("Uptime unavailable")).toBeInTheDocument();
-  });
-
-  it("does not open the regions of a product with stale feeds that is otherwise healthy", () => {
-    wrap(
-      <ul>
-        <ProductRow
-          product={product({
-            freshness: {
-              checkedAt: { components: apiTime(), incidents: null, uptime: apiTime() },
-              stale: { components: false, incidents: true, uptime: false },
-            },
-          })}
-          incidents={new Map()}
-        />
-      </ul>,
-    );
-    expect(screen.getByText("Incident information unavailable")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /2 regions/ })).toHaveAttribute(
-      "aria-expanded",
-      "false",
-    );
   });
 });
 
@@ -1176,134 +822,80 @@ describe("incidents", () => {
     ).toHaveAttribute("href", "https://status.example.test/api");
     expect(screen.getByText("Degraded performance")).toBeInTheDocument();
   });
+});
 
-  it("groups past incidents by day, with 'No incidents reported.' on empty days", () => {
-    const today = new Date();
-    wrap(
-      <PastIncidents
-        state={listState([incident({ startedAt: today, resolvedAt: today })], false)}
-        products={[product()]}
-      />,
-    );
-    expect(screen.getByRole("heading", { level: 2, name: "Past incidents" })).toBeInTheDocument();
-    expect(screen.getAllByRole("heading", { level: 3 }).length).toBeGreaterThanOrEqual(14);
-    expect(screen.getAllByText("No incidents reported.")).toHaveLength(13);
-    expect(screen.getByRole("link", { name: "Full history for API Platform" })).toBeInTheDocument();
-    const nav = screen.getByRole("navigation", { name: "Full incident history" });
-    expect(within(nav).getAllByRole("link")).toHaveLength(1);
+describe("StatusTable", () => {
+  const eu = { id: "eu", name: "EU", status: "operational" as const };
+  const us = { id: "us", name: "US", status: "operational" as const };
+  const usOnly = product({
+    id: "moesif",
+    name: "Moesif",
+    description: "Moesif analytics",
+    regions: product().regions.slice(0, 1),
   });
 
-  it("vouches for no day after the list's data stopped, and stops ongoing durations there", () => {
-    vi.useFakeTimers({ toFake: ["Date"] });
-    vi.setSystemTime(new Date(2026, 9, 21, 9, 0));
-    const stopped = new Date(2026, 9, 19, 12, 0);
-    const state = (incidents: Incident[]) => ({
-      ...listState(incidents, true),
-      lastSuccessAt: stopped,
-      knownUntil: stopped,
-    });
-    const { rerender } = wrap(<PastIncidents state={state([])} products={[product()]} />);
-    // The 19th to the 21st end after the data stopped; the 11 days before are covered.
-    expect(screen.getAllByText("No incident information is available.")).toHaveLength(3);
-    expect(screen.getAllByText("No incidents reported.")).toHaveLength(11);
-    // The refresh failed long ago, so the note does not say "just now".
+  afterEach(() => {
+    window.history.pushState(null, "", "/");
+  });
+
+  it("has a row per product and a column per place, each cell a status in words", () => {
+    wrap(<StatusTable products={[locatedProduct({ description: "Bijira" }), usOnly]} />);
+    const table = screen.getByRole("table", { name: "Current status of each product by region" });
     expect(
-      screen.getByText(/^Past incidents were last refreshed more than 5 minutes ago/),
-    ).toBeInTheDocument();
-    const open = incident({
-      startedAt: new Date(2026, 9, 19, 11, 0),
-      resolvedAt: null,
-      state: "investigating",
-    });
-    rerender(
-      <ThemeRoot>
-        <PastIncidents state={state([open])} products={[product()]} />
-      </ThemeRoot>,
-    );
-    expect(screen.getAllByText(/Ongoing for at least 1h\. Last known as of /)).toHaveLength(3);
-  });
-
-  it("says a failure is new on this browser's clock, whatever the server's", () => {
-    // This browser is 10 minutes behind the server; its last success was a minute ago.
-    const skewMs = -10 * 60_000;
-    wrap(
-      <PageNowProvider skewMs={skewMs}>
-        <PastIncidents
-          state={{ ...listState([], true), lastSuccessAt: new Date(Date.now() - 60_000), skewMs }}
-          products={[product()]}
-        />
-      </PageNowProvider>,
-    );
-    expect(screen.getByText(/^Past incidents could not be refreshed just now/)).toBeInTheDocument();
-  });
-
-  it("lists an incident that started the evening before under today too, with its start date", () => {
-    vi.useFakeTimers({ toFake: ["Date"] });
-    vi.setSystemTime(new Date(2026, 9, 21, 9, 0));
-    const started = new Date(2026, 9, 20, 23, 50);
-    const open = incident({ startedAt: started, resolvedAt: null, state: "investigating" });
-    wrap(<PastIncidents state={listState([open], false)} products={[product()]} />);
-    const [today, yesterday] = screen
-      .getAllByRole("region")
-      .filter((r) => r.getAttribute("aria-labelledby")?.startsWith("day-"));
-    expect(today).toHaveTextContent("Elevated latency");
-    expect(today).not.toHaveTextContent("No incidents reported.");
-    expect(within(today!).getByText(formatDateClock(started))).toBeInTheDocument();
-    expect(within(yesterday!).getByText(formatClock(started))).toBeInTheDocument();
-    expect(screen.getAllByText("No incidents reported.")).toHaveLength(12);
-  });
-
-  it("names a product whose incident data is unavailable, and speaks for the others only", () => {
-    const missing = product({
-      id: "moesif",
-      name: "Moesif",
-      pageUrl: "https://status.example.test/moesif",
-      freshness: {
-        checkedAt: { components: apiTime(), incidents: null, uptime: apiTime() },
-        stale: { components: false, incidents: true, uptime: false },
-      },
-    });
-    const { rerender } = wrap(
-      <PastIncidents
-        state={listState([], false)}
-        products={[product(), product({ id: "x", name: "X" }), missing]}
-      />,
-    );
-    expect(
-      screen.getByText("Incident information for Moesif is unavailable right now."),
-    ).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "See the Moesif status page" })).toHaveAttribute(
+      within(table)
+        .getAllByRole("columnheader")
+        .map((h) => h.textContent),
+    ).toEqual(["Product", "US", "EU"]);
+    const rows = within(table).getAllByRole("row").slice(1);
+    expect(rows.map((r) => within(r).getByRole("rowheader").textContent)).toEqual([
+      "API PlatformBijira",
+      "MoesifMoesif analytics",
+    ]);
+    expect(within(rows[0]!).getAllByText("Operational")).toHaveLength(2);
+    // A place the product does not run in shows "-", and says so to a screen reader.
+    expect(within(rows[1]!).getByText("No EU region")).toBeInTheDocument();
+    expect(within(rows[1]!).getByRole("link", { name: "Moesif" })).toHaveAttribute(
       "href",
-      "https://status.example.test/moesif",
+      "/products/moesif",
     );
-    expect(screen.getAllByText("No incidents reported for the other products.")).toHaveLength(14);
-    rerender(
-      <ThemeRoot>
-        <PastIncidents state={listState([], false)} products={[product(), missing]} />
-      </ThemeRoot>,
-    );
-    expect(screen.getAllByText("No incidents reported for the other product.")).toHaveLength(14);
-    rerender(
-      <ThemeRoot>
-        <PastIncidents state={listState([], false)} products={[missing]} />
-      </ThemeRoot>,
-    );
-    expect(screen.getAllByText("No incident information is available.")).toHaveLength(14);
   });
 
-  it("reports loading and failure of the incident list", () => {
-    const { rerender } = wrap(<PastIncidents state={listState(null, false)} products={[]} />);
-    // Loading, its days hold their place, and no quiet day is vouched for.
-    expect(screen.getByText("Loading past incidents.")).toBeInTheDocument();
-    expect(screen.getAllByRole("heading", { level: 3 })).toHaveLength(14);
-    expect(screen.queryByText(/^No incident/)).toBeNull();
-    rerender(
-      <ThemeRoot>
-        <PastIncidents state={listState(null, true)} products={[]} />
-      </ThemeRoot>,
-    );
-    expect(screen.getByText("Past incidents could not be loaded.")).toBeInTheDocument();
-    expect(screen.queryAllByRole("heading", { level: 3 })).toHaveLength(0);
+  it("names the parts of a place that are not operational, with their own status when it differs", () => {
+    const degraded = locatedProduct({
+      locations: [us, { ...eu, status: "outage" }],
+      regions: [
+        part("US control plane"),
+        part("US data plane"),
+        part("EU control plane", "maintenance"),
+        part("EU data plane", "outage"),
+      ],
+    });
+    wrap(<StatusTable products={[degraded]} />);
+    const cells = screen.getAllByRole("cell");
+    expect(within(cells[1]!).getByText("Service outage")).toBeInTheDocument();
+    expect(within(cells[1]!).getByText("Data plane")).toBeInTheDocument();
+    expect(within(cells[1]!).getByText("Control plane: under maintenance")).toBeInTheDocument();
+    expect(within(cells[0]!).queryByText(/plane/)).not.toBeInTheDocument();
+  });
+
+  it("shows the status of a product without regions across the columns, never 'no region'", () => {
+    const silent = product({ id: "agent", name: "Agent", status: "unknown", regions: [] });
+    wrap(<StatusTable products={[locatedProduct(), silent]} />);
+    const row = screen.getAllByRole("row").at(-1)!;
+    expect(within(row).getByText("Status unavailable")).toBeInTheDocument();
+    expect(within(row).queryByText(/region$/)).not.toBeInTheDocument();
+    expect(within(row).getByRole("cell")).toHaveAttribute("colspan", "2");
+  });
+
+  it("opens the product from anywhere on its row", async () => {
+    wrap(<StatusTable products={[locatedProduct()]} />);
+    await userEvent.click(screen.getAllByText("Operational")[0]!);
+    expect(window.location.pathname).toBe("/products/api-platform");
+  });
+
+  it("holds the table's place while loading", () => {
+    wrap(<StatusTableSkeleton />);
+    expect(document.querySelector('[aria-busy="true"]')).toBeInTheDocument();
   });
 });
 

@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import { act, render, screen, waitFor, within } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { setupServer } from "msw/node";
@@ -28,7 +28,7 @@ import { apiStatus } from "./test/factories";
 
 /*
  * The page against bodies that carry generated_at, checked_at and stale:
- * body freshness, stopped incident feeds and the row lines.
+ * body freshness, stopped incident feeds and the product page's lines.
  */
 
 const server = setupServer();
@@ -231,7 +231,7 @@ describe("an incident feed that stopped after answering", () => {
   const moesif = () =>
     productBody("moesif", "Moesif", {}, { incidents: stoppedAt(), stale: { incidents: true } });
 
-  it("names it in the row, the banner, Past incidents and its active incident", async () => {
+  it("names it in the banner and on its active incident", async () => {
     const time = formatUtcClock(stoppedAt());
     const open = {
       id: "m1",
@@ -254,11 +254,6 @@ describe("an incident feed that stopped after answering", () => {
         `Incident information for Moesif has not been updated since ${time}.`,
       ),
     ).toBeInTheDocument();
-    // Row: the feed and its time.
-    const products = screen.getByRole("region", { name: "Products" });
-    expect(
-      within(products).getByText(/^Incidents last updated .+ UTC \(1[23] min ago\)$/),
-    ).toBeInTheDocument();
     // Active incident: last known.
     const active = screen.getByRole("region", { name: "Active incidents" });
     // It had lasted 28 minutes when last known; that figure does not grow.
@@ -266,31 +261,6 @@ describe("an incident feed that stopped after answering", () => {
       within(active).getByText(
         new RegExp(`Ongoing for at least 28m\\. Last known as of ${time}\\.$`),
       ),
-    ).toBeInTheDocument();
-    // Past incidents: the note, and no "No incidents reported." for a day not fully covered.
-    const past = await screen.findByRole("region", { name: "Past incidents" });
-    expect(
-      within(past).getByText(
-        `Incident information for Moesif is incomplete after ${formatUtcDateTime(stoppedAt())}.`,
-        { exact: false },
-      ),
-    ).toBeInTheDocument();
-    expect(
-      within(past).getByRole("link", { name: "See the Moesif status page" }),
-    ).toBeInTheDocument();
-    // Today holds the open incident; the 13 earlier days are fully covered.
-    expect(within(past).getAllByText("No incidents reported.")).toHaveLength(13);
-  });
-
-  it("does not print No incidents reported. for a quiet day it does not cover", async () => {
-    serve([productBody("a", "A"), moesif()]);
-    render(<App />);
-    const past = await screen.findByRole("region", { name: "Past incidents" });
-    await waitFor(() => {
-      expect(within(past).getAllByText("No incidents reported.")).toHaveLength(13);
-    });
-    expect(
-      within(past).getByText("No incidents reported for the other product."),
     ).toBeInTheDocument();
   });
 
@@ -311,25 +281,26 @@ describe("an incident feed that stopped after answering", () => {
     );
   });
 
-  it("shows both lines when incidents and uptime are stale", async () => {
-    const uptimeAt = ago(3 * 3_600_000);
-    serve([
-      productBody(
-        "moesif",
-        "Moesif",
-        {},
-        {
-          incidents: stoppedAt(),
-          uptime: uptimeAt,
-          stale: { incidents: true, uptime: true },
-        },
+  it("shows both lines on the product page when incidents and uptime are stale", async () => {
+    const feeds = {
+      incidents: stoppedAt(),
+      uptime: ago(3 * 3_600_000),
+      stale: { incidents: true, uptime: true },
+    };
+    window.history.pushState(null, "", "/products/moesif");
+    server.use(
+      http.get("http://api.test/api/v1/products/moesif", () =>
+        HttpResponse.json({
+          ...productBody("moesif", "Moesif", {}, feeds),
+          generated_at: iso(ago(0)),
+          region_details: [],
+          incidents: [],
+        }),
       ),
-    ]);
+    );
     render(<App />);
-    const products = await screen.findByRole("region", { name: "Products" });
-    expect(await within(products).findByText(/^Incidents last updated/)).toBeInTheDocument();
-    // The home page shows each region's uptime, so its row names that feed too.
-    expect(within(products).getByText(/^Uptime last updated/)).toBeInTheDocument();
+    expect(await screen.findByText(/^Incidents last updated/)).toBeInTheDocument();
+    expect(screen.getByText(/^Uptime last updated/)).toBeInTheDocument();
   });
 
   it("marks the partly covered day and the incomplete list on the product page", async () => {
@@ -366,39 +337,33 @@ describe("an incident feed that stopped after answering", () => {
     ).toBeInTheDocument();
   });
 
-  it("says incomplete, not unavailable, when one source never answered and another did", async () => {
-    serve(
-      [
-        productBody(
-          "dev",
-          "Developer Platform",
-          {},
-          { incidents: null, stale: { incidents: true } },
-        ),
-      ],
+  it("says incomplete, not unavailable, when one source never answered and another's incident is shown", async () => {
+    const open = {
+      id: "d1",
+      product_id: "dev",
+      title: "Build delays",
+      impact: "degraded",
+      state: "investigating",
+      started_at: ago(600_000).toISOString(),
+      resolved_at: null,
+    };
+    const dev = productBody(
+      "dev",
+      "Developer Platform",
+      {},
       {
-        incidents: [
-          {
-            id: "d1",
-            product_id: "dev",
-            title: "Build delays",
-            impact: "degraded",
-            state: "resolved",
-            started_at: ago(2 * 86_400_000).toISOString(),
-            resolved_at: ago(2 * 86_400_000 - 600_000).toISOString(),
-          },
-        ],
+        incidents: null,
+        stale: { incidents: true },
       },
     );
+    serve([{ ...dev, status: "degraded" }], { active: [open] });
     render(<App />);
-    const past = await screen.findByRole("region", { name: "Past incidents" });
-    const sentence = "Incident information for Developer Platform is incomplete right now.";
-    expect(await within(past).findByText(sentence, { exact: false })).toBeInTheDocument();
-    // The banner names it too, and the row says incomplete, not unavailable.
-    expect(within(banner()).getByText(sentence)).toBeInTheDocument();
-    const products = screen.getByRole("region", { name: "Products" });
-    expect(within(products).getByText("Incident information incomplete")).toBeInTheDocument();
-    expect(within(products).queryByText("Incident information unavailable")).toBeNull();
+    await screen.findByRole("region", { name: "Active incidents" });
+    expect(
+      within(banner()).getByText(
+        "Incident information for Developer Platform is incomplete right now.",
+      ),
+    ).toBeInTheDocument();
   });
 
   it("names a feed that never answered in the banner while the product's status is known", async () => {
@@ -414,49 +379,21 @@ describe("an incident feed that stopped after answering", () => {
   });
 });
 
-describe("past incidents after the first load", () => {
-  it("says so when a later refresh fails", async () => {
-    let fail = false;
-    serve([productBody("a", "A")]);
+describe("legend and footer", () => {
+  it("explains the strip on a product's page and says history days are UTC days", async () => {
+    window.history.pushState(null, "", "/products/a");
     server.use(
-      http.get("http://api.test/api/v1/incidents", () =>
-        fail
-          ? new HttpResponse(null, { status: 503 })
-          : HttpResponse.json({ generated_at: iso(ago(0)), incidents: [] }),
+      http.get("http://api.test/api/v1/products/a", () =>
+        HttpResponse.json({
+          ...productBody("a", "A"),
+          generated_at: iso(ago(0)),
+          region_details: [],
+          incidents: [],
+        }),
       ),
     );
     render(<App />);
-    const past = await screen.findByRole("region", { name: "Past incidents" });
-    await within(past).findAllByText("No incidents reported.");
-    expect(within(past).queryByText(/could not be refreshed/)).toBeNull();
-    fail = true;
-    await act(async () => {
-      document.dispatchEvent(new Event("visibilitychange"));
-      await Promise.resolve();
-    });
-    expect(
-      await within(past).findByText(
-        "Past incidents could not be refreshed just now, so this list may be out of date.",
-      ),
-    ).toBeInTheDocument();
-  });
-
-  it("says so when the list it received was already old", async () => {
-    serve([productBody("a", "A")], { incidentsAt: ago(20 * 60_000) });
-    render(<App />);
-    expect(
-      await screen.findByText(
-        "Past incidents were last refreshed more than 5 minutes ago, so this list may be out of date.",
-      ),
-    ).toBeInTheDocument();
-  });
-});
-
-describe("legend and footer", () => {
-  it("explains the strip and says history days are UTC days", async () => {
-    serve([productBody("a", "A")]);
-    render(<App />);
-    await screen.findByRole("heading", { level: 1, name: "All systems operational" });
+    await screen.findByRole("heading", { level: 1, name: "A: All systems operational" });
     expect(
       screen.getByText("No data: information for this day is unavailable"),
     ).toBeInTheDocument();

@@ -28,7 +28,9 @@ import {
 } from "../helpers";
 
 test.describe("a source that never answers", () => {
-  test("its product reports no data, compactly; the others stay collapsed", async ({ page }) => {
+  test("its product reports no data in the banner and its row; the others stay operational", async ({
+    page,
+  }) => {
     await ready(page);
     // Grey, and named: never "All systems operational" over a product without data.
     await expect(page.getByRole("heading", { level: 1 })).toHaveText(
@@ -42,49 +44,15 @@ test.describe("a source that never answers", () => {
     await expect(page.getByRole("status")).toHaveText(
       "No status data has been received yet for Moesif.",
     );
+    // Its row says so in the place it runs in; the other products stay operational.
     const moesif = productRows(page).filter({
-      has: page.getByRole("heading", { level: 2, name: "Moesif" }),
+      has: page.getByRole("link", { name: "Moesif", exact: true }),
     });
-    // Every region would only repeat "Status unavailable", so the regions stay closed.
-    await expect(moesif.getByRole("button", { name: /1 region/ })).toHaveAttribute(
-      "aria-expanded",
-      "false",
-    );
-    await expect(moesif.getByText("Status unavailable").first()).toBeVisible();
-    // Its incidents and uptime never answered: no time to name.
+    await expect(moesif.getByRole("cell").first()).toContainText("Status unavailable");
     await expect(
-      moesif.getByText("Incident information unavailable", { exact: true }),
-    ).toBeVisible();
-    await expect(moesif.getByText("Uptime unavailable", { exact: true })).toBeVisible();
-    const agent = productRows(page).filter({
-      has: page.getByRole("heading", { level: 2, name: "Agent Platform" }),
-    });
-    await expect(agent.getByRole("button", { name: /^\d+ regions?$/ })).toHaveAttribute(
-      "aria-expanded",
-      "false",
-    );
-    await expect(moesif.getByRole("listbox").getByRole("option").first()).toHaveAccessibleName(
-      /No data/,
-    );
+      productRows(page).getByRole("cell").filter({ hasText: "Status unavailable" }),
+    ).toHaveCount(1);
     await page.screenshot({ path: shotPath("e2e-stale"), fullPage: true, animations: "disabled" });
-  });
-
-  test("past incidents say Moesif's incidents are unavailable, not that there were none", async ({
-    page,
-  }) => {
-    await ready(page);
-    const past = page.getByRole("region", { name: "Past incidents" });
-    await expect(
-      past.getByText("Incident information for Moesif is unavailable right now."),
-    ).toBeVisible();
-    await expect(past.getByRole("link", { name: "See the Moesif status page" })).toHaveAttribute(
-      "href",
-      "https://status.moesif.com",
-    );
-    await expect(past.getByText("No incidents reported.", { exact: true })).toHaveCount(0);
-    await expect(
-      past.getByText("No incidents reported for the other products.").first(),
-    ).toBeVisible();
   });
 
   test("the product page has no empty region panel and no false empty incident list", async ({
@@ -108,6 +76,12 @@ test.describe("a source that never answers", () => {
       page.getByText("Incident information for Moesif is unavailable right now."),
     ).toBeVisible();
     await expect(page.getByText("No incidents reported.")).toHaveCount(0);
+    // Its incidents and uptime never answered: no time to name.
+    await expect(page.getByText("Incident information unavailable", { exact: true })).toBeVisible();
+    await expect(page.getByText("Uptime unavailable", { exact: true })).toBeVisible();
+    await expect(
+      page.getByRole("region", { name: "History" }).getByRole("option").first(),
+    ).toHaveAccessibleName(/No data/);
     await page.screenshot({
       path: shotPath("e2e-stale-product"),
       fullPage: true,

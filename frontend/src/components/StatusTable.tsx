@@ -1,0 +1,290 @@
+/**
+ * Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com).
+ *
+ * WSO2 LLC. licenses this file to you under the Apache License,
+ * Version 2.0 (the "License"); you may not use this file except
+ * in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied. See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+
+import { Box, Skeleton, Typography } from "@wso2/oxygen-ui";
+import { ChevronRight } from "@wso2/oxygen-ui-icons-react";
+import { memo, useId, type MouseEvent } from "react";
+import type { ProductSummary } from "../api/types";
+import { FALLBACK_PRODUCTS } from "../lib/fallbackProducts";
+import { placeNames, placeStatus, productRows } from "../lib/regions";
+import { Link, navigate } from "../lib/router";
+import {
+  PRODUCT_COLUMN,
+  STATUS_COLUMN,
+  STATUS_LABEL,
+  STATUS_TABLE_CAPTION,
+  noRegionIn,
+  partNote,
+} from "../lib/status";
+import { StatusLabel } from "./StatusIcon";
+
+/*
+ * A table from sm up. On a phone each row is a grid instead: the product's
+ * name across the top, then its places side by side, each with its name in
+ * front ("US", "EU"). The column headers are then visually hidden but still
+ * read. CSS that changes a table's display can drop its semantics in some
+ * browsers, so every element also states its role.
+ */
+
+/** Below MUI's sm breakpoint. */
+const PHONE = "@media (max-width: 599.95px)";
+const hiddenOnPhone = {
+  [PHONE]: {
+    position: "absolute",
+    width: "1px",
+    height: "1px",
+    overflow: "hidden",
+    clip: "rect(0 0 0 0)",
+    whiteSpace: "nowrap",
+  },
+} as const;
+const cellSx = {
+  display: { xs: "block", sm: "table-cell" },
+  px: { xs: 2, sm: 3 },
+  py: 2,
+  textAlign: "left",
+  verticalAlign: "top",
+  fontWeight: "inherit",
+} as const;
+const headSx = {
+  ...cellSx,
+  py: 1.25,
+  fontSize: "0.8125rem",
+  fontWeight: 600,
+  color: "var(--cs-muted)",
+} as const;
+/** The product's name and the name customers knew it by, one line each. */
+const nameSx = { fontSize: "1.0625rem", fontWeight: 600, lineHeight: 1.4 } as const;
+/** Fits "Degraded performance", the longest status label, with its icon. */
+const PLACE_COLUMN = "13rem";
+/** Lines a part's name up with the status text, after the label's 16 px icon and its gap. */
+const AFTER_ICON = "22px";
+
+function StatusCell({ product, place }: { product: ProductSummary; place: string }) {
+  const at = placeStatus(product, place);
+  return (
+    <Box component="td" role="cell" sx={{ ...cellSx, pt: { xs: 0, sm: 2 } }}>
+      <Box sx={{ display: "flex", alignItems: "flex-start", gap: 1 }}>
+        {/* A screen reader takes the place from the column header; on a phone, where the header is hidden, the eye needs it here. */}
+        <Typography
+          component="span"
+          variant="body2"
+          aria-hidden="true"
+          sx={{
+            display: { xs: "block", sm: "none" },
+            minWidth: "1.75rem",
+            fontWeight: 600,
+            color: "var(--cs-muted)",
+          }}
+        >
+          {place}
+        </Typography>
+        {at === undefined ? (
+          <>
+            <Typography
+              component="span"
+              variant="body2"
+              aria-hidden="true"
+              sx={{ color: "var(--cs-muted)" }}
+            >
+              -
+            </Typography>
+            <span className="cs-visually-hidden">{noRegionIn(place)}</span>
+          </>
+        ) : (
+          <Box sx={{ minWidth: 0 }}>
+            <StatusLabel status={at.status}>{STATUS_LABEL[at.status]}</StatusLabel>
+            {at.parts.map((part) => (
+              <Typography
+                key={part.name}
+                variant="caption"
+                sx={{ display: "block", color: "var(--cs-muted)", pl: AFTER_ICON }}
+              >
+                {partNote(part.name, part.status, at.status)}
+              </Typography>
+            ))}
+          </Box>
+        )}
+      </Box>
+    </Box>
+  );
+}
+
+function ProductStatusRow({
+  product,
+  places,
+}: {
+  product: ProductSummary;
+  places: readonly string[];
+}) {
+  const path = `/products/${product.id}`;
+  // The whole row opens the product, a larger target than its name. The name
+  // stays the link, for the keyboard, screen readers and a new tab.
+  const open = (event: MouseEvent<HTMLTableRowElement>): void => {
+    if (event.defaultPrevented || event.button !== 0) return;
+    if (window.getSelection()?.toString()) return;
+    navigate(path);
+  };
+  // A product with no regions at all is not "not in" every place: its own status spans them.
+  const own = places.length === 0 || productRows(product).length === 0;
+  const columns = Math.max(places.length, 1);
+  return (
+    <Box
+      component="tr"
+      role="row"
+      onClick={open}
+      sx={{
+        display: { xs: "grid", sm: "table-row" },
+        gridTemplateColumns: `repeat(${String(columns)}, minmax(0, 1fr))`,
+        borderTop: "1px solid var(--cs-border)",
+        // On a phone the header row is hidden, so the first row needs no line above it.
+        [PHONE]: { "&:first-of-type": { borderTop: 0 } },
+        cursor: "pointer",
+        "&:hover": { bgcolor: "var(--cs-page)" },
+      }}
+    >
+      <Box
+        component="th"
+        scope="row"
+        role="rowheader"
+        sx={{ ...cellSx, gridColumn: "1 / -1", pb: { xs: 1, sm: 2 } }}
+      >
+        <Typography component="span" sx={{ ...nameSx, display: "block" }}>
+          <Link
+            to={path}
+            style={{
+              textDecoration: "none",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 4,
+            }}
+          >
+            {product.name}
+            <ChevronRight aria-hidden="true" size={16} />
+          </Link>
+        </Typography>
+        {product.description !== undefined && (
+          <Typography variant="body2" sx={{ color: "var(--cs-muted)" }}>
+            {product.description}
+          </Typography>
+        )}
+      </Box>
+      {own ? (
+        <Box
+          component="td"
+          role="cell"
+          colSpan={columns}
+          sx={{ ...cellSx, gridColumn: "1 / -1", pt: { xs: 0, sm: 2 } }}
+        >
+          <StatusLabel status={product.status}>{STATUS_LABEL[product.status]}</StatusLabel>
+        </Box>
+      ) : (
+        places.map((place) => <StatusCell key={place} product={product} place={place} />)
+      )}
+    </Box>
+  );
+}
+
+/**
+ * The home page's summary: a row per product and a column per place the
+ * products run in (US, EU), each cell the status statusd computed for it.
+ * The detail (history, uptime, incidents) is on each product's own page.
+ * Memoised: the home page re-renders on every tick of the banner's clock.
+ */
+export const StatusTable = memo(function StatusTable({
+  products,
+}: {
+  products: readonly ProductSummary[];
+}) {
+  const places = placeNames(products);
+  const captionId = useId();
+  return (
+    <Box
+      component="table"
+      role="table"
+      aria-labelledby={captionId}
+      sx={{ display: { xs: "block", sm: "table" }, width: "100%", borderCollapse: "collapse" }}
+    >
+      <caption id={captionId} className="cs-visually-hidden">
+        {STATUS_TABLE_CAPTION}
+      </caption>
+      <Box component="thead" role="rowgroup" sx={hiddenOnPhone}>
+        <tr role="row">
+          <Box component="th" scope="col" role="columnheader" sx={headSx}>
+            {PRODUCT_COLUMN}
+          </Box>
+          {(places.length > 0 ? places : [STATUS_COLUMN]).map((place) => (
+            <Box
+              component="th"
+              scope="col"
+              role="columnheader"
+              key={place}
+              sx={{ ...headSx, width: { sm: PLACE_COLUMN } }}
+            >
+              {place}
+            </Box>
+          ))}
+        </tr>
+      </Box>
+      <Box
+        component="tbody"
+        role="rowgroup"
+        sx={{ display: { xs: "block", sm: "table-row-group" } }}
+      >
+        {products.map((product) => (
+          <ProductStatusRow key={product.id} product={product} places={places} />
+        ))}
+      </Box>
+    </Box>
+  );
+});
+
+/**
+ * The table's shape while the summary loads: a row per product the page
+ * knows, about as tall as the table, so little moves when the data arrives.
+ * The h1 says what is happening ("Checking status").
+ */
+export function StatusTableSkeleton() {
+  return (
+    <Box aria-busy="true">
+      <Box sx={{ ...headSx, display: { xs: "none", sm: "block" } }}>
+        <Skeleton variant="text" width="5rem" />
+      </Box>
+      {FALLBACK_PRODUCTS.map((product, i) => (
+        <Box
+          key={product.id}
+          sx={{
+            ...cellSx,
+            display: "flex",
+            flexDirection: { xs: "column", sm: "row" },
+            justifyContent: "space-between",
+            gap: { xs: 1, sm: 2 },
+            borderTop:
+              i === 0 ? { xs: 0, sm: "1px solid var(--cs-border)" } : "1px solid var(--cs-border)",
+          }}
+        >
+          <Box sx={{ flex: 1 }}>
+            <Skeleton variant="text" width="40%" sx={nameSx} />
+            <Skeleton variant="text" width="20%" />
+          </Box>
+          <Skeleton variant="text" width="30%" />
+        </Box>
+      ))}
+    </Box>
+  );
+}

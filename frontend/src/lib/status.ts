@@ -72,22 +72,25 @@ export const IMPACT_LABEL: Record<Status, string> = {
   unknown: "Unknown impact",
 };
 
+/** The home page's table: products in rows, the places they run in as columns. */
+export const STATUS_TABLE_CAPTION = "Current status of each product by region";
+export const PRODUCT_COLUMN = "Product";
+/** The only column when no product lists a region. */
+export const STATUS_COLUMN = "Status";
+/** What a screen reader hears for a place the product does not run in; the cell shows "-". */
+export function noRegionIn(place: string): string {
+  return `No ${place} region`;
+}
+/** A part under a place's status: its name, and its own status when it differs ("Control plane: under maintenance"). */
+export function partNote(name: string, status: Status, place: Status): string {
+  return status === place ? name : `${name}: ${STATUS_LABEL[status].toLowerCase()}`;
+}
+
 export const CHECKING_LABEL = "Checking status";
 /** Banner headline when every known status is operational but some data is missing. */
 export const PARTIAL_HEADLINE = "Some status data is unavailable";
-/** Row label for an operational product with some data missing. */
-export const PARTIAL_LABEL = "Some data unavailable";
 export const UPTIME_LABEL = "Uptime (outages only, updated daily)";
 export const UPTIME_SHORT_LABEL = "Uptime";
-/**
- * The window of the one uptime figure a home row shows per region: the
- * upstream's 90 days, the length of the history strip on a wide screen.
- */
-export const HOME_UPTIME_WINDOW = "90d";
-/** What a screen reader hears for the home row's figure, shown as "99.994% (90d)". */
-export function uptimeFigure(percent: string): string {
-  return `90-day uptime ${percent}`;
-}
 export const COMPONENTS_UNAVAILABLE = "some component data is unavailable";
 
 /** The text with its first letter in upper case, for a fragment that starts a line. */
@@ -112,10 +115,6 @@ export function unavailableFor(names: readonly string[]): string {
 /** The same when too many products to name have no status. */
 export function unavailableForMany(n: number): string {
   return `Status unavailable for ${String(n)} products`;
-}
-
-export function regionsAffected(affected: number, total: number): string {
-  return `${String(affected)} of ${count(total, "region")} affected`;
 }
 
 export function regionsUnavailable(unavailable: number, total: number): string {
@@ -147,7 +146,7 @@ export function incidentInfoIncompleteAfter(name: string, when: string): string 
   return `Incident information for ${name} is incomplete after ${when}.`;
 }
 
-/** The banner's line for such a feed, in the row's words; `time` is a UTC time. */
+/** The banner's line for such a feed, in the product page's words; `time` is a UTC time. */
 export function incidentsNotUpdated(name: string, time: string): string {
   return `Incident information for ${name} has not been updated since ${time}.`;
 }
@@ -221,14 +220,6 @@ export const NO_INCIDENTS = "No incidents reported.";
 /** The same when its only incidents are ongoing, listed under Active incidents. */
 export const NO_OTHER_INCIDENTS = "No other incidents reported.";
 
-export const PAST_INCIDENTS_LOADING = "Loading past incidents.";
-export const PAST_INCIDENTS_UNAVAILABLE = "Past incidents could not be loaded.";
-export const PAST_INCIDENTS_FAILED =
-  "Past incidents could not be refreshed just now, so this list may be out of date.";
-export function pastIncidentsStale(limit: string): string {
-  return `Past incidents were last refreshed more than ${limit} ago, so this list may be out of date.`;
-}
-
 /** The history strip legend. */
 export const LEGEND_INTRO = "Each bar is one UTC day.";
 export const LEGEND_NO_DATA = "No data: information for this day is unavailable";
@@ -254,15 +245,6 @@ export const RENDER_FAILED_DETAIL =
 
 export const FOOTER_TIMES =
   "Times are shown in your local time zone unless marked UTC. History bars are UTC calendar days.";
-
-/** Text for a day without incidents when the incident data of `missing` of `total` products is unavailable. */
-export function quietDayText(missing: number, total: number): string {
-  if (missing >= total) return "No incident information is available.";
-  if (missing === 0) return NO_INCIDENTS;
-  return total - missing === 1
-    ? "No incidents reported for the other product."
-    : "No incidents reported for the other products.";
-}
 
 /**
  * The banner's notice when the page's own data may be out of date: a lead,

@@ -23,19 +23,16 @@ interface DataNoteProps {
   /** A 14 px icon, hidden from assistive technology. */
   icon: ReactNode;
   children: ReactNode;
-  /** Right-aligns the note from sm up, as in a product row's status column. */
-  alignEnd?: boolean;
 }
 
 /** A note about the data shown, with an icon and body text, so it is not mistaken for fine print. */
-export function DataNote({ icon, children, alignEnd = false }: DataNoteProps) {
+export function DataNote({ icon, children }: DataNoteProps) {
   return (
     <Stack
       direction="row"
       spacing={0.75}
       sx={{
         alignItems: "flex-start",
-        justifyContent: alignEnd ? { xs: "flex-start", sm: "flex-end" } : "flex-start",
         color: "var(--cs-text)",
       }}
     >

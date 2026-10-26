@@ -17,7 +17,7 @@
  */
 
 import type { Location, ProductSummary, RegionSummary, Status } from "../api/types";
-import { capitalise } from "./status";
+import { STATUS_RANK, capitalise } from "./status";
 
 /** One line of a product's region list: a location with its parts, or a region on its own. */
 export type RegionRow<R extends RegionSummary = RegionSummary> =
@@ -56,6 +56,53 @@ export function productRows(product: ProductSummary): RegionRow[] {
 
 export function rowStatus(row: RegionRow): Status {
   return row.kind === "location" ? row.location.status : row.region.status;
+}
+
+function rowName(row: RegionRow): string {
+  return row.kind === "location" ? row.location.name : row.region.name;
+}
+
+/** The places the products run in (US, EU), by name, in the order the API first lists them. */
+export function placeNames(products: readonly ProductSummary[]): string[] {
+  return [...new Set(products.flatMap((p) => productRows(p).map(rowName)))];
+}
+
+/** The place's own status first, then the others from the most severe. */
+function rank(status: Status, place: Status): number {
+  return status === place ? Number.MAX_SAFE_INTEGER : STATUS_RANK[status];
+}
+
+/** A part of a place, by its short name ("Data plane"), and its status. */
+export interface PartStatus {
+  name: string;
+  status: Status;
+}
+
+/** A product's status in one place, and the parts of the place that are not operational. */
+export interface PlaceStatus {
+  status: Status;
+  /** Listed only when the parts differ: the data plane alone when only it is degraded. */
+  parts: PartStatus[];
+}
+
+/**
+ * A product's status in the place named `name`, as statusd computed it;
+ * undefined where the product does not run.
+ */
+export function placeStatus(product: ProductSummary, name: string): PlaceStatus | undefined {
+  const row = productRows(product).find((r) => rowName(r) === name);
+  if (row === undefined) return undefined;
+  if (row.kind === "region") return { status: row.region.status, parts: [] };
+  const { location, regions } = row;
+  const differ = regions.some((r) => r.status !== location.status);
+  // The parts that carry the place's status first, then the others by severity.
+  const parts = differ
+    ? regions
+        .filter((r) => r.status !== "operational")
+        .map((r) => ({ name: shortName(r, location), status: r.status }))
+        .sort((a, b) => rank(b.status, location.status) - rank(a.status, location.status))
+    : [];
+  return { status: location.status, parts };
 }
 
 /**

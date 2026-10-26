@@ -53,7 +53,9 @@ export function collectConsoleErrors(page: Page): string[] {
 export const shotPath = (name: string): string =>
   `${process.env.SHOT_DIR ?? "test-results/shots"}/${name}.png`;
 
-export const productRows = (page: Page) => page.locator('section[aria-label="Products"] > ul > li');
+/** The home page's table rows, one per product (the header row left out). */
+export const productRows = (page: Page) =>
+  page.locator('section[aria-label="Products"] tbody > tr');
 
 export async function ready(page: Page): Promise<void> {
   await page.goto("/");

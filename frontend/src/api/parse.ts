@@ -16,7 +16,6 @@
  * under the License.
  */
 
-import { ApiError } from "./errors";
 import {
   STATUSES,
   type Component,
@@ -268,18 +267,6 @@ export function parseSummary(raw: unknown): Summary {
     products,
     activeIncidents: parseIncidents(r.active_incidents),
   };
-}
-
-/**
- * Fails closed: a body without an incidents list, or with a record that
- * cannot be read, is an unreadable answer, not a list without incidents.
- */
-export function parseIncidentList(raw: unknown): Incident[] {
-  const list = isRec(raw) ? raw.incidents : undefined;
-  if (!allReadable(list)) {
-    throw new ApiError("The status API sent an incident list that could not be read");
-  }
-  return parseIncidents(list);
 }
 
 /**

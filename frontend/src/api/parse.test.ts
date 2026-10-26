@@ -17,9 +17,8 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { parseIncidentList, parseProductDetail, parseSummary, toStatus } from "./parse";
+import { parseProductDetail, parseSummary, toStatus } from "./parse";
 import { summaryBody } from "../test/factories";
-import { ApiError } from "./errors";
 
 describe("toStatus", () => {
   it("keeps known statuses and maps the rest to unknown", () => {
@@ -213,27 +212,7 @@ describe("parseSummary", () => {
   });
 });
 
-describe("parseIncidentList and parseProductDetail", () => {
-  it("reads the incident list, and rejects one it cannot read in full", () => {
-    const good = {
-      id: "a",
-      title: "A",
-      started_at: "2026-10-20T08:00:00Z",
-      resolved_at: "2026-10-20T09:00:00Z",
-    };
-    const list = parseIncidentList({ incidents: [good] });
-    expect(list).toHaveLength(1);
-    expect(list[0]?.resolvedAt?.toISOString()).toBe("2026-10-20T09:00:00.000Z");
-    expect(parseIncidentList({ incidents: [] })).toEqual([]);
-    // No list, a list of the wrong type, or a record that cannot be read: not
-    // fourteen quiet days, but an answer the page cannot use.
-    for (const body of [undefined, {}, { error: "x" }, { incidents: "none" }]) {
-      expect(() => parseIncidentList(body)).toThrow(ApiError);
-    }
-    expect(() => parseIncidentList({ incidents: [good, { id: "b" }] })).toThrow(ApiError);
-    expect(() => parseIncidentList({ incidents: [good, null] })).toThrow(ApiError);
-  });
-
+describe("parseProductDetail", () => {
   it("reads a product's unreadable incidents as not received", () => {
     const ok = (summaryBody().products as Record<string, unknown>[])[0] ?? {};
     const good = { id: "a", product_id: "api-platform", started_at: "2026-10-20T08:00:00Z" };

@@ -2,7 +2,8 @@
 
 The status page for the WSO2 Cloud products: Agent Platform, API Platform,
 Integration Platform, Identity Platform, Developer Platform and Moesif. One
-summary page, one row per product, with links to each product's own status
+summary page with each product's status per region, a page per product with
+its history, regions and incidents, and links to each product's own status
 page.
 
 This repository holds the status API (`backend/go`), the web frontend

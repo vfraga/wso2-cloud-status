@@ -17,7 +17,7 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { formatClock, formatDayHeading, formatUtcClock } from "./time";
+import { formatClock, formatHistoryDate, formatUtcClock } from "./time";
 
 /*
  * Times are shown in the reader's locale (an owner decision). `npm test` runs
@@ -35,6 +35,6 @@ describe.runIf(process.env.VITEST_LOCALE === "de")("times in a German locale", (
     expect(formatUtcClock(at)).toBe("14:05 UTC");
     // The suite pins the zone to UTC.
     expect(formatClock(at)).toBe("14:05 UTC");
-    expect(formatDayHeading(new Date(2026, 9, 21))).toBe("21. Oktober 2026");
+    expect(formatHistoryDate("2026-10-21")).toBe("21. Okt. 2026");
   });
 });

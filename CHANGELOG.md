@@ -14,8 +14,6 @@ section here. The public API has its own version, in `api/openapi.yaml`.
 - API 1.1.0: each product lists its `locations` (US, EU) with a status
   that fails closed over their regions, and each region names its
   `location`; summary regions carry their `uptime`.
-- The home page shows each region's 90-day uptime, as the source reports
-  it.
 - Each colour in the history legend has its own label, and a description
   on hover, keyboard focus or tap.
 - The WSO2 logo heads the page, and the WSO2 pulse glyph is the favicon and
@@ -26,9 +24,16 @@ section here. The public API has its own version, in `api/openapi.yaml`.
 
 ### Changed
 
-- Control and data planes are parts of a region: US and EU open into them,
-  on the home page and on each product's page, and the region counts count
-  US and EU. Region names are in sentence case ("EU data plane").
+- The home page shows the current status at a glance: the banner, the
+  active incidents while there are any, and a table with a row per product
+  and a column per region (US, EU). Each cell is the region's status as
+  icon and word, naming the planes that are not operational, and the whole
+  row opens the product's page. On a phone each row puts its regions side
+  by side under the product's name. History, uptime and incidents are on
+  each product's page; the home page no longer fetches the incident list.
+- Control and data planes are parts of a region: each product's page lists
+  US and EU with their planes. Region names are in sentence case ("EU data
+  plane").
 - Links to other sites take the text colour with an underline, so they no
   longer look like a status.
 - A day's details put its status beside the date.
@@ -43,16 +48,11 @@ section here. The public API has its own version, in `api/openapi.yaml`.
 - The frontend image sends its files compressed once at the highest level
   instead of at the lowest level on every request: about 37 KB less on a
   first visit, and far less CPU per request.
-- An open home page no longer redraws every product row on each 5-second
-  tick of the banner's clock: about 60% less script time while it stays
-  open.
+- An open home page no longer redraws its table on each 5-second tick of
+  the banner's clock.
 
 ### Fixed
 
-- Past incidents no longer says a day had no incidents while the banner
-  lists one as active. The incident list catches up with a newer summary,
-  and a change in the summary's active incidents fetches the list at once
-  instead of at its next minute.
 - When the page's own data stops, the history no longer paints the days
   after that point green: a day not fully covered reads "No data" unless a
   problem is known, as it already did when a product's incident feed
@@ -67,9 +67,10 @@ section here. The public API has its own version, in `api/openapi.yaml`.
 - A day with maintenance is labelled "Maintenance", not the present-tense
   "Under maintenance", and a count that includes a maintenance-only day
   reads "days with incidents or maintenance", as the legend has it.
-- A region list that opened because a product had a problem no longer
-  closes under the reader when the product recovers: it stays open while
-  focus is inside it or after the reader toggled it.
+- A region on a product's page that the reader opened or closed keeps
+  that state when its status changes.
+- `history.days` may be any number of days from 1 to 366; the 15-day
+  minimum served the home page's list of past incidents, which is gone.
 - statusd lists each incident once at a cost that grows with the number of
   records rather than its square, and rejects an incident answer of more
   than 500 records as malformed: an upstream that filed one event
@@ -93,17 +94,15 @@ section here. The public API has its own version, in `api/openapi.yaml`.
 - While a product's incident feed is stale, an open incident's daily
   minutes stop at `checked_at.incidents` instead of running to
   `generated_at`.
-- The page stops the product rows and Past incidents where the earlier of
-  the summary and the incident list stopped, and the tab title no longer
-  keeps the last status after a rendering error.
+- When the page's own data stops, nothing on it runs past that point, and
+  the tab title no longer keeps the last status after a rendering error.
 - An incident record without an id, or with an id another record in the
   same response has, fails the incident fetch instead of hiding the other
   record; a record with an end time is resolved whatever its status word.
 - The page no longer moves as its data arrives (a cumulative layout shift
-  of 0.37 to 0.86 on the home page, now 0): until the status answers it
-  shows a placeholder at least as tall as the window, Past incidents holds
-  its days while the list loads, and the fallback shown before the app
-  starts no longer moves the page.
+  of 0.37 to 0.86 on the old home page): until the status answers it shows
+  a placeholder the shape of what replaces it, and the fallback shown
+  before the app starts no longer moves the page.
 - `statusd -check-config` rejects cache directives the cache limits do not
   read (`s-maxage`, a repeated directive) and two listeners on one port.
 

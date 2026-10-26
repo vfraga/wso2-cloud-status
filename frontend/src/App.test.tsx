@@ -147,7 +147,7 @@ function serve(summary: unknown, incidents: unknown = { incidents: [] }) {
 }
 
 describe("home page", () => {
-  it("shows the banner, products in API order, collapsed when healthy and open when not", async () => {
+  it("shows the banner, the active incident, and each product's status per region in API order", async () => {
     serve(degradedSummary());
     render(<App />);
     expect(
@@ -158,28 +158,24 @@ describe("home page", () => {
     ).toBeInTheDocument();
     // The tab names the site only; the status is the h1.
     await expectTitle("WSO2 Cloud Status");
-    const products = screen.getByRole("region", { name: "Products" });
-    const rows = within(products)
-      .getAllByRole("listitem", {})
-      .filter((li) => li.querySelector("h2"));
-    expect(rows.map((r) => within(r).getByRole("heading", { level: 2 }).textContent)).toEqual([
+    const table = within(screen.getByRole("region", { name: "Products" })).getByRole("table");
+    const rows = within(table).getAllByRole("row").slice(1);
+    expect(rows.map((r) => within(r).getByRole("link").textContent)).toEqual([
       "API Platform",
       "Moesif",
     ]);
-    expect(within(rows[0]!).getByRole("button", { name: /2 regions/ })).toHaveAttribute(
-      "aria-expanded",
-      "true",
-    );
-    // A stale incident feed is named with its time but does not open the regions.
-    expect(within(rows[1]!).getByRole("button", { name: /1 region/ })).toHaveAttribute(
-      "aria-expanded",
-      "false",
-    );
+    const cells = (row: HTMLElement) => within(row).getAllByRole("cell");
+    expect(within(cells(rows[0]!)[0]!).getByText("Operational")).toBeInTheDocument();
+    expect(within(cells(rows[0]!)[1]!).getByText("Degraded performance")).toBeInTheDocument();
+    expect(within(cells(rows[1]!)[0]!).getByText("Operational")).toBeInTheDocument();
+    expect(within(cells(rows[1]!)[1]!).getByText("No EU region")).toBeInTheDocument();
+    // No history, uptime or past incidents here: they are on each product's page.
+    expect(screen.queryByRole("listbox")).toBeNull();
+    expect(screen.queryByRole("region", { name: "Past incidents" })).toBeNull();
+    // A stale incident feed is named once, in the banner, with its time.
     expect(
-      within(rows[1]!).getByText(/^Incidents last updated .+ UTC \(2\d min ago\)$/),
+      screen.getByText(/^Incident information for Moesif has not been updated since .+ UTC\.$/),
     ).toBeInTheDocument();
-    expect(within(rows[0]!).queryByText(/^Incidents last updated/)).toBeNull();
-    expect(screen.getByText("1 of 2 regions affected")).toBeInTheDocument();
     const active = screen.getByRole("region", { name: "Active incidents" });
     expect(within(active).getByRole("link", { name: "API Platform" })).toHaveAttribute(
       "href",
@@ -190,31 +186,6 @@ describe("home page", () => {
     ).toHaveAttribute("href", "https://status.example.test/api");
     expect(within(active).getByText(/Ongoing for 1h/)).toBeInTheDocument();
     expect(await screen.findByText(/^Status checked just now$/)).toBeInTheDocument();
-  });
-
-  it("joins history day incident ids to incident titles from /incidents", async () => {
-    const user = userEvent.setup();
-    serve(degradedSummary(), {
-      incidents: [
-        {
-          id: "i1",
-          product_id: "api-platform",
-          title: "Elevated latency",
-          impact: "degraded",
-          state: "investigating",
-          started_at: new Date().toISOString(),
-          resolved_at: null,
-        },
-      ],
-    });
-    render(<App />);
-    await screen.findByRole("heading", { level: 1 });
-    await waitFor(() => {
-      expect(
-        screen.getByRole("option", { name: /Incidents: Elevated latency/ }),
-      ).toBeInTheDocument();
-    });
-    await user.tab();
   });
 
   it("links every product's own page when the API is down from the first load", async () => {
@@ -237,7 +208,6 @@ describe("home page", () => {
     expect(screen.getByRole("status")).toHaveTextContent(
       "We cannot reach the status service right now. This page will keep trying.",
     );
-    expect(await screen.findByText("Past incidents could not be loaded.")).toBeInTheDocument();
   });
 
   it.each([{}, { products: [] }, { message: "ok" }])(
@@ -253,30 +223,10 @@ describe("home page", () => {
       // Nothing to date, and no quiet day vouched for.
       const banner = screen.getByRole("region", { name: "Overall status" });
       expect(within(banner).queryByText(/^Status checked/)).toBeNull();
-      expect(await screen.findAllByText("No incident information is available.")).toHaveLength(14);
-      expect(screen.queryByText("No incidents reported.")).toBeNull();
     },
   );
 
-  it("reads an incident list it cannot read as not loaded, never as quiet days", async () => {
-    serve(summaryBody, { error: "x" });
-    render(<App />);
-    await screen.findByRole("heading", { level: 1, name: "All systems operational" });
-    expect(await screen.findByText("Past incidents could not be loaded.")).toBeInTheDocument();
-    expect(screen.queryByText("No incidents reported.")).toBeNull();
-  });
-
-  it("vouches for no quiet day while the summary cannot be loaded", async () => {
-    server.use(
-      http.get("http://api.test/api/v1/summary", () => new HttpResponse(null, { status: 503 })),
-      http.get("http://api.test/api/v1/incidents", () => HttpResponse.json({ incidents: [] })),
-    );
-    render(<App />);
-    expect(await screen.findAllByText("No incident information is available.")).toHaveLength(14);
-    expect(screen.queryByText("No incidents reported.")).toBeNull();
-  });
-
-  it("names a product without data in a grey banner, and says its incidents are unavailable", async () => {
+  it("names a product without data in a grey banner, and in its row", async () => {
     const body = summaryBody();
     const ok = (body.products as Record<string, unknown>[])[0];
     serve(
@@ -310,10 +260,8 @@ describe("home page", () => {
       await screen.findByRole("heading", { level: 1, name: "Status unavailable for Moesif" }),
     ).toBeInTheDocument();
     expect(screen.getByText("The other product is operational.")).toBeInTheDocument();
-    expect(
-      await screen.findByText("Incident information for Moesif is unavailable right now."),
-    ).toBeInTheDocument();
-    expect(screen.getAllByText("No incidents reported for the other product.")).toHaveLength(14);
+    const moesif = screen.getAllByRole("row").at(-1)!;
+    expect(within(moesif).getByText("Status unavailable")).toBeInTheDocument();
   });
 
   it("reads Status unavailable at once for a snapshot that was already old on arrival, on the client clock without a Date header", async () => {
@@ -447,8 +395,8 @@ describe("home page", () => {
     });
     expect(heading).toHaveTextContent("Status unavailable");
     expect(screen.getByRole("status")).toHaveTextContent("more than 5 minutes");
-    expect(screen.getByText("1 of 2 regions affected")).toBeInTheDocument();
-    expect(screen.getAllByText("Degraded performance").length).toBeGreaterThan(0);
+    // The last known statuses stay, under the banner that says they may be out of date.
+    expect(within(screen.getByRole("table")).getByText("Degraded performance")).toBeInTheDocument();
   });
 
   it("stops an ongoing incident's duration where the page's own data stops", async () => {
@@ -490,86 +438,6 @@ describe("home page", () => {
     expect(
       within(active).getByText(/Ongoing for at least 30m\. Last known as of .+\.$/),
     ).toBeInTheDocument();
-    const past = screen.getByRole("region", { name: "Past incidents" });
-    expect(
-      within(past).getByText(/^Past incidents were last refreshed more than 5 minutes ago/),
-    ).toBeInTheDocument();
-    expect(within(past).getAllByText(/Ongoing for at least 30m\./).length).toBeGreaterThan(0);
-  });
-
-  it("stops the history strip where the incident list stops, while the summary stays current", async () => {
-    vi.useFakeTimers({
-      shouldAdvanceTime: true,
-      toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval", "Date"],
-    });
-    vi.setSystemTime(new Date("2026-10-21T14:17:30Z"));
-    const open = {
-      id: "i9",
-      product_id: "api-platform",
-      title: "Gateway timeouts",
-      impact: "outage",
-      state: "investigating",
-      started_at: apiTime(30 * 60_000).toISOString(),
-      resolved_at: null,
-    };
-    let listUp = true;
-    // The incident ended after 31 minutes: the summary lists it on today only.
-    const summary = () => {
-      const body = summaryBody();
-      const [product] = body.products as Record<string, unknown>[];
-      product!.history = [
-        { date: "2026-10-21", status: "outage", minutes: { outage: 31 }, incident_ids: ["i9"] },
-      ];
-      return body;
-    };
-    server.use(
-      http.get("http://api.test/api/v1/summary", () => HttpResponse.json(summary())),
-      http.get("http://api.test/api/v1/incidents", () =>
-        listUp
-          ? HttpResponse.json({ generated_at: apiTime().toISOString(), incidents: [open] })
-          : new HttpResponse(null, { status: 503 }),
-      ),
-    );
-    render(<App />);
-    const strip = await screen.findByRole("listbox", { name: /history for API Platform/ });
-    listUp = false;
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(3 * 60 * 60_000);
-    });
-    // The list's open record counts to the list's last answer, not to now.
-    expect(within(strip).getAllByRole("option").at(-1)).toHaveAccessibleName(
-      /Service outage 30m\./,
-    );
-  });
-
-  it("vouches for no quiet day in Past incidents once the summary stops, while the list stays current", async () => {
-    vi.useFakeTimers({
-      shouldAdvanceTime: true,
-      toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval", "Date"],
-    });
-    vi.setSystemTime(new Date("2026-10-21T10:00:30Z"));
-    let summaryUp = true;
-    server.use(
-      http.get("http://api.test/api/v1/summary", () =>
-        summaryUp ? HttpResponse.json(summaryBody()) : new HttpResponse(null, { status: 503 }),
-      ),
-      http.get("http://api.test/api/v1/incidents", () =>
-        HttpResponse.json({ generated_at: apiTime().toISOString(), incidents: [] }),
-      ),
-    );
-    render(<App />);
-    const past = await screen.findByRole("region", { name: "Past incidents" });
-    const today = () => within(past).getAllByRole("region")[0]!;
-    await waitFor(() => {
-      expect(today()).toHaveTextContent("No incidents reported.");
-    });
-    summaryUp = false;
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(3 * 60 * 60_000);
-    });
-    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("Status unavailable");
-    // Which products a day covers comes from the summary, which stopped at 10:00.
-    expect(today()).toHaveTextContent("No incident information is available.");
   });
 
   it("never reads Status unavailable when a tab back after a long absence refreshes at once", async () => {
@@ -1121,52 +989,5 @@ describe("theme toggle", () => {
     expect(await screen.findByRole("button", { name: "Switch to light mode" })).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Switch to light mode" }));
     expect(await screen.findByRole("button", { name: "Switch to dark mode" })).toBeInTheDocument();
-  });
-});
-
-describe("the incident list and the summary", () => {
-  it("never calls a day quiet while the summary lists an incident in it", async () => {
-    server.use(
-      http.get("http://api.test/api/v1/summary", () => HttpResponse.json(degradedSummary())),
-      // The list has not caught up with the summary yet.
-      http.get("http://api.test/api/v1/incidents", () => HttpResponse.json({ incidents: [] })),
-    );
-    render(<App />);
-    const past = await screen.findByRole("region", { name: "Past incidents" });
-    const today = within(past).getAllByRole("region")[0]!;
-    expect(await within(today).findByText("Elevated latency")).toBeInTheDocument();
-    expect(within(today).queryByText(/^No incidents reported/)).toBeNull();
-  });
-
-  it("fetches the list at once when the summary's active incidents change", async () => {
-    vi.useFakeTimers({
-      shouldAdvanceTime: true,
-      toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval", "Date"],
-    });
-    let active = false;
-    let lists = 0;
-    server.use(
-      http.get("http://api.test/api/v1/summary", () =>
-        HttpResponse.json(active ? degradedSummary() : summaryBody()),
-      ),
-      http.get("http://api.test/api/v1/incidents", () => {
-        lists += 1;
-        return HttpResponse.json({ incidents: [] });
-      }),
-    );
-    render(<App />);
-    await screen.findByRole("heading", { level: 1, name: "All systems operational" });
-    await waitFor(() => {
-      expect(lists).toBe(1);
-    });
-    active = true;
-    // The summary's next poll, 30 s on; the list's own is 60 s away.
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(31_000);
-    });
-    await screen.findByRole("heading", { level: 1, name: "Degraded performance" });
-    await waitFor(() => {
-      expect(lists).toBe(2);
-    });
   });
 });

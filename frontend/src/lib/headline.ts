@@ -78,11 +78,11 @@ function withDetail(headline: Headline, lines: readonly DetailLine[]): Headline 
 const line = (status: Status | null, text: string): DetailLine => ({ status, text });
 
 /**
- * "1 of 2 regions unavailable", counting what the row lists (a location
+ * "1 of 2 regions unavailable", counting what the product's page lists (a location
  * whose parts are partly unknown counts as unknown unless one has a
  * problem), or a note on components when every region is known.
  */
-export function missingDataText(product: ProductSummary): string {
+function missingDataText(product: ProductSummary): string {
   const rows = productRows(product);
   const unknown = rows.filter((r) => rowStatus(r) === "unknown").length;
   return unknown > 0 ? regionsUnavailable(unknown, rows.length) : COMPONENTS_UNAVAILABLE;

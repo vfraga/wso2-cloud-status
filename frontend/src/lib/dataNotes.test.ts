@@ -26,7 +26,6 @@ import {
   incidentFeedsLine,
   lastKnownAt,
   missingIncidents,
-  notCoveredBefore,
   staleFeedLines,
 } from "./dataNotes";
 import { componentFreshness, freshness, incidentCoverage } from "./freshness";
@@ -231,7 +230,7 @@ describe("notes on late data", () => {
     expect(staleFeedLines(named("A"), now)).toEqual([]);
   });
 
-  it("knows which days the incident data does not fully cover", () => {
+  it("knows which products' incident data is not complete", () => {
     const missing = missingIncidents(
       [named("A"), stopped, never],
       [incident({ productId: "agent" })],
@@ -240,11 +239,6 @@ describe("notes on late data", () => {
       ["Moesif", "until", false],
       ["Agent", "never", true],
     ]);
-    // A day that ended before 14:05 is covered by Moesif; today is not.
-    expect(notCoveredBefore(missing, at("00:00")).map((m) => m.product.name)).toEqual(["Agent"]);
-    expect(notCoveredBefore(missing, at("00:00", "2026-10-22")).map((m) => m.product.name)).toEqual(
-      ["Moesif", "Agent"],
-    );
   });
 
   it("says the day that contains the last fetch is complete only until then", () => {

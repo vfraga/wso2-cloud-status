@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import { expect, test, type Locator } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "@playwright/test";
 import {
   ALL_BUT_ONE_OPERATIONAL,
   expectNoSeriousViolations,
@@ -28,8 +28,15 @@ import {
   shotPath,
 } from "../helpers";
 
+/** API Platform's cell for its `n`th place in the home page's table (0 US, 1 EU). */
+const apiCell = (page: Page, n: number) =>
+  productRows(page)
+    .filter({ has: page.getByRole("link", { name: "API Platform", exact: true }) })
+    .getByRole("cell")
+    .nth(n);
+
 test.describe("outage, degraded and maintenance components in one place, and an active incident", () => {
-  test("banner, auto-expanded product and affected-region count", async ({ page }) => {
+  test("banner, and the affected place with its parts in the table", async ({ page }) => {
     await ready(page);
     await expect(page.getByRole("heading", { level: 1 })).toHaveText("Service outage");
     // The banner names the affected product and regions, grouped by status.
@@ -37,43 +44,23 @@ test.describe("outage, degraded and maintenance components in one place, and an 
     await expect(banner).toContainText("Service outage: API Platform (EU data plane).");
     await expect(banner).toContainText("Under maintenance: API Platform (EU control plane).");
     await expect(banner).toContainText(ALL_BUT_ONE_OPERATIONAL);
-    const rows = productRows(page);
-    const api = rows.filter({ has: page.getByRole("heading", { level: 2, name: "API Platform" }) });
-    await expect(api.getByRole("button", { name: /^2 regions/ })).toHaveAttribute(
-      "aria-expanded",
-      "true",
-    );
-    await expect(api.getByText("1 of 2 regions affected")).toBeVisible();
-    // The place with the problem opens into its parts; the healthy one stays closed.
-    await expect(api.getByRole("button", { name: /^EU/ })).toHaveAttribute("aria-expanded", "true");
-    await expect(api.getByRole("button", { name: /^US/ })).toHaveAttribute(
-      "aria-expanded",
-      "false",
-    );
-    await expect(api.getByText("Data plane", { exact: true })).toBeVisible();
+    const [us, eu] = [apiCell(page, 0), apiCell(page, 1)];
+    await expect(us).toContainText("Operational");
+    // EU's status is its worst part's; each part that is not operational is named.
+    await expect(eu.getByText("Service outage", { exact: true })).toBeVisible();
+    await expect(eu.getByText("Data plane", { exact: true })).toBeVisible();
+    await expect(eu.getByText("Control plane: under maintenance", { exact: true })).toBeVisible();
     for (const name of PRODUCT_NAMES.filter((n) => n !== "API Platform")) {
-      const row = rows.filter({ has: page.getByRole("heading", { level: 2, name }) });
-      await expect(row.getByRole("button", { name: /regions?$/ })).toHaveAttribute(
-        "aria-expanded",
-        "false",
-      );
+      const row = productRows(page).filter({ has: page.getByRole("link", { name, exact: true }) });
+      await expect(
+        row.getByRole("cell").filter({ hasText: /outage|Degraded|maintenance/ }),
+      ).toHaveCount(0);
     }
     await page.screenshot({
       path: shotPath("e2e-degraded"),
       fullPage: true,
       animations: "disabled",
     });
-  });
-
-  test("the user can collapse an auto-expanded product", async ({ page }) => {
-    await ready(page);
-    const api = productRows(page).filter({
-      has: page.getByRole("heading", { level: 2, name: "API Platform" }),
-    });
-    const toggle = api.getByRole("button", { name: /^2 regions/ });
-    await toggle.click();
-    await expect(toggle).toHaveAttribute("aria-expanded", "false");
-    await expect(api.getByText("Data plane", { exact: true })).toBeHidden();
   });
 
   test("the active incident is listed above the products, with UTC in the time title", async ({
@@ -100,26 +87,19 @@ test.describe("outage, degraded and maintenance components in one place, and an 
     expect(before!.y).toBeLessThan(products!.y);
   });
 
-  test("past incidents list the resolved outage, and today the ongoing incident", async ({
+  test("the product page lists the resolved outage, and the ongoing incident above it", async ({
     page,
   }) => {
-    await ready(page);
-    const past = page.getByRole("region", { name: "Past incidents" });
-    // Listed under each local day it covers: one, or two when it crossed midnight.
-    await expect(past.getByText("Console sign-in failures").first()).toBeVisible();
-    await expect(past.getByText(/Lasted 2h/).first()).toBeVisible();
-    // Today never reads "No incidents reported." while an incident is open, even
-    // one that started the day before.
-    const today = past.getByRole("region").first();
-    await expect(today).toContainText(
-      "Elevated latency for API proxy invocation in the EU data plane",
-    );
-    await expect(today.getByText("No incidents reported.", { exact: true })).toHaveCount(0);
+    await readyProduct(page, "api-platform", "API Platform");
+    const recent = page.getByRole("region", { name: "Recent incidents" });
+    await expect(recent.getByText("Console sign-in failures").first()).toBeVisible();
+    await expect(recent.getByText(/Lasted 2h/).first()).toBeVisible();
+    // The open incident is listed once, under Active incidents.
+    await expect(recent.getByText("Elevated latency for API proxy invocation")).toHaveCount(0);
+    await expect(recent.getByText("No incidents reported.", { exact: true })).toHaveCount(0);
   });
 
-  test("aligns the incident meta row, the toggle with the product name, and indents regions", async ({
-    page,
-  }) => {
+  test("aligns the incident meta row, and a place's parts under its status", async ({ page }) => {
     await ready(page);
     const active = page.getByRole("region", { name: "Active incidents" });
     const centre = async (locator: Locator): Promise<number> => {
@@ -132,26 +112,17 @@ test.describe("outage, degraded and maintenance components in one place, and an 
     expect(Math.abs(product - status)).toBeLessThanOrEqual(1);
     expect(Math.abs(state - status)).toBeLessThanOrEqual(1);
 
-    const api = productRows(page).filter({
-      has: page.getByRole("heading", { level: 2, name: "API Platform" }),
-    });
-    const name = await api.getByRole("link", { name: "API Platform", exact: true }).boundingBox();
-    const toggle = await api.getByRole("button", { name: /^2 regions/ }).boundingBox();
-    const strip = await api.getByRole("listbox").boundingBox();
-    expect(Math.abs((toggle?.x ?? 0) - (name?.x ?? 99))).toBeLessThanOrEqual(0.5);
-    expect(Math.abs((strip?.x ?? 0) - (name?.x ?? 99))).toBeLessThanOrEqual(0.5);
-
-    // Places sit one step in from the toggle, and their parts one more.
-    const place = await api.getByRole("button", { name: /^EU/ }).boundingBox();
-    expect((place?.x ?? 0) - (toggle?.x ?? 0)).toBeGreaterThanOrEqual(15.5);
-    expect((place?.x ?? 0) - (toggle?.x ?? 0)).toBeLessThanOrEqual(16.5);
-    const part = await api.getByText("Data plane", { exact: true }).boundingBox();
-    expect((part?.x ?? 0) - (place?.x ?? 0)).toBeGreaterThanOrEqual(15.5);
-    expect((part?.x ?? 0) - (place?.x ?? 0)).toBeLessThanOrEqual(16.5);
-    const productStatus = await api.getByText("Service outage").first().boundingBox();
-    const regionStatus = await api.getByText("Service outage").last().boundingBox();
-    const right = (b: typeof productStatus): number => (b?.x ?? 0) + (b?.width ?? 0);
-    expect(Math.abs(right(productStatus) - right(regionStatus))).toBeLessThanOrEqual(1);
+    // In the table, a part's name lines up with the status text above it, past the icon.
+    const eu = apiCell(page, 1);
+    const textStart = (locator: Locator) =>
+      locator.evaluate((el) => {
+        const range = document.createRange();
+        range.selectNodeContents(el);
+        return range.getBoundingClientRect().left;
+      });
+    const cellStatus = await textStart(eu.getByText("Service outage", { exact: true }));
+    const partName = await textStart(eu.getByText("Data plane", { exact: true }));
+    expect(Math.abs(partName - cellStatus)).toBeLessThanOrEqual(1);
   });
 
   test("a tapped day near the bottom of the screen opens below its strip, in view", async ({
@@ -162,11 +133,8 @@ test.describe("outage, degraded and maintenance components in one place, and an 
       hasTouch: true,
     });
     const page = await context.newPage();
-    await ready(page);
-    const api = productRows(page).filter({
-      has: page.getByRole("heading", { level: 2, name: "API Platform" }),
-    });
-    const strip = api.getByRole("listbox");
+    await readyProduct(page, "api-platform", "API Platform");
+    const strip = page.getByRole("region", { name: "History" }).getByRole("listbox");
     // The strip's bottom edge about 70 px above the bottom of the screen.
     await strip.evaluate((el) => {
       window.scrollBy(0, el.getBoundingClientRect().bottom - (window.innerHeight - 70));
@@ -174,7 +142,7 @@ test.describe("outage, degraded and maintenance components in one place, and an 
     await strip.getByRole("option").last().tap();
     const popper = page.locator(".MuiPopper-root");
     await expect(popper).toHaveAttribute("data-popper-placement", "bottom");
-    // Scrolled into view, and clear of the row's name and status above the strip.
+    // Scrolled into view, and clear of the strip.
     await expect(popper).toBeInViewport({ ratio: 1 });
     // Polled: the popper is placed a frame after it opens.
     await expect(async () => {
@@ -229,10 +197,8 @@ test.describe("outage, degraded and maintenance components in one place, and an 
   });
 
   test("history days with incidents are captioned and listed by a control", async ({ page }) => {
-    await ready(page);
-    const api = productRows(page).filter({
-      has: page.getByRole("heading", { level: 2, name: "API Platform" }),
-    });
+    await readyProduct(page, "api-platform", "API Platform");
+    const api = page.getByRole("region", { name: "History" });
     const toggle = api.getByRole("button", {
       name: /days? with incidents( or maintenance)? for API Platform$/,
     });
@@ -255,15 +221,13 @@ test.describe("outage, degraded and maintenance components in one place, and an 
   test("axe finds no serious or critical issues at 360 px, home and product page", async ({
     browser,
   }) => {
+    await expectNoSeriousViolationsOnPhone(browser, ready);
     await expectNoSeriousViolationsOnPhone(browser, async (page) => {
-      await ready(page);
-      await productRows(page)
+      await readyProduct(page, "api-platform", "API Platform");
+      await page
         .getByRole("button", { name: /days? with incidents( or maintenance)? for API Platform$/ })
         .click();
     });
-    await expectNoSeriousViolationsOnPhone(browser, (page) =>
-      readyProduct(page, "api-platform", "API Platform"),
-    );
   });
 
   test("axe finds no serious or critical issues in both themes", async ({ browser }) => {

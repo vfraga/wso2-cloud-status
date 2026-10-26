@@ -18,7 +18,7 @@
 
 import { Stack, Typography } from "@wso2/oxygen-ui";
 import type { Uptime } from "../api/types";
-import { HOME_UPTIME_WINDOW, UPTIME_LABEL, UPTIME_SHORT_LABEL, uptimeFigure } from "../lib/status";
+import { UPTIME_LABEL, UPTIME_SHORT_LABEL } from "../lib/status";
 
 /**
  * Truncates to three decimals, never rounds, so 99.9996 reads "99.999%" and
@@ -87,29 +87,5 @@ export function UptimeList({
         ))}
       </Stack>
     </Stack>
-  );
-}
-
-/**
- * The 90-day figure as the upstream reports it, "99.994% (90d)", for a home
- * row; nothing when the region has none. The full list and what it counts
- * are on the product's page.
- */
-export function UptimeFigure({
-  uptime,
-  order,
-}: {
-  uptime: readonly Uptime[];
-  /** Its place in a flex row, per breakpoint. */
-  order?: { xs: number; sm: number };
-}) {
-  const figure = uptime.find((u) => u.window === HOME_UPTIME_WINDOW);
-  if (!figure) return null;
-  const percent = formatPercent(figure.percent);
-  return (
-    <Typography variant="caption" sx={{ color: "var(--cs-muted)", whiteSpace: "nowrap", order }}>
-      <span aria-hidden="true">{`${percent} (${figure.window})`}</span>
-      <span className="cs-visually-hidden">{uptimeFigure(percent)}</span>
-    </Typography>
   );
 }

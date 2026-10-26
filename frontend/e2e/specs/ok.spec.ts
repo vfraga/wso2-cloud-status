@@ -32,55 +32,54 @@ import {
 /** The resolved outage the ok fixtures put 10 days back (e2e/fixtures/ok). */
 const RECENT_INCIDENT = "Sign-in errors in the EU region";
 
-/** The history strip of the product named `name`. */
-const stripOf = (page: Page, name: string) =>
-  productRows(page)
-    .filter({ has: page.getByRole("heading", { level: 2, name }) })
-    .getByRole("listbox");
+/** Opens a product's page and returns its history strip. */
+async function stripOf(page: Page, id: string, name: string) {
+  await readyProduct(page, id, name);
+  return page.getByRole("region", { name: "History" }).getByRole("listbox");
+}
 
 test.describe("all operational", () => {
-  test("renders every product, all collapsed, with no console errors", async ({ page }) => {
+  test("shows each product's status per region in a table, with no console errors", async ({
+    page,
+  }) => {
     const errors = collectConsoleErrors(page);
     await ready(page);
-    // A background tab shows the status.
+    // A background tab shows the site's name; the status is the h1.
     await expect(page).toHaveTitle("WSO2 Cloud Status");
     await expect(page.getByRole("heading", { level: 1 })).toHaveText("All systems operational");
+    const table = page.getByRole("table", { name: "Current status of each product by region" });
+    await expect(table.getByRole("columnheader")).toHaveText(["Product", "US", "EU"]);
     const rows = productRows(page);
     await expect(rows).toHaveCount(PRODUCTS);
-    await expect(rows.locator("h2")).toHaveText(PRODUCT_NAMES);
-    const toggles = rows.getByRole("button", { name: /regions?$/ });
-    await expect(toggles).toHaveCount(PRODUCTS);
-    for (const toggle of await toggles.all()) {
-      await expect(toggle).toHaveAttribute("aria-expanded", "false");
-    }
+    await expect(rows.getByRole("rowheader").getByRole("link")).toHaveText(PRODUCT_NAMES);
+    // Every place a product runs in is operational; the others are marked as not its regions.
+    const cells = rows.getByRole("cell");
+    await expect(cells).toHaveCount(2 * PRODUCTS);
+    await expect(cells.filter({ hasText: "Operational" })).toHaveCount(10);
+    await expect(cells.filter({ hasText: "No EU region" })).toHaveCount(2);
+    // The detail is on each product's page.
+    await expect(page.getByRole("listbox")).toHaveCount(0);
+    await expect(page.getByRole("heading", { name: "Past incidents" })).toHaveCount(0);
     await expect(page.getByText(/^Status checked /).first()).toBeVisible();
-    await expect(page.getByRole("heading", { level: 2, name: "Past incidents" })).toBeVisible();
-    await expect(page.getByText("No incidents reported.").first()).toBeVisible();
     expect(errors).toEqual([]);
     await page.screenshot({ path: shotPath("e2e-light"), fullPage: true, animations: "disabled" });
   });
 
-  test("lets the user open a region list and links each product to its own page", async ({
-    page,
-  }) => {
+  test("opens a product from its name, or from anywhere on its row", async ({ page }) => {
     await ready(page);
     const first = productRows(page).first();
-    await first.getByRole("button", { name: /^\d+ regions?$/ }).click();
-    // A place opens into its parts, each with its 90-day uptime as the upstream reports it.
-    await first.getByRole("button", { name: /^US/ }).click();
-    await expect(first.getByText("Control plane", { exact: true })).toBeVisible();
-    await expect(first.getByText(/^\d{1,3}(\.\d{1,3})?% \(90d\)$/).first()).toBeVisible();
-    await expect(
-      first.getByRole("link", { name: /View status page for Agent Platform/ }),
-    ).toHaveAttribute("href", "https://status.cloud.wso2.com");
+    await first.getByRole("cell").first().click();
+    await expect(page).toHaveURL(/\/products\/agent-platform$/);
+    await expect(page.getByRole("heading", { level: 1 })).toHaveText(/^Agent Platform: /);
+    await page.getByRole("link", { name: "All products" }).click();
+    await productRows(page).nth(1).getByRole("link", { name: "API Platform" }).click();
+    await expect(page).toHaveURL(/\/products\/api-platform$/);
   });
 
   test("history strip is one tab stop and the tooltip follows keyboard focus", async ({ page }) => {
-    await ready(page);
-    const row = productRows(page).first();
-    const strip = row.getByRole("listbox");
+    const strip = await stripOf(page, "agent-platform", "Agent Platform");
     await expect(strip.getByRole("option")).toHaveCount(90);
-    await row.getByRole("link", { name: "Agent Platform", exact: true }).focus();
+    await page.getByRole("link", { name: "Open the Agent Platform status page" }).focus();
     await page.keyboard.press("Tab");
     const today = strip.getByRole("option").last();
     await expect(today).toBeFocused();
@@ -94,13 +93,12 @@ test.describe("all operational", () => {
     await expect(strip.getByRole("option").nth(88)).not.toBeFocused();
     await expect(page.locator(".MuiPopper-root")).toHaveCount(0);
     await expect(
-      row.getByText(/^90 days: \d+ days? with incidents, \d+ days? without data$/),
+      page.getByText(/^90 days: \d+ days? with incidents, \d+ days? without data$/),
     ).toBeAttached();
   });
 
   test("tooltip names the incidents of a day that had one", async ({ page }) => {
-    await ready(page);
-    const strip = stripOf(page, "Identity Platform");
+    const strip = await stripOf(page, "identity-platform", "Identity Platform");
     const marked = strip.getByRole("option", { name: new RegExp(RECENT_INCIDENT) }).first();
     await marked.hover();
     await expect(page.locator(".MuiPopper-root")).toContainText("Service outage");
@@ -129,15 +127,26 @@ test.describe("all operational", () => {
     await context.close();
   });
 
-  test("has no horizontal scroll at 360 px and shows a 30-day strip", async ({ page }) => {
+  test("has no horizontal scroll at 360 px, and the product page shows a 30-day strip", async ({
+    page,
+  }) => {
     await page.setViewportSize({ width: 360, height: 800 });
     await ready(page);
-    const first = productRows(page).first();
-    await first.getByRole("button", { name: /^\d+ regions?$/ }).click();
-    const overflow = await page.evaluate(
-      () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
-    );
-    expect(overflow).toBeLessThanOrEqual(0);
+    const overflow = () =>
+      page.evaluate(
+        () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+      );
+    expect(await overflow()).toBeLessThanOrEqual(0);
+    // On a phone each row puts its places side by side under the product's name.
+    const row = await productRows(page).nth(1).boundingBox();
+    const cells = productRows(page).nth(1).getByRole("cell");
+    const [us, eu] = [await cells.nth(0).boundingBox(), await cells.nth(1).boundingBox()];
+    expect(us?.y).toBe(eu?.y);
+    expect((eu?.x ?? 0) + (eu?.width ?? 0)).toBeLessThanOrEqual((row?.x ?? 0) + (row?.width ?? 0));
+    await page.screenshot({ path: shotPath("e2e-mobile"), fullPage: true, animations: "disabled" });
+    await readyProduct(page, "agent-platform", "Agent Platform");
+    expect(await overflow()).toBeLessThanOrEqual(0);
+    const first = page.getByRole("region", { name: "History" });
     const options = first.getByRole("listbox").getByRole("option");
     await expect(options).toHaveCount(30);
     // Captions: the first cell's UTC date on the left, "Today" on the right.
@@ -149,13 +158,11 @@ test.describe("all operational", () => {
     await expect(first.getByText(/^30 days: \d+ days? with incidents/)).toBeAttached();
     const cell = await first.getByRole("listbox").getByRole("option").first().boundingBox();
     expect(cell?.width).toBeGreaterThanOrEqual(6);
-    await page.screenshot({ path: shotPath("e2e-mobile"), fullPage: true, animations: "disabled" });
   });
 
   test("shows 60 days at 700 px and 90 days at 900 px", async ({ page }) => {
     await page.setViewportSize({ width: 700, height: 800 });
-    await ready(page);
-    const options = productRows(page).first().getByRole("listbox").getByRole("option");
+    const options = (await stripOf(page, "agent-platform", "Agent Platform")).getByRole("option");
     await expect(options).toHaveCount(60);
     await page.setViewportSize({ width: 900, height: 800 });
     await expect(options).toHaveCount(90);
@@ -175,9 +182,8 @@ test.describe("all operational", () => {
     });
     expect(ring).toEqual({ style: "solid", width: "2px", color: "rgb(10, 90, 168)" });
     await expect(toggle.locator(".MuiTouchRipple-ripplePulsate")).toBeHidden();
-    const regions = productRows(page)
-      .first()
-      .getByRole("button", { name: /^\d+ regions?$/ });
+    await readyProduct(page, "api-platform", "API Platform");
+    const regions = page.locator("button[aria-expanded]").first();
     await regions.focus();
     await page.keyboard.press("Shift+Tab");
     await page.keyboard.press("Tab");
@@ -186,8 +192,8 @@ test.describe("all operational", () => {
   });
 
   test("the history tooltip stays open while the pointer moves onto it", async ({ page }) => {
-    await ready(page);
-    const today = productRows(page).first().getByRole("listbox").getByRole("option").last();
+    const strip = await stripOf(page, "agent-platform", "Agent Platform");
+    const today = strip.getByRole("option").last();
     await today.hover();
     const tooltip = page.locator(".MuiPopper-root");
     await expect(tooltip).toBeVisible();
@@ -211,8 +217,7 @@ test.describe("all operational", () => {
   test("Escape closes a tooltip opened by hover, with focus elsewhere (WCAG 1.4.13)", async ({
     page,
   }) => {
-    await ready(page);
-    const cell = productRows(page).nth(1).getByRole("listbox").getByRole("option").nth(-3);
+    const cell = (await stripOf(page, "api-platform", "API Platform")).getByRole("option").nth(-3);
     await cell.hover();
     const tooltip = page.locator(".MuiPopper-root");
     await expect(tooltip).toBeVisible();
@@ -221,23 +226,21 @@ test.describe("all operational", () => {
     await expect(tooltip).toHaveCount(0);
   });
 
-  test("on a phone the tooltip leaves the row's name and status visible", async ({ page }) => {
+  test("on a phone the tooltip opens below the strip, leaving the strip in view", async ({
+    page,
+  }) => {
     await page.setViewportSize({ width: 360, height: 800 });
-    await ready(page);
-    const row = productRows(page).nth(1);
-    // With room below, as for a row a reader is looking at.
-    await row.evaluate((el) => {
+    const strip = await stripOf(page, "api-platform", "API Platform");
+    // With room below, as for a strip a reader is looking at.
+    await strip.evaluate((el) => {
       el.scrollIntoView({ block: "start" });
     });
-    await row.getByRole("listbox").getByRole("option").last().hover();
-    const name = await row.getByRole("heading", { level: 2 }).boundingBox();
-    const status = await row.getByText("Operational", { exact: true }).first().boundingBox();
+    await strip.getByRole("option").last().hover();
+    const box = await strip.boundingBox();
     // Polled: the popper is placed a frame after it opens.
     await expect(async () => {
       const tooltip = await page.locator(".MuiPopper-root").boundingBox();
-      for (const box of [name, status]) {
-        expect((box?.y ?? Infinity) + (box?.height ?? 0)).toBeLessThanOrEqual(tooltip?.y ?? 0);
-      }
+      expect((box?.y ?? Infinity) + (box?.height ?? 0)).toBeLessThanOrEqual(tooltip?.y ?? 0);
     }).toPass();
   });
 
@@ -246,8 +249,7 @@ test.describe("all operational", () => {
   }) => {
     const context = await browser.newContext({ forcedColors: "active" });
     const page = await context.newPage();
-    await ready(page);
-    const strip = stripOf(page, "Identity Platform");
+    const strip = await stripOf(page, "identity-platform", "Identity Platform");
     const paint = (name: RegExp) =>
       strip
         .getByRole("option", { name })
@@ -268,7 +270,7 @@ test.describe("all operational", () => {
 
   test("the strip captions wrap under WCAG 1.4.12 text spacing at 320 px", async ({ page }) => {
     await page.setViewportSize({ width: 320, height: 800 });
-    await ready(page);
+    await readyProduct(page, "api-platform", "API Platform");
     await page.addStyleTag({
       content:
         "* { line-height: 1.5 !important; letter-spacing: 0.12em !important; word-spacing: 0.16em !important; } p { margin-bottom: 2em !important; }",
@@ -303,7 +305,7 @@ test.describe("all operational", () => {
   test("a legend says what the bars mean, and the footer that days are UTC days", async ({
     page,
   }) => {
-    await ready(page);
+    await readyProduct(page, "api-platform", "API Platform");
     const legend = page.getByText("Each bar is one UTC day.").locator("..");
     const names = [
       "Service outage",
@@ -327,7 +329,7 @@ test.describe("all operational", () => {
       swatches.add(`${String(swatch?.width)}x${String(swatch?.height)}`);
     }
     expect(swatches.size).toBe(1);
-    // The intro's text and each line of entries are centred under the strips.
+    // The intro's text and each line of entries are centred under the strip.
     const offCentre = await legend.evaluate((el) => {
       const outer = el.getBoundingClientRect();
       const mid = outer.left + outer.width / 2;
@@ -372,7 +374,7 @@ test.describe("all operational", () => {
           }),
         ms,
       );
-    await ready(page);
+    await readyProduct(page, "api-platform", "API Platform");
     const entry = page
       .getByText("Each bar is one UTC day.")
       .locator("..")
@@ -392,7 +394,7 @@ test.describe("all operational", () => {
     // Time to read it: the tooltip's own touch timer closed it 1.5 s after the finger lifted.
     await pause(4_000);
     await expect(tip).toBeVisible();
-    await page.getByRole("heading", { name: "Past incidents" }).tap();
+    await page.getByRole("heading", { name: "Recent incidents" }).tap();
     await expect(tip).toHaveCount(0);
     await phone.close();
   });
@@ -419,10 +421,8 @@ test.describe("all operational", () => {
   });
 
   test("links to other sites take the text colour, never a status colour", async ({ page }) => {
-    await ready(page);
-    const link = productRows(page)
-      .first()
-      .getByRole("link", { name: /View status page for Agent Platform/ });
+    await readyProduct(page, "agent-platform", "Agent Platform");
+    const link = page.getByRole("link", { name: "Open the Agent Platform status page" });
     const [linkColour, textColour] = await Promise.all([
       link.evaluate((el) => getComputedStyle(el).color),
       page.locator("body").evaluate((el) => getComputedStyle(el).color),
@@ -456,10 +456,8 @@ test.describe("all operational", () => {
       const context = await browser.newContext({ colorScheme: scheme });
       const page = await context.newPage();
       await ready(page);
-      await productRows(page)
-        .nth(1)
-        .getByRole("button", { name: /^\d+ regions?$/ })
-        .click();
+      await expectNoSeriousViolations(page);
+      await readyProduct(page, "api-platform", "API Platform");
       await expectNoSeriousViolations(page);
       await context.close();
     });
@@ -555,11 +553,9 @@ test.describe("all operational", () => {
   ] as const) {
     test(`${path} does not shift as its data arrives (${String(width)} px)`, async ({ page }) => {
       await page.setViewportSize({ width, height });
-      // Hold the API back, the incident list longest, so each loading state is
-      // painted first, as over a real network.
+      // Hold the API back, so the loading state is painted first, as over a real network.
       await page.route("**/api/v1/**", async (route) => {
-        const wait = route.request().url().endsWith("/incidents") ? 900 : 500;
-        await new Promise((resolve) => setTimeout(resolve, wait));
+        await new Promise((resolve) => setTimeout(resolve, 500));
         await route.continue();
       });
       await page.addInitScript(() => {
@@ -587,7 +583,7 @@ test.describe("all operational", () => {
       });
       await page.goto(path);
       await expect(page.getByRole("heading", { level: 1 })).not.toHaveText(/Checking status/);
-      if (path === "/") await expect(page.getByText("Loading past incidents.")).toHaveCount(0);
+      if (path === "/") await expect(productRows(page).first()).toBeVisible();
       else await expect(page.getByRole("heading", { name: "Recent incidents" })).toBeVisible();
       // The observer reports after the frame that shifted: let one more frame pass.
       const shifts = await page.evaluate(

@@ -345,8 +345,8 @@ products:
 // port outside 0 to 65535 fails at Listen; a listen host name may not
 // resolve, and only IP addresses can be compared (one address spelt two
 // ways is one address); a source without regions shows
-// every upstream key under ids that may change; fewer than 15 history days
-// do not cover the page's 14 local days of past incidents.
+// every upstream key under ids that may change; history.days runs from 1
+// to 366.
 func TestValuesThatCannotWorkAreRejected(t *testing.T) {
 	t.Parallel()
 	for name, tc := range map[string]struct {
@@ -359,7 +359,7 @@ func TestValuesThatCannotWorkAreRejected(t *testing.T) {
 		"port out of range":                    {`server: { addr: ":80800" }`, "server.addr must be host:port"},
 		"port not a number":                    {`server: { admin_addr: ":abc" }`, "server.admin_addr must be host:port"},
 		"no port":                              {`server: { addr: "8080" }`, "server.addr must be host:port"},
-		"too few history days":                 {`history: { days: 14 }`, "history.days must be between 15 and 366"},
+		"history longer than a year":           {`history: { days: 367 }`, "history.days must be between 1 and 366"},
 		"CDN copy held for a whole poll":       {`server: { cache_control: "public, max-age=10, stale-while-revalidate=20" }`, "under 30s"},
 		"no max-age":                           {`server: { cache_control: "public, stale-if-error=60" }`, "max-age must be above 0"},
 		"error copy older than stale_after":    {`server: { cache_control: "public, max-age=10, stale-if-error=301" }`, "stale-if-error must be at most"},

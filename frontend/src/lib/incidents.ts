@@ -18,63 +18,6 @@
 
 import type { Incident, Status } from "../api/types";
 import { STATUS_RANK } from "./status";
-import { formatDayHeading, lastLocalDays, localDayKey } from "./time";
-
-export interface DayGroup {
-  key: string;
-  label: string;
-  /** This local midnight. */
-  start: Date;
-  /** The next local midnight: data covering everything before it covers this day. */
-  end: Date;
-  incidents: Incident[];
-}
-
-/**
- * The incident list caught up with a newer summary. The two are polled
- * apart, so for up to a poll the summary can name an active incident the list
- * does not have yet, or a newer state of one; each active incident of a newer
- * summary then joins or replaces the list's copy. A list as new as the summary
- * is taken as it is.
- */
-export function caughtUp(
-  list: readonly Incident[],
-  listAt: Date | null,
-  active: readonly Incident[],
-  summaryAt: Date | null,
-): readonly Incident[] {
-  if (summaryAt === null || active.length === 0) return list;
-  if (listAt !== null && listAt.getTime() >= summaryAt.getTime()) return list;
-  const byId = new Map(list.map((i) => [i.id, i]));
-  for (const incident of active) byId.set(incident.id, incident);
-  return [...byId.values()];
-}
-
-/** Whether an incident covers part of [start, end): it started then, or was still going at start. */
-function overlaps(incident: Incident, start: number, end: number, now: Date): boolean {
-  const from = incident.startedAt.getTime();
-  if (from >= end) return false;
-  return from >= start || (incident.resolvedAt ?? now).getTime() > start;
-}
-
-/**
- * Incidents under every local day they cover, newest day first, empty days
- * included: one that started the evening before, or is still going, also
- * counts for the days after. Within a day, the latest start comes first.
- */
-export function groupByDay(incidents: readonly Incident[], now: Date, days: number): DayGroup[] {
-  return lastLocalDays(now, days).map((start) => {
-    const end = new Date(start.getFullYear(), start.getMonth(), start.getDate() + 1);
-    const found = incidents.filter((i) => overlaps(i, start.getTime(), end.getTime(), now));
-    return {
-      key: localDayKey(start),
-      label: formatDayHeading(start),
-      start,
-      end,
-      incidents: [...found].sort((a, b) => b.startedAt.getTime() - a.startedAt.getTime()),
-    };
-  });
-}
 
 export function isOngoing(incident: Incident): boolean {
   return incident.resolvedAt === null;

@@ -61,7 +61,7 @@ test.describe("feeds that stop after answering", () => {
         "Status unavailable for Agent Platform",
         { timeout: 2_000 },
       );
-      await expect(page.getByText(/^Incidents last updated /)).toBeVisible({ timeout: 2_000 });
+      await expect(page.getByText(/has not been updated since/)).toBeVisible({ timeout: 2_000 });
     }).toPass({ timeout: 60_000 });
   }
 
@@ -79,33 +79,14 @@ test.describe("feeds that stop after answering", () => {
     await expect(page.getByRole("status")).toHaveText(
       new RegExp(`^Status data for Agent Platform was last checked at ${CLOCK}\\.$`),
     );
-    // The row names the time.
-    const moesif = productRows(page).filter({
-      has: page.getByRole("heading", { level: 2, name: "Moesif" }),
+    // Agent Platform's row reads Status unavailable; the others stay operational.
+    const agent = productRows(page).filter({
+      has: page.getByRole("link", { name: "Agent Platform", exact: true }),
     });
+    await expect(agent.getByRole("cell").first()).toContainText("Status unavailable");
     await expect(
-      // The short e2e budgets can make the feed stale within its first minute.
-      moesif.getByText(
-        new RegExp(`^Incidents last updated ${CLOCK} \\((\\d+ min ago|just now)\\)$`),
-      ),
-    ).toBeVisible();
-    // Today, the day of the last successful fetch, has no incidents: No data, not green.
-    await expect(moesif.getByRole("listbox").getByRole("option").last()).toHaveAccessibleName(
-      new RegExp(`No data\\. Incident information complete only until ${CLOCK}\\.$`),
-    );
-    // Past incidents: the note with a link, and today speaks only for the others.
-    const past = page.getByRole("region", { name: "Past incidents" });
-    await expect(
-      past.getByText(
-        new RegExp(`^Incident information for Moesif is incomplete after ${DATE}, ${CLOCK}\\.`),
-      ),
-    ).toBeVisible();
-    await expect(past.getByRole("link", { name: "See the Moesif status page" })).toHaveAttribute(
-      "href",
-      "https://status.moesif.com",
-    );
-    const today = past.getByRole("region").first();
-    await expect(today.getByText("No incidents reported.", { exact: true })).toHaveCount(0);
+      productRows(page).getByRole("cell").filter({ hasText: "Status unavailable" }),
+    ).toHaveCount(1);
     await page.screenshot({
       path: shotPath("e2e-stopped"),
       fullPage: true,
@@ -129,9 +110,20 @@ test.describe("feeds that stop after answering", () => {
       page.getByText(/^Incident information for Moesif is incomplete after /),
     ).toBeVisible();
     await expect(page.getByText("No incidents reported.")).toHaveCount(0);
+    // The page names the feed's time.
+    await expect(
+      // The short e2e budgets can make the feed stale within its first minute.
+      page.getByText(new RegExp(`^Incidents last updated ${CLOCK} \\((\\d+ min ago|just now)\\)$`)),
+    ).toBeVisible();
+    // Today, the day of the last successful fetch, has no incidents: No data, not green.
     await expect(page.getByRole("listbox").getByRole("option").last()).toHaveAccessibleName(
-      /Incident information complete only until/,
+      new RegExp(`No data\\. Incident information complete only until ${CLOCK}\\.$`),
     );
+    await expect(
+      page.getByText(
+        new RegExp(`^Incident information for Moesif is incomplete after ${DATE}, ${CLOCK}\\.`),
+      ),
+    ).toBeVisible();
     await page.screenshot({
       path: shotPath("e2e-stopped-product"),
       fullPage: true,

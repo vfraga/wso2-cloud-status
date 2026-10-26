@@ -32,23 +32,18 @@ import { DataNote } from "./DataNote";
 export function ProductNotes({
   product,
   partly,
-  uptime = true,
-  alignEnd = false,
 }: {
   product: ProductSummary;
   /** Whether other sources' data is shown for a feed that never answered (see staleFeedLines). */
   partly?: PartlyShown;
-  /** False where no uptime is shown, so no line speaks of it. */
-  uptime?: boolean;
-  alignEnd?: boolean;
 }) {
   const now = usePageNow();
-  const lines = staleFeedLines(product, now, partly, uptime);
+  const lines = staleFeedLines(product, now, partly);
   if (lines.length === 0) return null;
   return (
     <Stack spacing={0.25}>
       {lines.map((line) => (
-        <DataNote key={line} icon={<Clock aria-hidden="true" size={14} />} alignEnd={alignEnd}>
+        <DataNote key={line} icon={<Clock aria-hidden="true" size={14} />}>
           {line}
         </DataNote>
       ))}

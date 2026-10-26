@@ -112,7 +112,7 @@ func TestCheckConfigRejects(t *testing.T) {
 		want string
 	}{
 		"unset variable": {productionConfig, "unset environment variables: [FRONT_DOOR_ID]"},
-		"validation":     {writeConfig(t, backend+product+"history: { days: 400 }\n"), "history.days must be between 15 and 366"},
+		"validation":     {writeConfig(t, backend+product+"history: { days: 400 }\n"), "history.days must be between 1 and 366"},
 		"missing file":   {filepath.Join(t.TempDir(), "absent.yaml"), "no such file"},
 		"adapter": {
 			writeConfig(t, "backends:\n  b: { base_url: \"https://example.test\", options: { token: x } }\n"+product),
@@ -154,7 +154,7 @@ products:
       - { backend: b, cloud: c, regions: [{ key: eu, id: eu, name: EU }] }
 `
 
-var everyProblemNamed = []string{"history.days must be between 15 and 366", "legacy-status-apo", "unknown options [tokn]"}
+var everyProblemNamed = []string{"history.days must be between 1 and 366", "legacy-status-apo", "unknown options [tokn]"}
 
 // TestCheckConfigBindsNothing: the check passes for a file whose ports are
 // taken, because it never listens; a start with it would fail.

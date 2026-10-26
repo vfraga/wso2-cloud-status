@@ -21,8 +21,7 @@
  * them go through Intl in the reader's locale, so one page has one hour cycle
  * and one date style. Times about the data (when it was checked, where an
  * incident feed ends) and the history days are UTC and say so; incident
- * times and the Past incidents day headings are in the reader's zone, as the
- * footer says.
+ * times are in the reader's zone, as the footer says.
  */
 
 const MINUTE = 60_000;
@@ -45,14 +44,6 @@ const localDateClock = new Intl.DateTimeFormat(undefined, {
   day: "numeric",
   ...clockParts,
 });
-const dayHeading = new Intl.DateTimeFormat(undefined, {
-  year: "numeric",
-  month: "long",
-  day: "numeric",
-});
-
-const pad = (n: number): string => String(n).padStart(2, "0");
-
 /** The earliest of the times given, ignoring nulls; null when there is none. */
 export function earliest(...times: (Date | null)[]): Date | null {
   return times.reduce<Date | null>(
@@ -95,11 +86,6 @@ export function formatClock(date: Date): string {
 /** Local date and time with zone, "Oct 21, 10:41 AM GMT+2" (en-US). */
 export function formatDateClock(date: Date): string {
   return localDateClock.format(date);
-}
-
-/** A Past incidents day heading, a local day: "October 21, 2026" (en-US). */
-export function formatDayHeading(date: Date): string {
-  return dayHeading.format(date);
 }
 
 function plural(n: number, unit: string): string {
@@ -147,17 +133,4 @@ export function formatDuration(ms: number): string {
 /** "5 minutes", "1 minute"; never less than one minute. */
 export function formatMinutes(ms: number): string {
   return plural(Math.max(1, Math.round(ms / MINUTE)), "minute");
-}
-
-/** Local calendar day key, "2026-10-20". */
-export function localDayKey(date: Date): string {
-  return `${String(date.getFullYear())}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
-}
-
-/** Local midnights for the last `count` days, newest first. */
-export function lastLocalDays(now: Date, count: number): Date[] {
-  return Array.from(
-    { length: count },
-    (_, i) => new Date(now.getFullYear(), now.getMonth(), now.getDate() - i),
-  );
 }

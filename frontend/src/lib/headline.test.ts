@@ -27,8 +27,7 @@ import {
   daysWithIncidents,
   listNames,
   othersOperational,
-  quietDayText,
-  regionsAffected,
+  noRegionIn,
   regionsUnavailable,
 } from "./status";
 
@@ -362,17 +361,10 @@ describe("status wording", () => {
     expect(count(1, "day")).toBe("1 day");
     expect(count(2, "day")).toBe("2 days");
     expect(daysWithIncidents(1)).toBe("1 day with incidents");
-    expect(regionsAffected(1, 1)).toBe("1 of 1 region affected");
+    expect(noRegionIn("EU")).toBe("No EU region");
     expect(regionsUnavailable(2, 5)).toBe("2 of 5 regions unavailable");
     expect(othersOperational(1)).toBe("The other product is operational.");
     expect(othersOperational(5)).toBe("The other 5 products are operational.");
     expect(capitalise("some data")).toBe("Some data");
-  });
-
-  it("says what a quiet day means when some incident data is missing", () => {
-    expect(quietDayText(0, 6)).toBe("No incidents reported.");
-    expect(quietDayText(1, 6)).toBe("No incidents reported for the other products.");
-    expect(quietDayText(1, 2)).toBe("No incidents reported for the other product.");
-    expect(quietDayText(2, 2)).toBe("No incident information is available.");
   });
 });

@@ -20,43 +20,38 @@ import { expect, test } from "@playwright/test";
 import {
   expectNoSeriousViolations,
   expectNoSeriousViolationsOnPhone,
-  PRODUCT_NAMES,
   productRows,
   ready,
   readyProduct,
   shotPath,
 } from "../helpers";
 
-// The row line for a feed that never answered; one that answered names its time
-// instead (see stopped.spec.ts).
+// The product page's line for a feed that never answered; one that answered names
+// its time instead (see stopped.spec.ts).
 const OUTDATED = "Incident information unavailable";
 
 // scripts/e2e.sh runs this scenario with 5 s polls and stale_after 10s. Moesif's
 // incidents never answer, so the API marks them stale from the start; the page
-// polls the summary every 30 s, so the line shows within about 40 s at most.
+// polls the summary every 30 s, so the banner says so within about 40 s at most.
 test.describe("a source whose incidents never answer", () => {
   test.setTimeout(90_000);
 
-  test("its product says its incident information is unavailable; the others do not", async ({
+  test("the banner says its incident information is unavailable; statuses stay as they are", async ({
     page,
   }) => {
     await ready(page);
-    const rows = productRows(page);
-    const moesif = rows.filter({ has: page.getByRole("heading", { level: 2, name: "Moesif" }) });
-    await expect(moesif.getByText(OUTDATED, { exact: true })).toBeVisible({ timeout: 40_000 });
     // With no time to name, the banner says the information is unavailable.
     const banner = page.getByRole("region", { name: "Overall status" });
-    await expect(banner).toContainText("Incident information for Moesif is unavailable right now.");
-    await expect(banner).not.toContainText("has not been updated");
-    // The flag does not open the regions.
-    await expect(moesif.getByRole("button", { name: /1 region/ })).toHaveAttribute(
-      "aria-expanded",
-      "false",
+    await expect(banner).toContainText(
+      "Incident information for Moesif is unavailable right now.",
+      { timeout: 40_000 },
     );
-    for (const name of PRODUCT_NAMES.filter((n) => n !== "Moesif")) {
-      const row = rows.filter({ has: page.getByRole("heading", { level: 2, name }) });
-      await expect(row.getByText(OUTDATED)).toHaveCount(0);
-    }
+    await expect(banner).not.toContainText("has not been updated");
+    // Missing incidents do not make a status unknown: every product stays operational.
+    await expect(page.getByRole("heading", { level: 1 })).toHaveText("All systems operational");
+    await expect(
+      productRows(page).getByRole("cell").filter({ hasText: "Status unavailable" }),
+    ).toHaveCount(0);
     await page.screenshot({
       path: shotPath("e2e-outdated"),
       fullPage: true,
