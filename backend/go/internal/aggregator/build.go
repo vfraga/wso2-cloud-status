@@ -156,7 +156,7 @@ func build(p buildParams) Built {
 		Incidents: Incidents{GeneratedAt: generated},
 		held:      make(map[string]heldCheck, len(p.products)),
 	}
-	var all []domain.Incident
+	all := []domain.Incident{}
 	statuses := make([]domain.Status, 0, len(p.products))
 	configured := configuredKeys(p.products)
 	for _, prod := range p.products {
@@ -176,8 +176,7 @@ func build(p buildParams) Built {
 	b.Summary.DataComplete = allComplete(b.Summary.Products)
 	b.Summary.Status = failClosed(statuses, b.Summary.DataComplete)
 	b.Summary.ActiveIncidents = filter(all, func(i domain.Incident) bool { return i.Active() })
-	cutoff := p.now.UTC().Truncate(24*time.Hour).AddDate(0, 0, 1-p.days)
-	b.Incidents.Incidents = filter(all, func(i domain.Incident) bool { return overlaps(i, cutoff) })
+	b.Incidents.Incidents = all
 	b.Ready = ready(p.state)
 	b.RegionKeys = regionKeys(p.state, configured)
 	return b
@@ -185,8 +184,9 @@ func build(p buildParams) Built {
 
 // overlaps reports whether the incident is active or touches the history
 // window that starts at cutoff, as domain.DailyHistory counts it: it started
-// in the window, or ended after the window began. Every incident a history
-// day lists is then in the incident list.
+// in the window, or ended after the window began. A product lists only these,
+// so every incident a history day lists is in its list and in the incident
+// list, and nothing older is.
 func overlaps(i domain.Incident, cutoff time.Time) bool {
 	return i.Active() || !i.StartedAt.Before(cutoff) || i.ResolvedAt.After(cutoff)
 }
@@ -290,6 +290,10 @@ func buildProduct(p buildParams, prod config.Product, configured map[string]map[
 	comp := feedOf(p.state, prod.Sources, p.now, p.stale.components, func(st sourceState) time.Time { return st.components.at })
 	inc := feedOf(p.state, prod.Sources, p.now, p.stale.incidents, func(st sourceState) time.Time { return st.incidents.at })
 	incidents, coverage := productIncidents(p, prod, inc)
+	history := domain.DailyHistory(incidents, p.days, coverage, p.now)
+	domain.RaiseToday(history, worstRegion(regions))
+	cutoff := p.now.UTC().Truncate(24*time.Hour).AddDate(0, 0, 1-p.days)
+	incidents = filter(incidents, func(i domain.Incident) bool { return overlaps(i, cutoff) })
 	up := feedOf(p.state, prod.Sources, p.now, p.stale.uptime, func(st sourceState) time.Time { return st.uptime.at })
 	statuses := make([]domain.Status, 0, len(regions)+len(incidents))
 	summaries := make([]RegionSummary, 0, len(regions))
@@ -320,11 +324,21 @@ func buildProduct(p buildParams, prod config.Product, configured map[string]map[
 			Stale:           Stale{Components: comp.stale, Incidents: inc.stale, Uptime: up.stale},
 			Locations:       locations,
 			Regions:         summaries,
-			History:         domain.DailyHistory(incidents, p.days, coverage, p.now),
+			History:         history,
 		},
 		RegionDetails: regions,
 		Incidents:     incidents,
 	}
+}
+
+// worstRegion is the most severe known status among the regions, unknown
+// when none is known.
+func worstRegion(regions []RegionDetail) domain.Status {
+	statuses := make([]domain.Status, 0, len(regions))
+	for _, r := range regions {
+		statuses = append(statuses, r.Status)
+	}
+	return domain.Worst(statuses...)
 }
 
 // feed is one kind of data across some sources: the oldest last successful

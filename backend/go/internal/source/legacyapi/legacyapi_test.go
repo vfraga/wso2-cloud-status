@@ -254,7 +254,8 @@ func TestIncidentLifecycleEdges(t *testing.T) {
 	srv := serveJSON(t, http.StatusOK, `{"2026-10":{"incidents":[
 		{"id":"open","begin":"2026-10-20 10:00:00","end":null,"type":"Degraded","status":"Investigating","short_description":"a"},
 		{"id":"no-end","begin":"2026-10-19 10:00:00","end":"","type":"Maintenance","status":"Resolved","short_description":"b"},
-		{"id":"odd","begin":"2026-10-18 10:00:00","end":"2026-10-18 11:00:00","type":"Mystery","status":"Resolved","short_description":"c"}]}}`)
+		{"id":"odd","begin":"2026-10-18 10:00:00","end":"2026-10-18 11:00:00","type":"Mystery","status":"Resolved","short_description":"c"},
+		{"id":"backwards","begin":"2026-10-17 10:00:00","end":"2026-10-17 09:00:00","type":"Outage","status":"Resolved","short_description":"d"}]}}`)
 	got, err := NewSource(newTestClient(t, srv.URL, nil), "c").Incidents(context.Background())
 	if err != nil {
 		t.Fatalf("Incidents: %v", err)
@@ -271,6 +272,10 @@ func TestIncidentLifecycleEdges(t *testing.T) {
 	}
 	if byID["odd"].Impact != domain.StatusUnknown {
 		t.Fatalf("odd impact = %v, want unknown", byID["odd"].Impact)
+	}
+	// An end before the begin cannot be the end: zero-length at the begin, so the day it began still shows it.
+	if b := byID["backwards"]; b.Active() || !b.ResolvedAt.Equal(b.StartedAt) {
+		t.Fatalf("backwards = %+v, want zero-length at its begin", b)
 	}
 }
 

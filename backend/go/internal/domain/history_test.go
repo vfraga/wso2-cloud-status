@@ -290,3 +290,49 @@ func TestDailyHistoryCoverageEndBoundaries(t *testing.T) {
 		t.Fatalf("until midnight: %v, want yesterday operational and today unknown", got)
 	}
 }
+
+// TestDailyHistoryKnownIncidentBeforeCoverage: a day before the sources'
+// coverage (one has never answered) takes the impact of an incident known
+// for it, as a partly covered day does; a day with none stays unknown.
+func TestDailyHistoryKnownIncidentBeforeCoverage(t *testing.T) {
+	t.Parallel()
+	now := at("2026-10-20 12:00:00")
+	incs := []Incident{{ID: "known", Impact: StatusDegraded, StartedAt: at("2026-10-19 08:00:00"), ResolvedAt: ptr(at("2026-10-19 09:00:00"))}}
+	got := DailyHistory(incs, 3, Coverage{From: now.Add(48 * time.Hour)}, now)
+	if got[1].Status != StatusDegraded || !slices.Equal(got[1].IncidentIDs, []string{"known"}) || got[1].Minutes[StatusDegraded] != 60 {
+		t.Fatalf("day with a known incident = %+v, want degraded for 60 minutes", got[1])
+	}
+	for _, d := range []Day{got[0], got[2]} {
+		if d.Status != StatusUnknown || d.IncidentIDs != nil {
+			t.Fatalf("day %s = %+v, want unknown", d.Date, d)
+		}
+	}
+}
+
+// TestRaiseToday: today takes the current status when it is a problem worse
+// than its incidents; an operational or unknown current status changes
+// nothing, so a day without data is never made quiet.
+func TestRaiseToday(t *testing.T) {
+	t.Parallel()
+	days := func() []Day {
+		return []Day{{Date: "2026-10-19", Status: StatusOperational}, {Date: "2026-10-20", Status: StatusDegraded, IncidentIDs: []string{"a"}}}
+	}
+	got := days()
+	RaiseToday(got, StatusOutage)
+	if got[1].Status != StatusOutage || !slices.Equal(got[1].IncidentIDs, []string{"a"}) || got[0].Status != StatusOperational {
+		t.Fatalf("raised = %+v, want today outage with its incident kept and yesterday untouched", got)
+	}
+	got = days()
+	RaiseToday(got, StatusMaintenance)
+	if got[1].Status != StatusDegraded {
+		t.Fatalf("today = %+v, want degraded kept over a milder current status", got[1])
+	}
+	unknown := []Day{{Date: "2026-10-20", Status: StatusUnknown}}
+	for _, current := range []Status{StatusOperational, StatusUnknown} {
+		RaiseToday(unknown, current)
+		if unknown[0].Status != StatusUnknown {
+			t.Fatalf("current %v made a day without data %v", current, unknown[0].Status)
+		}
+	}
+	RaiseToday(nil, StatusOutage)
+}

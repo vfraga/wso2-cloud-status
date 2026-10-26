@@ -926,14 +926,34 @@ func checkCollapsedIncidents(t *testing.T, base string) {
 			referenced[id] = true
 		}
 	}
-	for kept, dropped := range map[string]string{
-		"c6a4127fc30a8710af2f40459901318d": "c9935e7bc30a8710af2f40459901310d",
-		"4354123fc30a8710af2f4045990131e4": "afd25ef7c30a8710af2f404599013134",
-		"563011cd97328710182338f11153affc": "63221d8197728710182338f11153afc8",
+	if len(detail.History) == 0 {
+		t.Fatal("developer-platform has no history")
+	}
+	// A product lists the incidents that overlap its history window, so a
+	// pair is listed only while the kept record ended after the window began.
+	windowStart, err := time.Parse(time.DateOnly, detail.History[0].Date)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, pair := range []struct {
+		kept, dropped string
+		ended         string // the kept record's end, UTC, from the fixture
+	}{
+		{"c6a4127fc30a8710af2f40459901318d", "c9935e7bc30a8710af2f40459901310d", "2026-07-20T02:19:28Z"},
+		{"4354123fc30a8710af2f4045990131e4", "afd25ef7c30a8710af2f404599013134", "2026-07-20T02:19:28Z"},
+		{"563011cd97328710182338f11153affc", "63221d8197728710182338f11153afc8", "2026-08-17T17:05:43Z"},
 	} {
-		if !listed[kept] || listed[dropped] || referenced[dropped] {
-			t.Errorf("developer-platform lists %s: %v and %s: %v (history refers to it: %v); want only the first of the pair",
-				kept, listed[kept], dropped, listed[dropped], referenced[dropped])
+		ended, err := time.Parse(time.RFC3339, pair.ended)
+		if err != nil {
+			t.Fatal(err)
+		}
+		inWindow := ended.After(windowStart)
+		if !inWindow {
+			t.Logf("%s ended before the history window (%s); only its duplicate's absence is checked", pair.kept, detail.History[0].Date)
+		}
+		if listed[pair.kept] != inWindow || listed[pair.dropped] || referenced[pair.dropped] {
+			t.Errorf("developer-platform lists %s: %v (in the window: %v) and %s: %v (history refers to it: %v); want only the first of the pair, while in the window",
+				pair.kept, listed[pair.kept], inWindow, pair.dropped, listed[pair.dropped], referenced[pair.dropped])
 		}
 	}
 }
@@ -1147,10 +1167,17 @@ func checkEdgeMerge(t *testing.T, p product) {
 	if !found || p.Status != "outage" {
 		t.Errorf("developer-platform: status %s, incidents %+v; want choreo's open outage shown and counted", p.Status, p.Incidents)
 	}
-	for _, d := range p.History {
-		if d.Status != "unknown" {
-			t.Fatalf("day %s = %s, want unknown while choreo-eu has no incident data", d.Date, d.Status)
+	// No day reads quiet while choreo-eu has no incident data: a day shows
+	// the incidents known for it, or is unknown. Today also holds choreo's
+	// open outage.
+	for i, d := range p.History {
+		known := len(d.IncidentIDs) > 0
+		if d.Status == "operational" || (known && d.Status == "unknown") || (!known && d.Status != "unknown" && i < len(p.History)-1) {
+			t.Fatalf("day %s = %s with incidents %v, want unknown unless an incident is known for it", d.Date, d.Status, d.IncidentIDs)
 		}
+	}
+	if today := p.History[len(p.History)-1]; today.Status != "outage" || !slices.Contains(today.IncidentIDs, "edge-choreo-active") {
+		t.Errorf("today = %+v, want choreo's open outage", today)
 	}
 }
 

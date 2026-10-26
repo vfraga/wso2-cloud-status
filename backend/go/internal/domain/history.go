@@ -42,11 +42,12 @@ type Coverage struct {
 // the incident data has stopped, so its minutes change when generated_at
 // does, rather than at the second it started, and never run past the data.
 // A day with no incidents is operational only when
-// coverage spans all of it (up to now for today): days that start before
-// coverage.From or after coverage.Until are unknown, because no incidents
-// there means no data, not no downtime. The day that contains
-// coverage.Until is partly covered: it takes the impact of the incidents
-// known for it, and is unknown when none are.
+// coverage spans all of it (up to now for today): days that start after
+// coverage.Until are unknown, because no incidents there means no data, not
+// no downtime. A day that starts before coverage.From (one of the product's
+// sources has never answered, or holds nothing that old) and the day that
+// contains coverage.Until are partly covered: they take the impact of the
+// incidents known for them, and are unknown when none are.
 func DailyHistory(incidents []Incident, days int, coverage Coverage, now time.Time) []Day {
 	now = now.UTC()
 	today := now.Truncate(day)
@@ -58,18 +59,44 @@ func DailyHistory(incidents []Incident, days int, coverage Coverage, now time.Ti
 	return history
 }
 
+// RaiseToday makes the last day, today, at least as severe as the current
+// status when that is a problem: a region can be in outage before anyone
+// files an incident, and today must not read quiet then. It never raises a
+// day to operational, so a day without data stays unknown.
+func RaiseToday(history []Day, current Status) {
+	if len(history) == 0 || current <= StatusOperational {
+		return
+	}
+	today := &history[len(history)-1]
+	today.Status = Worst(today.Status, current)
+}
+
+// baseStatus is a day's status before its incidents: operational when
+// coverage spans it, unknown when it is partly covered (incidents may still
+// raise it). listed is false for a day after the coverage end, which lists
+// no incidents. complete reports whether coverage runs up to now.
+func baseStatus(start time.Time, coverage Coverage, complete bool) (status Status, listed bool) {
+	switch {
+	case !complete && start.After(coverage.Until):
+		return StatusUnknown, false
+	case start.Before(coverage.From):
+		return StatusUnknown, true
+	case complete, !start.Add(day).After(coverage.Until):
+		return StatusOperational, true
+	}
+	return StatusUnknown, true
+}
+
 func dayStatus(incidents []Incident, start time.Time, coverage Coverage, now time.Time) Day {
-	d := Day{Date: start.Format(time.DateOnly), Status: StatusUnknown}
 	complete := coverage.Until.IsZero() || !coverage.Until.Before(now)
 	known := now
 	if !complete {
 		known = coverage.Until
 	}
-	switch {
-	case start.Before(coverage.From), !complete && start.After(coverage.Until):
+	status, listed := baseStatus(start, coverage, complete)
+	d := Day{Date: start.Format(time.DateOnly), Status: status}
+	if !listed {
 		return d
-	case complete, !start.Add(day).After(coverage.Until):
-		d.Status = StatusOperational
 	}
 	end := minTime(start.Add(day), now)
 	spans := map[Status][]span{}

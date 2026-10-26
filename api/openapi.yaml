@@ -397,15 +397,20 @@ components:
       description: >-
         One UTC calendar day. Status is the most severe impact among the
         incidents overlapping the day, an unknown impact counting as
-        degraded, and operational when none do. It is "unknown" before
-        incident history coverage begins, and on every day while any of the
-        product's sources has never returned its incidents. While the
+        degraded, and operational when none do. While the
         product's incidents are stale (its "stale.incidents" is true), the
         history ends at the product's "checked_at.incidents": days after
         that day are "unknown" and list no incidents, and that day itself
         (partly covered) takes the impact of the incidents known for it, or
-        "unknown" when none are. The history is derived again at every
-        build, so these days fill in once the source answers again.
+        "unknown" when none are. A day before coverage begins, or while one
+        of the product's sources has never returned its incidents, likewise
+        takes the impact of the incidents known for it, or "unknown" when
+        none are. Today is at least as severe as the product's most severe
+        current region status when that is maintenance, degraded or outage,
+        so a region in outage before an incident is filed does not leave
+        today quiet; such a status adds no minutes or incident ids. The
+        history is derived again at every build, so these days fill in once
+        the source answers again.
       properties:
         date: { type: string, format: date }
         status: { $ref: "#/components/schemas/Status" }
@@ -512,6 +517,11 @@ components:
               items: { $ref: "#/components/schemas/RegionDetail" }
             incidents:
               type: array
+              description: >-
+                The product's incidents, newest first, chosen as for
+                /api/v1/incidents: every active incident plus every incident
+                that overlaps the history window, so every id its history
+                lists is here and nothing older is.
               items: { $ref: "#/components/schemas/Incident" }
       unevaluatedProperties: false
 

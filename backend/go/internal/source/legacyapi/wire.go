@@ -256,7 +256,8 @@ func toIncident(w wireIncident, loc *time.Location) (domain.Incident, error) {
 }
 
 // resolvedAt reads the end of a resolved incident. A resolved incident with
-// no end time is treated as zero-length rather than as still open.
+// no end time, or one that ends before it begins, is treated as zero-length
+// at its start rather than as still open, so it still marks its day.
 func resolvedAt(w wireIncident, started time.Time, loc *time.Location) (time.Time, error) {
 	if w.End == nil || strings.TrimSpace(*w.End) == "" {
 		return started.UTC(), nil
@@ -264,6 +265,9 @@ func resolvedAt(w wireIncident, started time.Time, loc *time.Location) (time.Tim
 	end, err := time.ParseInLocation(time.DateTime, strings.TrimSpace(*w.End), loc)
 	if err != nil {
 		return time.Time{}, fmt.Errorf("legacyapi: incident %s end %q: %w", w.ID, *w.End, err)
+	}
+	if end.Before(started) {
+		return started.UTC(), nil
 	}
 	return end.UTC(), nil
 }

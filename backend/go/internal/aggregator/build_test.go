@@ -554,6 +554,9 @@ func TestMissingRegionIsUnknown(t *testing.T) {
 
 func resolved(at time.Time) *time.Time { return &at }
 
+// TestIncidents: a product lists its active incidents and those of its
+// history window, from all its sources, each once; one that ended before the
+// window ("old", 30 days back with 7 history days) is left out.
 func TestIncidents(t *testing.T) {
 	t.Parallel()
 	st := freshState()
@@ -567,7 +570,7 @@ func TestIncidents(t *testing.T) {
 	}
 	b := build(params(st, t0))
 	two := b.Products["two"]
-	if len(two.Incidents) != 3 || two.Incidents[0].ID != "active" || two.Incidents[0].ProductID != "two" {
+	if len(two.Incidents) != 2 || two.Incidents[0].ID != "active" || two.Incidents[0].ProductID != "two" {
 		t.Fatalf("incidents = %+v", two.Incidents)
 	}
 	if two.Status != domain.StatusOutage || two.AffectedRegions != 0 {
@@ -581,10 +584,11 @@ func TestIncidents(t *testing.T) {
 	}
 }
 
-// TestIncidentListHoldsEveryHistoryIncident: the incident list keeps every
-// incident that overlaps the history window, so every id a history day lists
-// is in it: one that started before the window and ended inside it too. One
-// that ended before the window, or exactly when it began, is left out.
+// TestIncidentListHoldsEveryHistoryIncident: the incident list, and each
+// product's own list, keep every incident that overlaps the history window,
+// so every id a history day lists is in them: one that started before the
+// window and ended inside it too. One that ended before the window, or
+// exactly when it began, is left out of both.
 func TestIncidentListHoldsEveryHistoryIncident(t *testing.T) {
 	t.Parallel()
 	windowStart := t0.Truncate(24*time.Hour).AddDate(0, 0, -6)
@@ -601,6 +605,13 @@ func TestIncidentListHoldsEveryHistoryIncident(t *testing.T) {
 	listed := map[string]bool{}
 	for _, inc := range b.Incidents.Incidents {
 		listed[inc.ID] = true
+	}
+	for id, p := range b.Products {
+		for _, inc := range p.Incidents {
+			if !listed[inc.ID] {
+				t.Errorf("product %s lists %s, which the incident list lacks", id, inc.ID)
+			}
+		}
 	}
 	referenced := map[string]bool{}
 	for _, p := range b.Summary.Products {
@@ -997,6 +1008,9 @@ func historyStatuses(days []domain.Day) []domain.Status {
 	return out
 }
 
+// TestAnsweredSourcesIncidentsShowWhileAnotherHasNone: while one source has
+// never answered, the other's incidents are listed and counted, and its open
+// outage marks today; days with no known incident stay unknown, not quiet.
 func TestAnsweredSourcesIncidentsShowWhileAnotherHasNone(t *testing.T) {
 	t.Parallel()
 	st := freshState()
@@ -1009,8 +1023,11 @@ func TestAnsweredSourcesIncidentsShowWhileAnotherHasNone(t *testing.T) {
 	if len(two.Incidents) != 1 || two.Status != domain.StatusOutage || len(b.Summary.ActiveIncidents) != 1 {
 		t.Fatalf("incidents = %+v, status = %v; want s2's open incident shown and counted", two.Incidents, two.Status)
 	}
-	if today := two.History[len(two.History)-1]; today.Status != domain.StatusUnknown {
-		t.Fatalf("today = %+v, want unknown until s3 answers", today)
+	if today := two.History[len(two.History)-1]; today.Status != domain.StatusOutage {
+		t.Fatalf("today = %+v, want the known outage while s3 has not answered", today)
+	}
+	if yesterday := two.History[len(two.History)-2]; yesterday.Status != domain.StatusUnknown {
+		t.Fatalf("yesterday = %+v, want unknown until s3 answers", yesterday)
 	}
 }
 
@@ -1209,5 +1226,27 @@ func TestCopiesOfTheStalenessMatchTheShippedConfiguration(t *testing.T) {
 	}
 	if got, _ := strconv.Atoi(m[1]); time.Duration(got)*time.Second != cfg.Polling.StaleAfter {
 		t.Errorf("synthetic-check.sh default MAX_AGE_SECONDS %s, want stale_after %s", m[1], cfg.Polling.StaleAfter)
+	}
+}
+
+// TestTodayTakesTheCurrentRegionStatus: a region in outage before any
+// incident is filed makes today an outage day, with no minutes or incident
+// ids of its own; earlier days stay as their incidents left them.
+func TestTodayTakesTheCurrentRegionStatus(t *testing.T) {
+	t.Parallel()
+	st := freshState()
+	s1 := st["b/s1"]
+	s1.components.data = source.Components{
+		"us": {group(domain.StatusOperational, domain.StatusOperational)},
+		"eu": {group(domain.StatusOutage, domain.StatusOutage)},
+	}
+	st["b/s1"] = s1
+	one := build(params(st, t0)).Products["one"]
+	today := one.History[len(one.History)-1]
+	if one.Status != domain.StatusOutage || today.Status != domain.StatusOutage || today.Minutes != nil || today.IncidentIDs != nil {
+		t.Fatalf("status %v, today = %+v; want an outage day with no minutes or incidents", one.Status, today)
+	}
+	if yesterday := one.History[len(one.History)-2]; yesterday.Status != domain.StatusOperational {
+		t.Fatalf("yesterday = %+v, want operational", yesterday)
 	}
 }
