@@ -50,6 +50,23 @@ section here. The public API has its own version, in `api/openapi.yaml`.
   first visit, and far less CPU per request.
 - An open home page no longer redraws its table on each 5-second tick of
   the banner's clock.
+- A product's page lists the incidents of its history's days under the
+  reader's local day they started, without repeating the product's name,
+  and links older incidents on the product's own status page. The API's
+  product `incidents` holds the same days, as `/api/v1/incidents` does.
+- The history strip counts incidents, each once however many UTC days it
+  touches ("1 incident", "2 incidents and 1 maintenance window"), and names
+  its span when it shows fewer days than the incident list ("No incidents
+  in 30 days").
+- One line under a product's regions says what its uptime figures count:
+  outages only, a region's figure averaging its services.
+- Today's history bar is at least as severe as the product's worst current
+  region status, and says "no incident reported yet" until one is filed.
+- On the home page, a product whose active incident names no region shows
+  its status under its name ("Service outage, region not stated").
+- On a phone, the home table puts a product's regions one under the other
+  when they do not fit side by side.
+- The footer is centred, and the copyright year follows the clock.
 
 ### Fixed
 
@@ -65,8 +82,18 @@ section here. The public API has its own version, in `api/openapi.yaml`.
   not have (an accessibility error while the page loads); an accessibility
   scan of the loading state now runs with the others.
 - A day with maintenance is labelled "Maintenance", not the present-tense
-  "Under maintenance", and a count that includes a maintenance-only day
-  reads "days with incidents or maintenance", as the legend has it.
+  "Under maintenance", as the legend has it.
+- The home table's statuses are no longer cut off at 320 px or under
+  WCAG text spacing.
+- The history strip no longer announces a selected day: it is a grid of
+  days, not a list to choose from.
+- A day before a product's incident coverage, or while one of its sources
+  has never answered, shows the incidents known for it instead of "No
+  data".
+- An incident whose end precedes its start marks its start day instead of
+  no day.
+- A screen reader hears each uptime list's region, and its windows in
+  words ("7 days").
 - A region on a product's page that the reader opened or closed keeps
   that state when its status changes.
 - `history.days` may be any number of days from 1 to 366; the 15-day

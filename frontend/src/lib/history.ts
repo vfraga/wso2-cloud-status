@@ -18,35 +18,49 @@
 
 import type { Day, Incident, Status } from "../api/types";
 import {
+  count,
   DAY_LABEL,
   IMPACT_LABEL,
-  STATUS_RANK,
-  daysWithIncidents,
+  incidentCount,
   incidentsCompleteUntil,
   isProblem,
+  notYetReported,
+  STATUS_LABEL,
+  STATUS_RANK,
 } from "./status";
 import { formatDuration, formatHistoryDate, formatUtcClock, utcDayKey } from "./time";
 
 interface HistorySummary {
-  withIncidents: number;
-  /** Whether one of those days had only maintenance. */
-  withMaintenance: boolean;
+  /** Incidents other than maintenance on these days, each once however many days it touches. */
+  incidents: number;
+  maintenance: number;
   withoutData: number;
 }
 
-export function summariseHistory(days: readonly Day[]): HistorySummary {
+/**
+ * Counts incidents, not days: one that crosses UTC midnight colours two days
+ * but is one incident, as the incident list shows it.
+ */
+export function summariseHistory(
+  days: readonly Day[],
+  incidents: ReadonlyMap<string, Incident>,
+): HistorySummary {
+  const ids = new Set(days.flatMap((d) => d.incidentIds));
+  const maintenance = [...ids].filter((id) => incidents.get(id)?.impact === "maintenance").length;
   return {
-    withIncidents: days.filter((d) => STATUS_RANK[d.status] > STATUS_RANK.operational).length,
-    withMaintenance: days.some((d) => d.status === "maintenance"),
+    incidents: ids.size - maintenance,
+    maintenance,
     withoutData: days.filter((d) => d.status === "unknown").length,
   };
 }
 
 /** Text read by assistive technology for the whole strip. */
-export function historyText(days: readonly Day[]): string {
-  const { withIncidents, withMaintenance, withoutData } = summariseHistory(days);
-  const unit = (n: number) => `${String(n)} ${n === 1 ? "day" : "days"}`;
-  return `${String(days.length)} days: ${daysWithIncidents(withIncidents, withMaintenance)}, ${unit(withoutData)} without data`;
+export function historyText(
+  days: readonly Day[],
+  incidents: ReadonlyMap<string, Incident>,
+): string {
+  const summary = summariseHistory(days, incidents);
+  return `${count(days.length, "day")}: ${incidentCount(summary.incidents, summary.maintenance)}, ${count(summary.withoutData, "day")} without data`;
 }
 
 export interface DayDetail {
@@ -130,6 +144,24 @@ export function coveredDays(days: readonly Day[], completeUntil: Date | null): r
 }
 
 /**
+ * Whether the day is today and its status comes from a region's current
+ * status rather than from the incidents filed for it (statusd raises today
+ * so: no incident filed yet).
+ */
+function aheadOfIncidents(day: Day, incidents: ReadonlyMap<string, Incident>, now: Date): boolean {
+  if (day.date !== utcDayKey(now) || !isProblem(day.status)) return false;
+  const worst = Math.max(
+    STATUS_RANK.operational,
+    ...day.incidentIds.map((id) => {
+      const impact = incidents.get(id)?.impact ?? "unknown";
+      // An unknown impact counts as degraded, as everywhere else.
+      return STATUS_RANK[impact === "unknown" ? "degraded" : impact];
+    }),
+  );
+  return STATUS_RANK[day.status] > worst;
+}
+
+/**
  * History days are UTC calendar days, and every heading says so.
  * `completeUntil` is the last successful fetch of a product's incidents that
  * stopped answering: the day that contains it is only partly covered.
@@ -142,8 +174,12 @@ export function dayDetail(
 ): DayDetail {
   const times = impactTimes(day, incidents, now, completeUntil);
   const partial = completeUntil !== null && utcDayKey(completeUntil) === day.date;
+  const notes = [
+    ...(aheadOfIncidents(day, incidents, now) ? [notYetReported(STATUS_LABEL[day.status])] : []),
+    ...(partial ? [incidentsCompleteUntil(formatUtcClock(completeUntil))] : []),
+  ];
   return {
-    note: partial ? incidentsCompleteUntil(formatUtcClock(completeUntil)) : null,
+    note: notes.length === 0 ? null : notes.join(" "),
     heading: `${formatHistoryDate(day.date)} (UTC)`,
     status: day.status,
     statusLabel: DAY_LABEL[day.status],

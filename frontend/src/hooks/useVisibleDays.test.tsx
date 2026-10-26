@@ -71,7 +71,10 @@ describe("useVisibleDays", () => {
 });
 
 describe("HistoryStrip range", () => {
-  const history = days(90, { 70: { status: "degraded" }, 10: { status: "outage" } });
+  const history = days(90, {
+    70: { status: "degraded", incidentIds: ["slow"] },
+    10: { status: "outage", incidentIds: ["down"] },
+  });
   const show = () =>
     render(
       <ThemeRoot>
@@ -79,29 +82,27 @@ describe("HistoryStrip range", () => {
       </ThemeRoot>,
     );
 
-  it("shows 30 days below 600 px, with matching caption, summary and listbox name", () => {
+  it("shows 30 days below 600 px, with matching caption, summary and grid name", () => {
     setViewportWidth(360);
     show();
-    expect(screen.getAllByRole("option")).toHaveLength(30);
+    expect(screen.getAllByRole("gridcell")).toHaveLength(30);
     expect(
-      screen.getByRole("listbox", { name: "30-day history for API Platform, UTC days" }),
+      screen.getByRole("grid", { name: "30-day history for API Platform, UTC days" }),
     ).toBeInTheDocument();
     expect(screen.getByText(formatHistoryDate("2026-09-21"))).toBeInTheDocument();
     // Only the degraded day (index 70) is in the last 30; the outage (index 10) is not.
-    expect(
-      screen.getByText("30 days: 1 day with incidents, 0 days without data"),
-    ).toBeInTheDocument();
+    expect(screen.getByText("30 days: 1 incident, 0 days without data")).toBeInTheDocument();
   });
 
   it("shows 60 days from 600 to 899 px and 90 from 900 px", () => {
     setViewportWidth(700);
     const { unmount } = show();
-    expect(screen.getAllByRole("option")).toHaveLength(60);
+    expect(screen.getAllByRole("gridcell")).toHaveLength(60);
     expect(screen.getByText(formatHistoryDate("2026-08-22"))).toBeInTheDocument();
     unmount();
     setViewportWidth(900);
     show();
-    expect(screen.getAllByRole("option")).toHaveLength(90);
+    expect(screen.getAllByRole("gridcell")).toHaveLength(90);
     expect(screen.getByText(formatHistoryDate("2026-07-23"))).toBeInTheDocument();
   });
 
@@ -109,7 +110,7 @@ describe("HistoryStrip range", () => {
     setViewportWidth(360);
     const user = userEvent.setup();
     show();
-    const options = screen.getAllByRole("option");
+    const options = screen.getAllByRole("gridcell");
     expect(options.filter((o) => o.tabIndex === 0)).toHaveLength(1);
     options[29]?.focus();
     await user.keyboard("{Home}");
@@ -124,14 +125,14 @@ describe("HistoryStrip range", () => {
     setViewportWidth(360);
     const user = userEvent.setup();
     show();
-    const before = screen.getAllByRole("option");
+    const before = screen.getAllByRole("gridcell");
     before[29]?.focus();
     await user.keyboard("{ArrowLeft}");
     expect(before[28]).toHaveFocus();
     act(() => {
       setViewportWidth(1200);
     });
-    const after = screen.getAllByRole("option");
+    const after = screen.getAllByRole("gridcell");
     expect(after).toHaveLength(90);
     expect(after[88]?.tabIndex).toBe(0);
   });

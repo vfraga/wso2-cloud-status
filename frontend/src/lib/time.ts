@@ -44,12 +44,29 @@ const localDateClock = new Intl.DateTimeFormat(undefined, {
   day: "numeric",
   ...clockParts,
 });
+const dayHeading = new Intl.DateTimeFormat(undefined, {
+  year: "numeric",
+  month: "long",
+  day: "numeric",
+});
+
+const pad = (n: number): string => String(n).padStart(2, "0");
 /** The earliest of the times given, ignoring nulls; null when there is none. */
 export function earliest(...times: (Date | null)[]): Date | null {
   return times.reduce<Date | null>(
     (min, t) => (t !== null && (min === null || t.getTime() < min.getTime()) ? t : min),
     null,
   );
+}
+
+/** The reader's local calendar day, "2026-10-20". */
+export function localDayKey(date: Date): string {
+  return `${String(date.getFullYear())}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+}
+
+/** A local day as a heading, "October 21, 2026" (en-US). */
+export function formatDayHeading(date: Date): string {
+  return dayHeading.format(date);
 }
 
 /** UTC calendar day key, "2026-10-20". */

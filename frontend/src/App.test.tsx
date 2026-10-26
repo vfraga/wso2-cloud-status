@@ -24,6 +24,8 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import { App } from "./App";
 import { FALLBACK_PRODUCTS, forgetListedProducts } from "./lib/fallbackProducts";
 import { navigate } from "./lib/router";
+import { UPTIME_NOTE } from "./lib/status";
+import { formatDayHeading } from "./lib/time";
 import { apiTime, currentBody, summaryBody } from "./test/factories";
 
 const server = setupServer();
@@ -170,7 +172,7 @@ describe("home page", () => {
     expect(within(cells(rows[1]!)[0]!).getByText("Operational")).toBeInTheDocument();
     expect(within(cells(rows[1]!)[1]!).getByText("No EU region")).toBeInTheDocument();
     // No history, uptime or past incidents here: they are on each product's page.
-    expect(screen.queryByRole("listbox")).toBeNull();
+    expect(screen.queryByRole("grid")).toBeNull();
     expect(screen.queryByRole("region", { name: "Past incidents" })).toBeNull();
     // A stale incident feed is named once, in the banner, with its time.
     expect(
@@ -560,6 +562,82 @@ describe("product page", () => {
     expect(screen.getByText(/^Incidents last updated .+ UTC \(2\d min ago\)$/)).toBeInTheDocument();
     expect(screen.getByText("99.994%")).toBeInTheDocument();
     expect(screen.getByText("Elevated latency")).toBeInTheDocument();
+  });
+
+  it("lists recent incidents under their local day and counts them as the strip does", async () => {
+    window.history.pushState(null, "", "/products/api-platform");
+    const resolved = (id: string, impact: string, from: string, to: string) => ({
+      id,
+      product_id: "api-platform",
+      title: `Incident ${id}`,
+      impact,
+      state: "resolved",
+      started_at: from,
+      resolved_at: to,
+    });
+    const incidents = [
+      resolved("morning", "degraded", "2026-10-20T08:00:00Z", "2026-10-20T09:00:00Z"),
+      // Crosses UTC midnight: two strip days, one incident.
+      resolved("night", "degraded", "2026-10-19T23:02:00Z", "2026-10-20T00:56:00Z"),
+      resolved("earlier", "outage", "2026-10-18T10:00:00Z", "2026-10-18T11:00:00Z"),
+    ];
+    server.use(
+      http.get("http://api.test/api/v1/products/api-platform", () =>
+        HttpResponse.json({
+          ...detail(),
+          ...currentBody(),
+          history: [
+            {
+              date: "2026-10-18",
+              status: "outage",
+              minutes: { outage: 60 },
+              incident_ids: ["earlier"],
+            },
+            {
+              date: "2026-10-19",
+              status: "degraded",
+              minutes: { degraded: 58 },
+              incident_ids: ["night"],
+            },
+            {
+              date: "2026-10-20",
+              status: "degraded",
+              minutes: { degraded: 116 },
+              incident_ids: ["night", "morning"],
+            },
+          ],
+          incidents,
+        }),
+      ),
+    );
+    render(<App />);
+    const recent = await screen.findByRole("region", { name: "Recent incidents" });
+    const titles = within(recent).getAllByRole("heading", { level: 4 });
+    expect(
+      screen.getByRole("button", { name: `${String(titles.length)} incidents for API Platform` }),
+    ).toBeInTheDocument();
+    expect(titles.map((t) => t.textContent)).toEqual([
+      "Incident morning",
+      "Incident night",
+      "Incident earlier",
+    ]);
+    // Each sits under the heading of the local day it started, latest day first.
+    const days = within(recent).getAllByRole("heading", { level: 3 });
+    const startDays = [...new Set(incidents.map((i) => formatDayHeading(new Date(i.started_at))))];
+    expect(days.map((d) => d.textContent)).toEqual(startDays);
+    for (const [i, title] of titles.entries()) {
+      const day = days.findLast(
+        (d) => d.compareDocumentPosition(title) & Node.DOCUMENT_POSITION_FOLLOWING,
+      );
+      expect(day).toHaveTextContent(formatDayHeading(new Date(incidents[i]!.started_at)));
+    }
+    // The page names the product; its incidents do not repeat it.
+    expect(within(recent).queryByText("API Platform")).toBeNull();
+    expect(within(recent).getByText(/^The last 3 days\./)).toBeInTheDocument();
+    expect(
+      within(recent).getByRole("link", { name: "Older incidents on the API Platform status page" }),
+    ).toHaveAttribute("href", "https://status.example.test/api");
+    expect(screen.getByText(UPTIME_NOTE)).toBeInTheDocument();
   });
 
   it("shows an ongoing incident above the history and regions, and not again below", async () => {

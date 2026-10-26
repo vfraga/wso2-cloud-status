@@ -56,7 +56,7 @@ function LegalLinks() {
       aria-label="Legal"
       direction="row"
       useFlexGap
-      sx={{ flexWrap: "wrap", columnGap: 2, rowGap: 0, mb: 1 }}
+      sx={{ flexWrap: "wrap", justifyContent: "center", columnGap: 2, rowGap: 0, mb: 1 }}
     >
       {LEGAL_LINKS.map((link) => (
         <MuiLink
@@ -203,6 +203,7 @@ export function Layout({ children }: { children: ReactNode }) {
             px: { xs: "20px !important", sm: "24px !important" },
             pb: 5,
             color: "var(--cs-muted)",
+            textAlign: "center",
           }}
         >
           <LegalLinks />
@@ -210,7 +211,7 @@ export function Layout({ children }: { children: ReactNode }) {
             {FOOTER_TIMES} Each product keeps its full history on its own status page.
           </Typography>
           <Typography variant="caption" component="p">
-            Copyright 2026 WSO2 LLC.
+            Copyright {new Date().getFullYear()} WSO2 LLC.
           </Typography>
         </Container>
       </Box>

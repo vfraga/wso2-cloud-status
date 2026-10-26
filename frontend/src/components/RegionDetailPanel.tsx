@@ -159,11 +159,7 @@ export function RegionDetailPanel({
                     <StatusLabel status={component.status}>
                       {STATUS_LABEL[component.status]}
                     </StatusLabel>
-                    <UptimeList
-                      uptime={component.uptime}
-                      label={`Uptime for ${component.name}`}
-                      short
-                    />
+                    <UptimeList uptime={component.uptime} label={`Uptime for ${component.name}`} />
                   </Stack>
                 </Stack>
               ))}

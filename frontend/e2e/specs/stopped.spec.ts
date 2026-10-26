@@ -116,7 +116,7 @@ test.describe("feeds that stop after answering", () => {
       page.getByText(new RegExp(`^Incidents last updated ${CLOCK} \\((\\d+ min ago|just now)\\)$`)),
     ).toBeVisible();
     // Today, the day of the last successful fetch, has no incidents: No data, not green.
-    await expect(page.getByRole("listbox").getByRole("option").last()).toHaveAccessibleName(
+    await expect(page.getByRole("grid").getByRole("gridcell").last()).toHaveAccessibleName(
       new RegExp(`No data\\. Incident information complete only until ${CLOCK}\\.$`),
     );
     await expect(

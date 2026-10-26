@@ -26,15 +26,15 @@ import { IncidentItem } from "./IncidentMeta";
 interface ActiveIncidentsProps {
   incidents: readonly Incident[];
   products: ReadonlyMap<string, ProductSummary>;
-  /** False on a product's own page, which already links its status page. */
+  /** False on a product's own page, which already names the product and links its status page. */
   linked?: boolean;
   /** When the page's own data stopped (useKnownUntil); null while it is current. */
   knownUntil?: Date | null;
 }
 
 /**
- * Each incident links to its product here and to the updates on the
- * product's own status page, unless `linked` is false.
+ * Each incident names and links its product here and links the updates on
+ * the product's own status page, unless `linked` is false.
  */
 export function ActiveIncidents({
   incidents,
@@ -72,7 +72,7 @@ export function ActiveIncidents({
             <IncidentItem
               key={incident.id}
               incident={incident}
-              productName={product?.name ?? incident.productId}
+              {...(linked ? { productName: product?.name ?? incident.productId } : {})}
               now={now}
               withDate
               titleAs="h3"

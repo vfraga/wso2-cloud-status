@@ -36,7 +36,7 @@ import { HistoryStrip } from "./HistoryStrip";
 import { IncidentItem } from "./IncidentMeta";
 import { LocationPanel, RegionDetailPanel } from "./RegionDetailPanel";
 import { ThemeRoot } from "../theme/ThemeRoot";
-import { UptimeList, formatPercent } from "./UptimeList";
+import { UptimeList, formatPercent, windowName } from "./UptimeList";
 import { ErrorBoundary } from "./ErrorBoundary";
 import { ProductListSkeleton } from "./Skeletons";
 import { StatusLabel } from "./StatusIcon";
@@ -65,7 +65,7 @@ describe("HistoryStrip", () => {
         completeUntil={new Date("2026-10-20T09:00:00Z")}
       />,
     );
-    const options = screen.getAllByRole("option");
+    const options = screen.getAllByRole("gridcell");
     expect(options[89]).toHaveAccessibleName(
       /\(UTC\): No data\. Incident information complete only until /,
     );
@@ -85,10 +85,8 @@ describe("HistoryStrip", () => {
         <button type="button">after</button>
       </>,
     );
-    expect(
-      screen.getByText("90 days: 1 day with incidents, 1 day without data"),
-    ).toBeInTheDocument();
-    const options = screen.getAllByRole("option");
+    expect(screen.getByText("90 days: 1 incident, 1 day without data")).toBeInTheDocument();
+    const options = screen.getAllByRole("gridcell");
     expect(options).toHaveLength(90);
     expect(options.filter((o) => o.tabIndex === 0)).toHaveLength(1);
 
@@ -96,9 +94,7 @@ describe("HistoryStrip", () => {
     await user.tab();
     expect(options[89]).toHaveFocus();
     await user.tab();
-    expect(
-      screen.getByRole("button", { name: "1 day with incidents for API Platform" }),
-    ).toHaveFocus();
+    expect(screen.getByRole("button", { name: "1 incident for API Platform" })).toHaveFocus();
     await user.tab();
     expect(screen.getByRole("button", { name: "after" })).toHaveFocus();
   });
@@ -112,7 +108,7 @@ describe("HistoryStrip", () => {
         incidents={new Map([["inc-1", incident()]])}
       />,
     );
-    const options = screen.getAllByRole("option");
+    const options = screen.getAllByRole("gridcell");
     options[89]?.focus();
     await user.keyboard("{ArrowLeft}");
     expect(options[88]).toHaveFocus();
@@ -139,7 +135,7 @@ describe("HistoryStrip", () => {
   it("shows the tooltip on hover and hides it shortly after the pointer leaves", async () => {
     const user = userEvent.setup();
     wrap(<HistoryStrip productName="X" days={d} incidents={new Map()} />);
-    const options = screen.getAllByRole("option");
+    const options = screen.getAllByRole("gridcell");
     await user.hover(options[3]!);
     expect(screen.getByText("No data")).toBeInTheDocument();
     await user.unhover(options[3]!);
@@ -151,7 +147,7 @@ describe("HistoryStrip", () => {
   it("closes a hover-opened tooltip on Escape, with focus elsewhere (WCAG 1.4.13)", async () => {
     const user = userEvent.setup();
     wrap(<HistoryStrip productName="X" days={d} incidents={new Map()} />);
-    await user.hover(screen.getAllByRole("option")[3]!);
+    await user.hover(screen.getAllByRole("gridcell")[3]!);
     expect(screen.getByText("No data")).toBeInTheDocument();
     expect(document.activeElement).toBe(document.body);
     await user.keyboard("{Escape}");
@@ -161,7 +157,7 @@ describe("HistoryStrip", () => {
   it("opens the tooltip below the strip, clear of the row's name and status", async () => {
     const user = userEvent.setup();
     wrap(<HistoryStrip productName="X" days={d} incidents={new Map()} />);
-    await user.hover(screen.getAllByRole("option")[3]!);
+    await user.hover(screen.getAllByRole("gridcell")[3]!);
     const popper = document.querySelector(".MuiPopper-root");
     await waitFor(() => {
       expect(popper).toHaveAttribute("data-popper-placement", "bottom");
@@ -173,16 +169,16 @@ describe("HistoryStrip", () => {
     const scroll = vi.spyOn(Element.prototype, "scrollIntoView");
     wrap(<HistoryStrip productName="X" days={d} incidents={new Map()} />);
     // Hovering does not move the page.
-    await user.hover(screen.getAllByRole("option")[3]!);
+    await user.hover(screen.getAllByRole("gridcell")[3]!);
     const popper = document.querySelector(".MuiPopper-root");
     await waitFor(() => {
       expect(popper).toHaveAttribute("data-popper-placement", "bottom");
     });
     expect(scroll).not.toHaveBeenCalled();
-    await user.unhover(screen.getAllByRole("option")[3]!);
+    await user.unhover(screen.getAllByRole("gridcell")[3]!);
     // A tap or the keyboard focuses the cell: the tooltip is brought into view.
     act(() => {
-      screen.getAllByRole("option")[89]!.focus();
+      screen.getAllByRole("gridcell")[89]!.focus();
     });
     await waitFor(() => {
       expect(scroll).toHaveBeenCalledWith({ block: "nearest" });
@@ -207,7 +203,7 @@ describe("HistoryStrip", () => {
   it("keeps the tooltip open while the pointer is on it (WCAG 1.4.13)", async () => {
     const user = userEvent.setup();
     wrap(<HistoryStrip productName="X" days={d} incidents={new Map()} />);
-    await user.hover(screen.getAllByRole("option")[3]!);
+    await user.hover(screen.getAllByRole("gridcell")[3]!);
     const tooltip = screen.getByText("No data").closest("[aria-hidden='true']");
     expect(tooltip).not.toBeNull();
     await user.hover(tooltip as HTMLElement);
@@ -221,25 +217,30 @@ describe("HistoryStrip", () => {
 
   it("draws healthy and no-data days lower than problem days", () => {
     wrap(<HistoryStrip productName="X" days={d} incidents={new Map()} />);
-    const options = screen.getAllByRole("option");
+    const options = screen.getAllByRole("gridcell");
     expect(getComputedStyle(options[0]!).backgroundSize).toBe("100% 60%");
     expect(getComputedStyle(options[3]!).backgroundSize).toBe("100% 60%");
     expect(getComputedStyle(options[88]!).backgroundSize).not.toBe("100% 60%");
   });
 
-  it("captions the number of days with incidents and lists them on request", async () => {
+  it("captions the number of incidents and lists their days on request", async () => {
     const user = userEvent.setup();
     wrap(
       <HistoryStrip
         productName="API Platform"
         days={days(90, {
-          10: { status: "outage", minutes: { outage: 62 } },
+          10: { status: "outage", minutes: { outage: 62 }, incidentIds: ["inc-0"] },
           88: { status: "degraded", minutes: { degraded: 95 }, incidentIds: ["inc-1"] },
         })}
-        incidents={new Map([["inc-1", incident()]])}
+        incidents={
+          new Map([
+            ["inc-0", incident({ id: "inc-0", impact: "outage", title: "API down" })],
+            ["inc-1", incident()],
+          ])
+        }
       />,
     );
-    const toggle = screen.getByRole("button", { name: "2 days with incidents for API Platform" });
+    const toggle = screen.getByRole("button", { name: "2 incidents for API Platform" });
     expect(toggle).toHaveAttribute("aria-expanded", "false");
     expect(toggle).not.toHaveAttribute("aria-controls");
     await user.click(toggle);
@@ -268,7 +269,7 @@ describe("HistoryStrip", () => {
       <HistoryStrip productName="X" days={days(30)} incidents={new Map()} />,
     );
     expect(screen.queryByRole("button")).not.toBeInTheDocument();
-    expect(screen.getByText("0 days with incidents")).toBeInTheDocument();
+    expect(screen.getByText("No incidents")).toBeInTheDocument();
     rerender(
       <ThemeRoot>
         <HistoryStrip
@@ -286,9 +287,9 @@ describe("HistoryStrip", () => {
     vi.setSystemTime(new Date("2026-10-20T23:59:30Z"));
     wrap(<HistoryStrip productName="API Platform" days={d} incidents={new Map()} />);
     expect(
-      screen.getByRole("listbox", { name: "90-day history for API Platform, UTC days" }),
+      screen.getByRole("grid", { name: "90-day history for API Platform, UTC days" }),
     ).toBeInTheDocument();
-    expect(screen.getAllByRole("option")[89]).toHaveAccessibleName(
+    expect(screen.getAllByRole("gridcell")[89]).toHaveAccessibleName(
       `${formatHistoryDate("2026-10-20")} (UTC): No incidents`,
     );
     expect(screen.getByText(formatHistoryDate("2026-07-23"))).toBeInTheDocument();
@@ -315,7 +316,7 @@ describe("HistoryStrip", () => {
 
   it("renders nothing without history", () => {
     wrap(<HistoryStrip productName="X" days={[]} incidents={new Map()} />);
-    expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
+    expect(screen.queryByRole("grid")).not.toBeInTheDocument();
   });
 });
 
@@ -460,7 +461,7 @@ describe("RegionDetailPanel without components", () => {
       </ThemeRoot>,
     );
     expect(screen.queryByText("No component data is available right now.")).not.toBeInTheDocument();
-    expect(screen.getByText("Uptime (outages only, updated daily)")).toBeInTheDocument();
+    expect(screen.getByText("Uptime")).toBeInTheDocument();
   });
 });
 
@@ -887,6 +888,29 @@ describe("StatusTable", () => {
     expect(within(row).getByRole("cell")).toHaveAttribute("colspan", "2");
   });
 
+  it("says under the name when an incident that names no region puts the product above every place", () => {
+    // statusd: product status outage from an active incident, every location operational.
+    wrap(<StatusTable products={[locatedProduct({ status: "outage" }), usOnly]} />);
+    const [first, second] = screen.getAllByRole("rowheader");
+    expect(within(first!).getByText("Service outage, region not stated")).toBeInTheDocument();
+    expect(within(second!).queryByText(/region not stated/)).toBeNull();
+  });
+
+  it("adds no line when a place already carries the product's status", () => {
+    const placed = locatedProduct({
+      status: "outage",
+      locations: [us, { ...eu, status: "outage" }],
+      regions: [
+        part("US control plane"),
+        part("US data plane"),
+        part("EU control plane"),
+        part("EU data plane", "outage"),
+      ],
+    });
+    wrap(<StatusTable products={[placed]} />);
+    expect(screen.queryByText(/region not stated/)).toBeNull();
+  });
+
   it("opens the product from anywhere on its row", async () => {
     wrap(<StatusTable products={[locatedProduct()]} />);
     await userEvent.click(screen.getAllByText("Operational")[0]!);
@@ -900,16 +924,16 @@ describe("StatusTable", () => {
 });
 
 describe("small pieces", () => {
-  it("labels uptime figures in full, or briefly under a region that already says it", () => {
-    const { rerender } = wrap(<UptimeList uptime={[{ window: "7d", percent: 100 }]} label="EU" />);
-    expect(screen.getByText("Uptime (outages only, updated daily)")).toBeInTheDocument();
-    expect(screen.getByRole("definition")).toHaveTextContent("100%");
-    rerender(
-      <ThemeRoot>
-        <UptimeList uptime={[{ window: "7d", percent: 100 }]} label="Gateway" short />
-      </ThemeRoot>,
-    );
+  it("labels uptime figures; the product page says once what they count", () => {
+    wrap(<UptimeList uptime={[{ window: "7d", percent: 100 }]} label="Uptime for EU" />);
     expect(screen.getByText("Uptime")).toBeInTheDocument();
+    // The group carries the region's name; a window code is read in words.
+    expect(screen.getByRole("group", { name: "Uptime for EU" })).toBeInTheDocument();
+    expect(screen.getByRole("term")).toHaveTextContent("7 days");
+    expect(screen.getByRole("definition")).toHaveTextContent("100%");
+    expect(windowName("12mo")).toBe("12 months");
+    expect(windowName("1d")).toBe("1 day");
+    expect(windowName("ytd")).toBe("ytd");
   });
 
   it("formats uptime percentages", () => {

@@ -24,7 +24,7 @@ import { productHeadline, summaryHeadline } from "./headline";
 import {
   capitalise,
   count,
-  daysWithIncidents,
+  incidentCount,
   listNames,
   othersOperational,
   noRegionIn,
@@ -360,7 +360,12 @@ describe("status wording", () => {
     expect(listNames(["A", "B", "C"])).toBe("A, B and C");
     expect(count(1, "day")).toBe("1 day");
     expect(count(2, "day")).toBe("2 days");
-    expect(daysWithIncidents(1)).toBe("1 day with incidents");
+    expect(incidentCount(0)).toBe("No incidents");
+    expect(incidentCount(1)).toBe("1 incident");
+    expect(incidentCount(2, 1)).toBe("2 incidents and 1 maintenance window");
+    expect(incidentCount(0, 2)).toBe("2 maintenance windows");
+    expect(incidentCount(0, 0, 30)).toBe("No incidents in 30 days");
+    expect(incidentCount(1, 0, 60)).toBe("1 incident in 60 days");
     expect(noRegionIn("EU")).toBe("No EU region");
     expect(regionsUnavailable(2, 5)).toBe("2 of 5 regions unavailable");
     expect(othersOperational(1)).toBe("The other product is operational.");

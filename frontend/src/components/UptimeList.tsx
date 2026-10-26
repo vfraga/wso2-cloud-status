@@ -18,7 +18,7 @@
 
 import { Stack, Typography } from "@wso2/oxygen-ui";
 import type { Uptime } from "../api/types";
-import { UPTIME_LABEL, UPTIME_SHORT_LABEL } from "../lib/status";
+import { UPTIME_LABEL } from "../lib/status";
 
 /**
  * Truncates to three decimals, never rounds, so 99.9996 reads "99.999%" and
@@ -42,35 +42,42 @@ export function formatPercent(percent: number): string {
   return whole + suffix + "%";
 }
 
+/** "7 days" for "7d", "12 months" for "12mo", for a screen reader; anything else as sent. */
+export function windowName(code: string): string {
+  const match = /^(\d+)(d|mo)$/.exec(code);
+  if (match === null) return code;
+  const n = Number(match[1]);
+  return `${String(n)} ${match[2] === "d" ? "day" : "month"}${n === 1 ? "" : "s"}`;
+}
+
 /**
- * "Uptime (outages only, updated daily)  7d 100%  30d 100%" with the figures
- * as a description list. The label says what the figure counts: a 100% next
- * to "Degraded performance" is not a contradiction. Components use the short
- * label; the full one sits on their region just above them.
+ * "Uptime  7d 100%  30d 100%" with the figures as a description list. What
+ * the figures count is said once, under the product's Regions (UPTIME_NOTE):
+ * a 100% next to "Degraded performance" is not a contradiction.
  */
 export function UptimeList({
   uptime,
   label,
-  short = false,
 }: {
   uptime: readonly Uptime[];
   /** Accessible name of the list. */
   label: string;
-  short?: boolean;
 }) {
   if (uptime.length === 0) return null;
+  // The group carries the name: a name on the dl itself is not read.
   return (
     <Stack
+      role="group"
+      aria-label={label}
       direction="row"
       useFlexGap
       sx={{ flexWrap: "wrap", alignItems: "baseline", columnGap: 2, rowGap: 0.25 }}
     >
-      <Typography variant="caption" sx={{ color: "var(--cs-muted)" }}>
-        {short ? UPTIME_SHORT_LABEL : UPTIME_LABEL}
+      <Typography variant="caption" aria-hidden="true" sx={{ color: "var(--cs-muted)" }}>
+        {UPTIME_LABEL}
       </Typography>
       <Stack
         component="dl"
-        aria-label={label}
         direction="row"
         useFlexGap
         sx={{ m: 0, flexWrap: "wrap", columnGap: 2, rowGap: 0.25 }}
@@ -78,7 +85,8 @@ export function UptimeList({
         {uptime.map((u) => (
           <Stack key={u.window} direction="row" spacing={0.75} sx={{ alignItems: "baseline" }}>
             <Typography component="dt" variant="caption" sx={{ color: "var(--cs-muted)" }}>
-              {u.window}
+              <span aria-hidden="true">{u.window}</span>
+              <span className="cs-visually-hidden">{windowName(u.window)}</span>
             </Typography>
             <Typography component="dd" variant="body2" sx={{ m: 0, fontWeight: 600 }}>
               {formatPercent(u.percent)}

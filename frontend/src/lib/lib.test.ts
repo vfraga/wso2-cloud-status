@@ -225,19 +225,21 @@ describe("incidents", () => {
 describe("history text", () => {
   it("summarises the strip", () => {
     const d = days(90, {
-      3: { status: "degraded" },
-      4: { status: "outage" },
+      3: { status: "degraded", incidentIds: ["a"] },
+      4: { status: "outage", incidentIds: ["a", "b"] },
       5: { status: "unknown" },
     });
-    expect(summariseHistory(d)).toEqual({
-      withIncidents: 2,
-      withMaintenance: false,
-      withoutData: 1,
-    });
-    expect(historyText(d)).toBe("90 days: 2 days with incidents, 1 day without data");
-    expect(historyText(days(90, { 0: { status: "maintenance" } }))).toBe(
-      // A maintenance-only day is not called an incident.
-      "90 days: 1 day with incidents or maintenance, 0 days without data",
+    const byId = new Map([
+      ["a", incident({ id: "a" })],
+      ["b", incident({ id: "b", impact: "outage" })],
+    ]);
+    // "a" crosses UTC midnight: two days, one incident, as the list shows it.
+    expect(summariseHistory(d, byId)).toEqual({ incidents: 2, maintenance: 0, withoutData: 1 });
+    expect(historyText(d, byId)).toBe("90 days: 2 incidents, 1 day without data");
+    const m = new Map([["m", incident({ id: "m", impact: "maintenance" })]]);
+    expect(historyText(days(90, { 0: { status: "maintenance", incidentIds: ["m"] } }), m)).toBe(
+      // Maintenance is not called an incident.
+      "90 days: 1 maintenance window, 0 days without data",
     );
   });
 
@@ -256,6 +258,17 @@ describe("history text", () => {
     );
     expect(detail.heading).toBe(`${formatHistoryDate("2026-10-20")} (UTC)`);
     expect(formatHistoryDate("2026-10-20")).toMatch(/20/);
+  });
+
+  it("says when today is worse than any incident filed for it", () => {
+    const now = new Date("2026-10-20T12:00:00Z");
+    const today = days(1, { 0: { status: "outage", incidentIds: ["inc-1"] } })[0]!;
+    const filed = new Map([["inc-1", incident()]]);
+    expect(dayDetail(today, filed, now).note).toBe("Service outage now; no incident reported yet.");
+    // An outage incident accounts for it; so would any day but today.
+    const outage = new Map([["inc-1", incident({ impact: "outage" })]]);
+    expect(dayDetail(today, outage, now).note).toBeNull();
+    expect(dayDetail(today, filed, new Date("2026-10-21T01:00:00Z")).note).toBeNull();
   });
 
   it("times a day from its incidents on the page's clock, so the strip and the list agree", () => {

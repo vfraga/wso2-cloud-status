@@ -42,7 +42,7 @@ import {
   type PartlyShown,
 } from "../lib/dataNotes";
 import { productHeadline, type Headline } from "../lib/headline";
-import { isOngoing } from "../lib/incidents";
+import { byStartDay, isOngoing } from "../lib/incidents";
 import { regionRows } from "../lib/regions";
 import { Link } from "../lib/router";
 import {
@@ -50,12 +50,16 @@ import {
   NO_INCIDENTS,
   NO_OTHER_INCIDENTS,
   PRODUCT_STATUS_UNAVAILABLE,
+  UPTIME_NOTE,
+  olderIncidents,
+  recentSpan,
 } from "../lib/status";
 import { earliest } from "../lib/time";
 import { CARD_RADIUS } from "../theme/shape";
 import { NotFoundPage } from "./NotFoundPage";
 
 const sectionHeading = { fontSize: "1.25rem", fontWeight: 600 } as const;
+const sectionNote = { color: "var(--cs-muted)", mt: 0.5 } as const;
 const NO_DATA: Headline = { status: "unknown", label: BANNER_LABEL.unknown };
 
 /** For a stale feed that never answered: whether another source's data of that kind is shown. */
@@ -67,7 +71,11 @@ function partlyShown(product: ProductDetail): PartlyShown {
   return { incidents: product.incidents.length > 0, uptime };
 }
 
-/** The resolved incidents; the ongoing ones are listed at the top of the page. */
+/**
+ * The resolved incidents of the history's days (the API lists no older
+ * ones), under the reader's local day they started; the ongoing ones are
+ * listed at the top of the page.
+ */
 function RecentIncidents({ product, now }: { product: ProductDetail; now: Date }) {
   const missing = missingIncidents([product], product.incidents);
   const resolved = product.incidents.filter((i) => !isOngoing(i));
@@ -77,27 +85,40 @@ function RecentIncidents({ product, now }: { product: ProductDetail; now: Date }
       <Typography id="product-incidents" component="h2" sx={sectionHeading}>
         Recent incidents
       </Typography>
+      <Typography variant="body2" sx={sectionNote}>
+        {recentSpan(product.history.length)}{" "}
+        <ExternalAnchor href={product.pageUrl} label={olderIncidents(product.name)} inline>
+          {olderIncidents(product.name)}
+        </ExternalAnchor>
+      </Typography>
       <IncidentsUnavailable missing={missing} />
       {/* "No incidents reported." only when the incident data is complete. */}
       {resolved.length === 0 && missing.length === 0 && (
-        <Typography variant="body2" sx={{ color: "var(--cs-muted)", mt: 1 }}>
+        <Typography variant="body2" sx={{ color: "var(--cs-muted)", mt: 2 }}>
           {ongoing ? NO_OTHER_INCIDENTS : NO_INCIDENTS}
         </Typography>
       )}
-      {resolved.length > 0 && (
-        <Stack component="ul" sx={{ m: 0, p: 0 }}>
-          {resolved.map((incident) => (
-            <IncidentItem
-              key={incident.id}
-              incident={incident}
-              productName={product.name}
-              now={now}
-              withDate
-              titleAs="h3"
-            />
-          ))}
-        </Stack>
-      )}
+      {byStartDay(resolved).map((day) => (
+        <Box key={day.key} sx={{ mt: 2.5 }}>
+          <Typography
+            component="h3"
+            sx={{
+              fontSize: "0.875rem",
+              fontWeight: 600,
+              color: "var(--cs-muted)",
+              pb: 0.75,
+              borderBottom: "1px solid var(--cs-border)",
+            }}
+          >
+            {day.label}
+          </Typography>
+          <Stack component="ul" sx={{ m: 0, p: 0 }}>
+            {day.incidents.map((incident) => (
+              <IncidentItem key={incident.id} incident={incident} now={now} titleAs="h4" />
+            ))}
+          </Stack>
+        </Box>
+      ))}
     </Box>
   );
 }
@@ -116,6 +137,7 @@ function ProductBody({
     [product],
   );
   const self = useMemo(() => new Map([[product.id, product]]), [product]);
+  const partly = partlyShown(product);
   return (
     <>
       {/* The banner's h1 names the product; the link out stays below the status. */}
@@ -123,7 +145,7 @@ function ProductBody({
         {product.description !== undefined && (
           <Typography sx={{ color: "var(--cs-muted)" }}>{product.description}</Typography>
         )}
-        <ProductNotes product={product} partly={partlyShown(product)} />
+        <ProductNotes product={product} partly={partly} />
         <Box sx={{ mt: 1.5 }}>
           <ExternalAnchor
             href={product.pageUrl}
@@ -164,6 +186,11 @@ function ProductBody({
         <Typography id="regions" component="h2" sx={sectionHeading}>
           Regions
         </Typography>
+        {partly.uptime && (
+          <Typography variant="body2" sx={sectionNote}>
+            {UPTIME_NOTE}
+          </Typography>
+        )}
         <Box component="ul" sx={{ m: 0, mt: 1, p: 0 }}>
           {regionRows(product.locations, product.regionDetails).map((row) =>
             row.kind === "location" ? (

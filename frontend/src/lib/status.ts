@@ -89,8 +89,10 @@ export function partNote(name: string, status: Status, place: Status): string {
 export const CHECKING_LABEL = "Checking status";
 /** Banner headline when every known status is operational but some data is missing. */
 export const PARTIAL_HEADLINE = "Some status data is unavailable";
-export const UPTIME_LABEL = "Uptime (outages only, updated daily)";
-export const UPTIME_SHORT_LABEL = "Uptime";
+export const UPTIME_LABEL = "Uptime";
+/** Under a product's Regions: what CSM's figures count (answered question 9b). */
+export const UPTIME_NOTE =
+  "Uptime counts service outages only, as WSO2 measures them daily. A region's figure averages its services, so an outage of one service lowers it by that service's share.";
 export const COMPONENTS_UNAVAILABLE = "some component data is unavailable";
 
 /** The text with its first letter in upper case, for a fragment that starts a line. */
@@ -127,9 +129,19 @@ export function othersOperational(n: number): string {
     : `The other ${String(n)} products are operational.`;
 }
 
-/** "2 days with incidents"; "or maintenance" when a day counted had only maintenance. */
-export function daysWithIncidents(n: number, maintenance = false): string {
-  return `${count(n, "day")} with incidents${maintenance ? " or maintenance" : ""}`;
+/**
+ * The incidents of the strip's days, each counted once however many days it
+ * touches: "1 incident", "2 incidents and 1 maintenance window", "No
+ * incidents". `days` names the span when the strip shows fewer days than the
+ * incident list covers: "No incidents in 30 days".
+ */
+export function incidentCount(incidents: number, maintenance = 0, days?: number): string {
+  const parts = [
+    ...(incidents > 0 ? [count(incidents, "incident")] : []),
+    ...(maintenance > 0 ? [count(maintenance, "maintenance window")] : []),
+  ];
+  const text = parts.length === 0 ? "No incidents" : parts.join(" and ");
+  return days === undefined ? text : `${text} in ${count(days, "day")}`;
 }
 
 export function incidentInfoUnavailable(name: string): string {
@@ -149,6 +161,19 @@ export function incidentInfoIncompleteAfter(name: string, when: string): string 
 /** The banner's line for such a feed, in the product page's words; `time` is a UTC time. */
 export function incidentsNotUpdated(name: string, time: string): string {
   return `Incident information for ${name} has not been updated since ${time}.`;
+}
+
+/** Today's bar when a region's current status is worse than any incident filed today. */
+export function notYetReported(label: string): string {
+  return `${label} now; no incident reported yet.`;
+}
+
+/**
+ * Under a product's name on the home page when an active incident names no
+ * region: "Service outage, region not stated".
+ */
+export function regionNotStated(label: string): string {
+  return `${label}, region not stated`;
 }
 
 /** Tooltip line on the history day that contains the last successful fetch. */
@@ -215,6 +240,14 @@ export function statusChanged(label: string): string {
   return `Status changed: ${label}.`;
 }
 
+/** What a product page's Recent incidents covers: the days of its history. */
+export function recentSpan(days: number): string {
+  return `The last ${count(days, "day")}.`;
+}
+export function olderIncidents(name: string): string {
+  return `Older incidents on the ${name} status page`;
+}
+
 /** A product page's Recent incidents with complete data and nothing to list. */
 export const NO_INCIDENTS = "No incidents reported.";
 /** The same when its only incidents are ongoing, listed under Active incidents. */
@@ -243,8 +276,8 @@ export const RENDER_FAILED = "Something went wrong showing this page";
 export const RENDER_FAILED_DETAIL =
   "This page will try again on its own. Meanwhile, check each product's own status page:";
 
-export const FOOTER_TIMES =
-  "Times are shown in your local time zone unless marked UTC. History bars are UTC calendar days.";
+/** Every page; a product page's history legend says its bars are UTC days. */
+export const FOOTER_TIMES = "Times are shown in your local time zone unless marked UTC.";
 
 /**
  * The banner's notice when the page's own data may be out of date: a lead,

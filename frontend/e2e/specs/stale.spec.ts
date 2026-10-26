@@ -80,7 +80,7 @@ test.describe("a source that never answers", () => {
     await expect(page.getByText("Incident information unavailable", { exact: true })).toBeVisible();
     await expect(page.getByText("Uptime unavailable", { exact: true })).toBeVisible();
     await expect(
-      page.getByRole("region", { name: "History" }).getByRole("option").first(),
+      page.getByRole("region", { name: "History" }).getByRole("gridcell").first(),
     ).toHaveAccessibleName(/No data/);
     await page.screenshot({
       path: shotPath("e2e-stale-product"),

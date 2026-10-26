@@ -317,8 +317,8 @@ describe("an incident feed that stopped after answering", () => {
     );
     render(<App />);
     await screen.findByRole("heading", { level: 1, name: "Moesif: All systems operational" });
-    const strip = screen.getByRole("listbox");
-    const options = within(strip).getAllByRole("option");
+    const strip = screen.getByRole("grid");
+    const options = within(strip).getAllByRole("gridcell");
     expect(options.at(-1)).toHaveAccessibleName(
       new RegExp(`Incident information complete only until ${formatUtcClock(stoppedAt())}\\.$`),
     );
@@ -397,7 +397,7 @@ describe("legend and footer", () => {
     expect(
       screen.getByText("No data: information for this day is unavailable"),
     ).toBeInTheDocument();
-    expect(screen.getByText(/History bars are UTC calendar days\./)).toBeInTheDocument();
+    expect(screen.getByText("Each bar is one UTC day.")).toBeInTheDocument();
   });
 });
 

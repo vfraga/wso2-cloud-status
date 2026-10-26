@@ -134,12 +134,12 @@ test.describe("outage, degraded and maintenance components in one place, and an 
     });
     const page = await context.newPage();
     await readyProduct(page, "api-platform", "API Platform");
-    const strip = page.getByRole("region", { name: "History" }).getByRole("listbox");
+    const strip = page.getByRole("region", { name: "History" }).getByRole("grid");
     // The strip's bottom edge about 70 px above the bottom of the screen.
     await strip.evaluate((el) => {
       window.scrollBy(0, el.getBoundingClientRect().bottom - (window.innerHeight - 70));
     });
-    await strip.getByRole("option").last().tap();
+    await strip.getByRole("gridcell").last().tap();
     const popper = page.locator(".MuiPopper-root");
     await expect(popper).toHaveAttribute("data-popper-placement", "bottom");
     // Scrolled into view, and clear of the strip.
@@ -196,11 +196,30 @@ test.describe("outage, degraded and maintenance components in one place, and an 
     ).toHaveCount(0);
   });
 
+  test("the strip counts the incidents the page lists, each once", async ({ page }) => {
+    await readyProduct(page, "api-platform", "API Platform");
+    const toggle = page
+      .getByRole("region", { name: "History" })
+      .getByRole("button", { name: / for API Platform$/ });
+    // "2 incidents and 1 maintenance window": every record listed once.
+    const counted = ((await toggle.innerText()).match(/\d+/g) ?? [])
+      .map(Number)
+      .reduce((a, b) => a + b, 0);
+    // Ongoing incidents are listed under Active incidents, the others under Recent incidents.
+    const active = page.getByRole("region", { name: "Active incidents" });
+    const recent = page.getByRole("region", { name: "Recent incidents" });
+    const listed =
+      (await active.getByRole("heading", { level: 3 }).count()) +
+      (await recent.getByRole("heading", { level: 4 }).count());
+    expect(counted).toBeGreaterThan(0);
+    expect(listed).toBe(counted);
+  });
+
   test("history days with incidents are captioned and listed by a control", async ({ page }) => {
     await readyProduct(page, "api-platform", "API Platform");
     const api = page.getByRole("region", { name: "History" });
     const toggle = api.getByRole("button", {
-      name: /days? with incidents( or maintenance)? for API Platform$/,
+      name: /^\d+ (incidents?|maintenance).* for API Platform$/,
     });
     await toggle.click();
     await expect(toggle).toHaveAttribute("aria-expanded", "true");
@@ -209,9 +228,9 @@ test.describe("outage, degraded and maintenance components in one place, and an 
       "Elevated latency for API proxy invocation in the EU data plane",
     );
     // Problem days stand out by height as well as colour.
-    const strip = api.getByRole("listbox");
-    const marked = strip.getByRole("option", { name: /Incidents:/ }).first();
-    const quiet = strip.getByRole("option", { name: /: No incidents$/ }).first();
+    const strip = api.getByRole("grid");
+    const marked = strip.getByRole("gridcell", { name: /Incidents:/ }).first();
+    const quiet = strip.getByRole("gridcell", { name: /: No incidents$/ }).first();
     const size = (l: Locator) => l.evaluate((el) => getComputedStyle(el).backgroundSize);
     expect(await size(quiet)).toBe("100% 60%");
     expect(await size(marked)).not.toBe("100% 60%");
@@ -225,7 +244,7 @@ test.describe("outage, degraded and maintenance components in one place, and an 
     await expectNoSeriousViolationsOnPhone(browser, async (page) => {
       await readyProduct(page, "api-platform", "API Platform");
       await page
-        .getByRole("button", { name: /days? with incidents( or maintenance)? for API Platform$/ })
+        .getByRole("button", { name: /^\d+ (incidents?|maintenance).* for API Platform$/ })
         .click();
     });
   });

@@ -27,18 +27,21 @@ import {
   PRODUCT_COLUMN,
   STATUS_COLUMN,
   STATUS_LABEL,
+  STATUS_RANK,
   STATUS_TABLE_CAPTION,
+  isProblem,
   noRegionIn,
   partNote,
+  regionNotStated,
 } from "../lib/status";
 import { StatusLabel } from "./StatusIcon";
 
 /*
- * A table from sm up. On a phone each row is a grid instead: the product's
- * name across the top, then its places side by side, each with its name in
- * front ("US", "EU"). The column headers are then visually hidden but still
- * read. CSS that changes a table's display can drop its semantics in some
- * browsers, so every element also states its role.
+ * A table from sm up. On a phone each row wraps instead: the product's name
+ * across the top, then its places side by side while they fit, each with
+ * its name in front ("US", "EU"). The column headers are then visually
+ * hidden but still read. CSS that changes a table's display can drop its
+ * semantics in some browsers, so every element also states its role.
  */
 
 /** Below MUI's sm breakpoint. */
@@ -55,7 +58,8 @@ const hiddenOnPhone = {
 } as const;
 const cellSx = {
   display: { xs: "block", sm: "table-cell" },
-  px: { xs: 2, sm: 3 },
+  // 12 px on a phone keeps two places side by side from 360 px.
+  px: { xs: 1.5, sm: 3 },
   py: 2,
   textAlign: "left",
   verticalAlign: "top",
@@ -78,7 +82,11 @@ const AFTER_ICON = "22px";
 function StatusCell({ product, place }: { product: ProductSummary; place: string }) {
   const at = placeStatus(product, place);
   return (
-    <Box component="td" role="cell" sx={{ ...cellSx, pt: { xs: 0, sm: 2 } }}>
+    <Box
+      component="td"
+      role="cell"
+      sx={{ ...cellSx, pt: { xs: 0, sm: 2 }, [PHONE]: { flex: "1 1 0" } }}
+    >
       <Box sx={{ display: "flex", alignItems: "flex-start", gap: 1 }}>
         {/* A screen reader takes the place from the column header; on a phone, where the header is hidden, the eye needs it here. */}
         <Typography
@@ -142,6 +150,15 @@ function ProductStatusRow({
   };
   // A product with no regions at all is not "not in" every place: its own status spans them.
   const own = places.length === 0 || productRows(product).length === 0;
+  // An active incident that names no region raises the product above every
+  // place; the row says so under the name, or it would read all clear.
+  const unplaced =
+    !own &&
+    isProblem(product.status) &&
+    places.every(
+      (place) =>
+        STATUS_RANK[product.status] > STATUS_RANK[placeStatus(product, place)?.status ?? "unknown"],
+    );
   const columns = Math.max(places.length, 1);
   return (
     <Box
@@ -149,8 +166,10 @@ function ProductStatusRow({
       role="row"
       onClick={open}
       sx={{
-        display: { xs: "grid", sm: "table-row" },
-        gridTemplateColumns: `repeat(${String(columns)}, minmax(0, 1fr))`,
+        // Places side by side while they fit, one under the other when the
+        // screen is narrow or text is spaced out (WCAG 1.4.10, 1.4.12).
+        display: { xs: "flex", sm: "table-row" },
+        flexWrap: "wrap",
         borderTop: "1px solid var(--cs-border)",
         // On a phone the header row is hidden, so the first row needs no line above it.
         [PHONE]: { "&:first-of-type": { borderTop: 0 } },
@@ -162,7 +181,7 @@ function ProductStatusRow({
         component="th"
         scope="row"
         role="rowheader"
-        sx={{ ...cellSx, gridColumn: "1 / -1", pb: { xs: 1, sm: 2 } }}
+        sx={{ ...cellSx, flexBasis: "100%", pb: { xs: 1, sm: 2 } }}
       >
         <Typography component="span" sx={{ ...nameSx, display: "block" }}>
           <Link
@@ -183,13 +202,20 @@ function ProductStatusRow({
             {product.description}
           </Typography>
         )}
+        {unplaced && (
+          <Box sx={{ mt: 0.5 }}>
+            <StatusLabel status={product.status}>
+              {regionNotStated(STATUS_LABEL[product.status])}
+            </StatusLabel>
+          </Box>
+        )}
       </Box>
       {own ? (
         <Box
           component="td"
           role="cell"
           colSpan={columns}
-          sx={{ ...cellSx, gridColumn: "1 / -1", pt: { xs: 0, sm: 2 } }}
+          sx={{ ...cellSx, flexBasis: "100%", pt: { xs: 0, sm: 2 } }}
         >
           <StatusLabel status={product.status}>{STATUS_LABEL[product.status]}</StatusLabel>
         </Box>

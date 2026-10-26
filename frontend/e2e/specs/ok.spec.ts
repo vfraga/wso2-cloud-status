@@ -35,7 +35,7 @@ const RECENT_INCIDENT = "Sign-in errors in the EU region";
 /** Opens a product's page and returns its history strip. */
 async function stripOf(page: Page, id: string, name: string) {
   await readyProduct(page, id, name);
-  return page.getByRole("region", { name: "History" }).getByRole("listbox");
+  return page.getByRole("region", { name: "History" }).getByRole("grid");
 }
 
 test.describe("all operational", () => {
@@ -58,7 +58,7 @@ test.describe("all operational", () => {
     await expect(cells.filter({ hasText: "Operational" })).toHaveCount(10);
     await expect(cells.filter({ hasText: "No EU region" })).toHaveCount(2);
     // The detail is on each product's page.
-    await expect(page.getByRole("listbox")).toHaveCount(0);
+    await expect(page.getByRole("grid")).toHaveCount(0);
     await expect(page.getByRole("heading", { name: "Past incidents" })).toHaveCount(0);
     await expect(page.getByText(/^Status checked /).first()).toBeVisible();
     expect(errors).toEqual([]);
@@ -78,28 +78,26 @@ test.describe("all operational", () => {
 
   test("history strip is one tab stop and the tooltip follows keyboard focus", async ({ page }) => {
     const strip = await stripOf(page, "agent-platform", "Agent Platform");
-    await expect(strip.getByRole("option")).toHaveCount(90);
+    await expect(strip.getByRole("gridcell")).toHaveCount(90);
     await page.getByRole("link", { name: "Open the Agent Platform status page" }).focus();
     await page.keyboard.press("Tab");
-    const today = strip.getByRole("option").last();
+    const today = strip.getByRole("gridcell").last();
     await expect(today).toBeFocused();
     await expect(page.locator(".MuiPopper-root")).toContainText("No incidents");
     await expect(page.locator(".MuiPopper-root")).toContainText("(UTC)");
     await expect(strip).toHaveAccessibleName("90-day history for Agent Platform, UTC days");
     await page.keyboard.press("ArrowLeft");
-    await expect(strip.getByRole("option").nth(88)).toBeFocused();
+    await expect(strip.getByRole("gridcell").nth(88)).toBeFocused();
     await expect(page.locator(".MuiPopper-root")).toBeVisible();
     await page.keyboard.press("Tab");
-    await expect(strip.getByRole("option").nth(88)).not.toBeFocused();
+    await expect(strip.getByRole("gridcell").nth(88)).not.toBeFocused();
     await expect(page.locator(".MuiPopper-root")).toHaveCount(0);
-    await expect(
-      page.getByText(/^90 days: \d+ days? with incidents, \d+ days? without data$/),
-    ).toBeAttached();
+    await expect(page.getByText(/^90 days: .+, \d+ days? without data$/)).toBeAttached();
   });
 
   test("tooltip names the incidents of a day that had one", async ({ page }) => {
     const strip = await stripOf(page, "identity-platform", "Identity Platform");
-    const marked = strip.getByRole("option", { name: new RegExp(RECENT_INCIDENT) }).first();
+    const marked = strip.getByRole("gridcell", { name: new RegExp(RECENT_INCIDENT) }).first();
     await marked.hover();
     await expect(page.locator(".MuiPopper-root")).toContainText("Service outage");
     await expect(page.locator(".MuiPopper-root")).toContainText(RECENT_INCIDENT);
@@ -147,7 +145,7 @@ test.describe("all operational", () => {
     await readyProduct(page, "agent-platform", "Agent Platform");
     expect(await overflow()).toBeLessThanOrEqual(0);
     const first = page.getByRole("region", { name: "History" });
-    const options = first.getByRole("listbox").getByRole("option");
+    const options = first.getByRole("grid").getByRole("gridcell");
     await expect(options).toHaveCount(30);
     // Captions: the first cell's UTC date on the left, "Today" on the right.
     const firstLabel = (await options.first().getAttribute("aria-label")) ?? "";
@@ -155,14 +153,14 @@ test.describe("all operational", () => {
     const firstDate = firstLabel.slice(0, firstLabel.indexOf(" (UTC)"));
     await expect(first.getByText(firstDate, { exact: true })).toBeVisible();
     await expect(first.getByText("Today", { exact: true })).toBeVisible();
-    await expect(first.getByText(/^30 days: \d+ days? with incidents/)).toBeAttached();
-    const cell = await first.getByRole("listbox").getByRole("option").first().boundingBox();
+    await expect(first.getByText(/^30 days: .+, \d+ days? without data$/)).toBeAttached();
+    const cell = await first.getByRole("grid").getByRole("gridcell").first().boundingBox();
     expect(cell?.width).toBeGreaterThanOrEqual(6);
   });
 
   test("shows 60 days at 700 px and 90 days at 900 px", async ({ page }) => {
     await page.setViewportSize({ width: 700, height: 800 });
-    const options = (await stripOf(page, "agent-platform", "Agent Platform")).getByRole("option");
+    const options = (await stripOf(page, "agent-platform", "Agent Platform")).getByRole("gridcell");
     await expect(options).toHaveCount(60);
     await page.setViewportSize({ width: 900, height: 800 });
     await expect(options).toHaveCount(90);
@@ -193,7 +191,7 @@ test.describe("all operational", () => {
 
   test("the history tooltip stays open while the pointer moves onto it", async ({ page }) => {
     const strip = await stripOf(page, "agent-platform", "Agent Platform");
-    const today = strip.getByRole("option").last();
+    const today = strip.getByRole("gridcell").last();
     await today.hover();
     const tooltip = page.locator(".MuiPopper-root");
     await expect(tooltip).toBeVisible();
@@ -217,7 +215,9 @@ test.describe("all operational", () => {
   test("Escape closes a tooltip opened by hover, with focus elsewhere (WCAG 1.4.13)", async ({
     page,
   }) => {
-    const cell = (await stripOf(page, "api-platform", "API Platform")).getByRole("option").nth(-3);
+    const cell = (await stripOf(page, "api-platform", "API Platform"))
+      .getByRole("gridcell")
+      .nth(-3);
     await cell.hover();
     const tooltip = page.locator(".MuiPopper-root");
     await expect(tooltip).toBeVisible();
@@ -235,7 +235,7 @@ test.describe("all operational", () => {
     await strip.evaluate((el) => {
       el.scrollIntoView({ block: "start" });
     });
-    await strip.getByRole("option").last().hover();
+    await strip.getByRole("gridcell").last().hover();
     const box = await strip.boundingBox();
     // Polled: the popper is placed a frame after it opens.
     await expect(async () => {
@@ -252,7 +252,7 @@ test.describe("all operational", () => {
     const strip = await stripOf(page, "identity-platform", "Identity Platform");
     const paint = (name: RegExp) =>
       strip
-        .getByRole("option", { name })
+        .getByRole("gridcell", { name })
         .first()
         .evaluate((el) => {
           const cs = getComputedStyle(el);
@@ -268,6 +268,26 @@ test.describe("all operational", () => {
     await context.close();
   });
 
+  test("the products table reflows at 320 px and under WCAG 1.4.12 text spacing", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 320, height: 800 });
+    await ready(page);
+    const clipped = () =>
+      page.evaluate(
+        () =>
+          [...document.querySelectorAll('section[aria-label="Products"] tbody td')].filter(
+            (td) => td.scrollWidth > td.clientWidth,
+          ).length,
+      );
+    expect(await clipped()).toBe(0);
+    await page.addStyleTag({
+      content:
+        "* { line-height: 1.5 !important; letter-spacing: 0.12em !important; word-spacing: 0.16em !important; } p { margin-bottom: 2em !important; }",
+    });
+    expect(await clipped()).toBe(0);
+  });
+
   test("the strip captions wrap under WCAG 1.4.12 text spacing at 320 px", async ({ page }) => {
     await page.setViewportSize({ width: 320, height: 800 });
     await readyProduct(page, "api-platform", "API Platform");
@@ -276,7 +296,7 @@ test.describe("all operational", () => {
         "* { line-height: 1.5 !important; letter-spacing: 0.12em !important; word-spacing: 0.16em !important; } p { margin-bottom: 2em !important; }",
     });
     const overflow = await page.evaluate(() => {
-      const captions = [...document.querySelectorAll('[role="listbox"]')].map((strip) => {
+      const captions = [...document.querySelectorAll('[role="grid"]')].map((strip) => {
         const row = strip.parentElement?.querySelector(":scope > .MuiStack-root");
         return row ? row.scrollWidth - row.clientWidth : 0;
       });
@@ -289,7 +309,7 @@ test.describe("all operational", () => {
     // A wrapped end caption ("Today") stays at the right, under the end of the strip.
     const misplaced = await page.evaluate(
       () =>
-        [...document.querySelectorAll('[role="listbox"]')].filter((strip) => {
+        [...document.querySelectorAll('[role="grid"]')].filter((strip) => {
           const end = strip.parentElement?.querySelector(":scope > .MuiStack-root > :last-child");
           const box = strip.getBoundingClientRect();
           return (
@@ -302,9 +322,7 @@ test.describe("all operational", () => {
     expect(misplaced).toBe(0);
   });
 
-  test("a legend says what the bars mean, and the footer that days are UTC days", async ({
-    page,
-  }) => {
+  test("a legend says what the bars mean, and that days are UTC days", async ({ page }) => {
     await readyProduct(page, "api-platform", "API Platform");
     const legend = page.getByText("Each bar is one UTC day.").locator("..");
     const names = [
@@ -354,7 +372,8 @@ test.describe("all operational", () => {
     await expect(page.getByRole("tooltip")).toHaveText(
       "Planned maintenance that day, and no outage or degraded performance.",
     );
-    await expect(page.locator("footer")).toContainText("History bars are UTC calendar days.");
+    // The footer speaks for every page; only a product page has bars.
+    await expect(page.locator("footer")).not.toContainText("History bars");
   });
 
   test("on a phone a tapped legend description stays open until the reader taps elsewhere", async ({
@@ -473,7 +492,7 @@ test.describe("all operational", () => {
       "API Platform: All systems operational",
     );
     await expect(page).toHaveTitle("API Platform - WSO2 Cloud Status");
-    await expect(page.getByText("Uptime (outages only, updated daily)").first()).toBeVisible();
+    await expect(page.getByText(/^Uptime counts service outages only/)).toBeVisible();
     await expect(
       page.getByRole("link", { name: "Open the API Platform status page" }),
     ).toHaveAttribute("href", "https://status.bijira.dev");

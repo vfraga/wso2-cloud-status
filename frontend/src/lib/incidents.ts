@@ -18,6 +18,35 @@
 
 import type { Incident, Status } from "../api/types";
 import { STATUS_RANK } from "./status";
+import { formatDayHeading, localDayKey } from "./time";
+
+export interface DayGroup {
+  /** The local day, "2026-10-20". */
+  key: string;
+  label: string;
+  incidents: Incident[];
+}
+
+/**
+ * Incidents under the reader's local day they started, the latest day first
+ * and, within a day, the latest start first. Each incident is listed once;
+ * one that ran past midnight says when it ended.
+ */
+export function byStartDay(incidents: readonly Incident[]): DayGroup[] {
+  const groups = new Map<string, DayGroup>();
+  const latestFirst = [...incidents].sort((a, b) => b.startedAt.getTime() - a.startedAt.getTime());
+  for (const incident of latestFirst) {
+    const key = localDayKey(incident.startedAt);
+    const group = groups.get(key) ?? {
+      key,
+      label: formatDayHeading(incident.startedAt),
+      incidents: [],
+    };
+    group.incidents.push(incident);
+    groups.set(key, group);
+  }
+  return [...groups.values()];
+}
 
 export function isOngoing(incident: Incident): boolean {
   return incident.resolvedAt === null;

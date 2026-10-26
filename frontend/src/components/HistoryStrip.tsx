@@ -39,7 +39,7 @@ import {
   summariseHistory,
   type DayDetail,
 } from "../lib/history";
-import { DAY_LABEL, daysWithIncidents, isProblem } from "../lib/status";
+import { DAY_LABEL, incidentCount, isProblem } from "../lib/status";
 import { utcDayKey } from "../lib/time";
 import { CARD_RADIUS } from "../theme/shape";
 import { dayFill, dayFocusSx } from "./dayFill";
@@ -143,6 +143,8 @@ function TooltipBody({ detail, onMouseEnter, onMouseLeave, ref }: TooltipBodyPro
         px: 1.5,
         py: 1,
         maxWidth: 300,
+        // Scrolled into view with room to spare: scrollIntoView can stop a fraction of a pixel short.
+        scrollMargin: "8px",
       }}
     >
       <DayContent detail={detail} />
@@ -167,6 +169,9 @@ function nextIndex(key: string, current: number, last: number): number | null {
 
 interface CaptionsProps {
   days: readonly Day[];
+  /** Set when the strip shows fewer days than the incident list covers. */
+  span: number | undefined;
+  incidents: ReadonlyMap<string, Incident>;
   today: string;
   productName: string;
   open: boolean;
@@ -175,14 +180,24 @@ interface CaptionsProps {
 }
 
 /**
- * The first day's date, the number of days with incidents and "Today". With
- * incidents, the count is a button that lists those days: the same details
- * as the cells, through a control large enough to use on a phone (WCAG
- * 2.5.8), where a cell is about 8 px wide.
+ * The first day's date, the number of incidents on the days shown and
+ * "Today". With incidents, the count is a button that lists their days: the
+ * same details as the cells, through a control large enough to use on a
+ * phone (WCAG 2.5.8), where a cell is about 8 px wide.
  */
-function Captions({ days, today, productName, open, listId, onToggle }: CaptionsProps) {
+function Captions({
+  days,
+  span,
+  incidents,
+  today,
+  productName,
+  open,
+  listId,
+  onToggle,
+}: CaptionsProps) {
   const [from, to] = stripCaptions(days, today);
-  const { withIncidents, withMaintenance, withoutData } = summariseHistory(days);
+  const summary = summariseHistory(days, incidents);
+  const counted = incidentCount(summary.incidents, summary.maintenance, span);
   const caption = { color: "var(--cs-muted)", whiteSpace: "nowrap" } as const;
   // The row wraps rather than overflow its card when text spacing grows (WCAG 1.4.12);
   // the end caption keeps to the right, under the end of the strip.
@@ -203,7 +218,7 @@ function Captions({ days, today, productName, open, listId, onToggle }: Captions
       <Typography variant="caption" aria-hidden="true" sx={caption}>
         {from}
       </Typography>
-      {withIncidents > 0 ? (
+      {days.some((d) => isProblem(d.status)) ? (
         <Button
           variant="text"
           size="small"
@@ -230,13 +245,12 @@ function Captions({ days, today, productName, open, listId, onToggle }: Captions
           }}
         >
           <span>
-            {daysWithIncidents(withIncidents, withMaintenance)}{" "}
-            <span className="cs-visually-hidden">{`for ${productName}`}</span>
+            {counted} <span className="cs-visually-hidden">{`for ${productName}`}</span>
           </span>
         </Button>
       ) : (
         <Typography variant="caption" aria-hidden="true" sx={caption}>
-          {withoutData === days.length ? DAY_LABEL.unknown : daysWithIncidents(0)}
+          {summary.withoutData === days.length ? DAY_LABEL.unknown : counted}
         </Typography>
       )}
       <Typography variant="caption" aria-hidden="true" sx={caption}>
@@ -391,46 +405,51 @@ export function HistoryStrip({
 
   return (
     <Box sx={{ mt: 2 }}>
+      {/* A grid, not a listbox: the days are read and moved through, not chosen. */}
       <Box
-        role="listbox"
-        aria-orientation="horizontal"
+        role="grid"
         aria-label={`${String(days.length)}-day history for ${productName}, UTC days`}
         onKeyDown={onKeyDown}
         onMouseLeave={hideSoon}
-        sx={{
-          display: "grid",
-          gridTemplateColumns: `repeat(${String(days.length)}, minmax(0, 1fr))`,
-          gap: { xs: "1px", sm: "2px" },
-        }}
       >
-        {days.map((day, index) => {
-          const detail = dayDetail(day, incidents, now, completeUntil);
-          return (
-            <Box
-              key={day.date}
-              ref={(el: HTMLDivElement | null) => {
-                cells.current[index] = el;
-              }}
-              role="option"
-              aria-selected={index === active}
-              aria-label={dayAriaLabel(detail)}
-              tabIndex={index === active ? 0 : -1}
-              onFocus={(event) => {
-                setActive(index);
-                show(index, event.currentTarget, true);
-              }}
-              onBlur={hide}
-              onMouseEnter={(event) => {
-                show(index, event.currentTarget, false);
-              }}
-              sx={cellSx(day.status)}
-            />
-          );
-        })}
+        <Box
+          role="row"
+          sx={{
+            display: "grid",
+            gridTemplateColumns: `repeat(${String(days.length)}, minmax(0, 1fr))`,
+            gap: { xs: "1px", sm: "2px" },
+          }}
+        >
+          {days.map((day, index) => {
+            const detail = dayDetail(day, incidents, now, completeUntil);
+            return (
+              <Box
+                key={day.date}
+                ref={(el: HTMLDivElement | null) => {
+                  cells.current[index] = el;
+                }}
+                role="gridcell"
+                aria-label={dayAriaLabel(detail)}
+                tabIndex={index === active ? 0 : -1}
+                onFocus={(event) => {
+                  setActive(index);
+                  show(index, event.currentTarget, true);
+                }}
+                onBlur={hide}
+                onMouseEnter={(event) => {
+                  show(index, event.currentTarget, false);
+                }}
+                sx={cellSx(day.status)}
+              />
+            );
+          })}
+        </Box>
       </Box>
-      <span className="cs-visually-hidden">{historyText(days)}</span>
+      <span className="cs-visually-hidden">{historyText(days, incidents)}</span>
       <Captions
         days={days}
+        span={days.length < allDays.length ? days.length : undefined}
+        incidents={incidents}
         today={today}
         productName={productName}
         open={listOpen}

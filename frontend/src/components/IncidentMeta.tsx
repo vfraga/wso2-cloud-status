@@ -41,7 +41,8 @@ function When({ date, withDate }: { date: Date; withDate: boolean }) {
 
 interface IncidentItemProps {
   incident: Incident;
-  productName: string;
+  /** Names the product; left out on the product's own page. */
+  productName?: string;
   now: Date;
   /** Show the start date as well as the time (active incidents; days are headed elsewhere). */
   withDate?: boolean;
@@ -88,9 +89,11 @@ export function IncidentItem({
         useFlexGap
         sx={{ flexWrap: "wrap", columnGap: 2, rowGap: 0.5, mt: 0.75, alignItems: "center" }}
       >
-        <Typography variant="body2" sx={{ color: "var(--cs-muted)" }}>
-          {links ? <Link to={links.productPath}>{productName}</Link> : productName}
-        </Typography>
+        {productName !== undefined && (
+          <Typography variant="body2" sx={{ color: "var(--cs-muted)" }}>
+            {links ? <Link to={links.productPath}>{productName}</Link> : productName}
+          </Typography>
+        )}
         <StatusLabel status={incident.impact}>{IMPACT_LABEL[incident.impact]}</StatusLabel>
         {ongoing && state !== "" && (
           <Typography variant="body2" sx={{ fontWeight: 600 }}>
@@ -98,30 +101,51 @@ export function IncidentItem({
           </Typography>
         )}
       </Stack>
-      <Typography variant="body2" sx={{ color: "var(--cs-muted)", mt: 0.5 }}>
-        Started <When date={incident.startedAt} withDate={withDate} />
-        {incident.resolvedAt && (
-          <>
-            , ended{" "}
-            <When
-              date={incident.resolvedAt}
-              withDate={!sameDay(incident.startedAt, incident.resolvedAt)}
-            />
-          </>
-        )}
-        {`. ${durationText(incident, now, lastKnownAt)}`}
-      </Typography>
-      {links && links.pageUrl !== "" && (
-        <Box sx={{ mt: 0.5 }}>
-          <ExternalAnchor
-            href={links.pageUrl}
-            label={`Updates on the ${productName} status page`}
-            weight={500}
-          >
-            Updates on the {productName} status page
-          </ExternalAnchor>
-        </Box>
+      <Times incident={incident} now={now} withDate={withDate} lastKnownAt={lastKnownAt} />
+      {links && productName !== undefined && (
+        <UpdatesLink productName={productName} pageUrl={links.pageUrl} />
       )}
+    </Box>
+  );
+}
+
+/** "Started 8:02 PM, ended 9:56 PM. Lasted 1h 54m." */
+function Times({
+  incident,
+  now,
+  withDate,
+  lastKnownAt,
+}: {
+  incident: Incident;
+  now: Date;
+  withDate: boolean;
+  lastKnownAt: Date | null;
+}) {
+  return (
+    <Typography variant="body2" sx={{ color: "var(--cs-muted)", mt: 0.5 }}>
+      Started <When date={incident.startedAt} withDate={withDate} />
+      {incident.resolvedAt && (
+        <>
+          , ended{" "}
+          <When
+            date={incident.resolvedAt}
+            withDate={!sameDay(incident.startedAt, incident.resolvedAt)}
+          />
+        </>
+      )}
+      {`. ${durationText(incident, now, lastKnownAt)}`}
+    </Typography>
+  );
+}
+
+function UpdatesLink({ productName, pageUrl }: { productName: string; pageUrl: string }) {
+  if (pageUrl === "") return null;
+  const text = `Updates on the ${productName} status page`;
+  return (
+    <Box sx={{ mt: 0.5 }}>
+      <ExternalAnchor href={pageUrl} label={text} weight={500}>
+        {text}
+      </ExternalAnchor>
     </Box>
   );
 }
