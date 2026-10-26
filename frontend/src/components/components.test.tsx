@@ -37,7 +37,7 @@ import { HistoryStrip } from "./HistoryStrip";
 import { IncidentItem } from "./IncidentMeta";
 import { LocationPanel, RegionDetailPanel } from "./RegionDetailPanel";
 import { ThemeRoot } from "../theme/ThemeRoot";
-import { UptimeColumns, UptimeFigures, formatPercent, uptimeColumns, windowName } from "./Uptime";
+import { ProductUptime, UptimeFigures, formatPercent, uptimeWindows, windowName } from "./Uptime";
 import { ErrorBoundary } from "./ErrorBoundary";
 import { ProductListSkeleton } from "./Skeletons";
 import { StatusLabel } from "./StatusIcon";
@@ -187,13 +187,21 @@ describe("HistoryStrip", () => {
     scroll.mockRestore();
   });
 
-  it("draws a day as tall as its impact is severe, quiet and no-data days alike", () => {
-    const height = (status: Status) => dayFill(status).backgroundSize;
-    expect(
-      ["outage", "degraded", "maintenance", "operational", "unknown"].map((s) =>
-        height(s as Status),
-      ),
-    ).toEqual(["100% 100%", "100% 85%", "100% 70%", "100% 60%", "100% 60%"]);
+  it("draws a problem day full height and a quiet or no-data day at 60%, as a rounded bar", () => {
+    const statuses: Status[] = ["outage", "degraded", "maintenance", "operational", "unknown"];
+    expect(statuses.map((s) => dayFill(s)["&::before"].height)).toEqual([
+      "100%",
+      "100%",
+      "100%",
+      "60%",
+      "60%",
+    ]);
+    // The bar is its own box, rounded like its cell at both ends.
+    expect(dayFill("degraded")["&::before"].borderRadius).toBe("inherit");
+    // A legend's marks are one size.
+    expect(statuses.map((s) => dayFill(s, { full: true })["&::before"].height)).toEqual(
+      statuses.map(() => "100%"),
+    );
   });
 
   it("draws the days in system colours under forced colors", () => {
@@ -227,10 +235,12 @@ describe("HistoryStrip", () => {
 
   it("draws healthy and no-data days lower than problem days", () => {
     wrap(<HistoryStrip productName="X" days={d} incidents={new Map()} />);
-    const options = screen.getAllByRole("gridcell");
-    expect(getComputedStyle(options[0]!).backgroundSize).toBe("100% 60%");
-    expect(getComputedStyle(options[3]!).backgroundSize).toBe("100% 60%");
-    expect(getComputedStyle(options[88]!).backgroundSize).not.toBe("100% 60%");
+    const css = Array.from(document.querySelectorAll("style"))
+      .map((el) => el.textContent)
+      .join("\n");
+    // The bars are drawn by ::before at the two heights; the real heights are measured end to end.
+    expect(css).toMatch(/::before\{[^}]*height:60%/);
+    expect(css).toMatch(/::before\{[^}]*height:100%/);
   });
 
   it("captions the number of incidents and lists their days on request", async () => {
@@ -462,20 +472,21 @@ describe("RegionDetailPanel without components", () => {
     expect(screen.queryByRole("button")).not.toBeInTheDocument();
     expect(screen.getByRole("heading", { level: 3, name: "US" })).toBeInTheDocument();
     expect(screen.getByText("No component data is available right now.")).toBeInTheDocument();
+    const us = {
+      id: "us",
+      name: "US",
+      status: "operational" as const,
+      pageUrl: "",
+      uptime: [{ window: "7d", percent: 100 }],
+      groups: [],
+    };
     rerender(
       <ThemeRoot>
-        <ul>
-          <RegionDetailPanel
-            region={{
-              id: "us",
-              name: "US",
-              status: "operational",
-              pageUrl: "",
-              uptime: [{ window: "7d", percent: 100 }],
-              groups: [],
-            }}
-          />
-        </ul>
+        <ProductUptime.Provider value={uptimeWindows([us])}>
+          <ul>
+            <RegionDetailPanel region={us} />
+          </ul>
+        </ProductUptime.Provider>
       </ThemeRoot>,
     );
     expect(screen.queryByText("No component data is available right now.")).not.toBeInTheDocument();
@@ -946,16 +957,22 @@ describe("StatusTable", () => {
 
 describe("small pieces", () => {
   it("puts uptime figures in the product's columns, named after their region, windows in words", () => {
+    const windows = {
+      columns: ["7d", "30d", "12mo"],
+      region: new Set(["7d", "12mo"]),
+      component: new Set(["30d"]),
+    };
     wrap(
-      <UptimeColumns.Provider value={["7d", "30d", "12mo"]}>
+      <ProductUptime.Provider value={windows}>
         <UptimeFigures
           uptime={[
             { window: "12mo", percent: 99.994 },
             { window: "7d", percent: 100 },
           ]}
           label="Uptime for EU"
+          kind="region"
         />
-      </UptimeColumns.Provider>,
+      </ProductUptime.Provider>,
     );
     const group = screen.getByRole("group", { name: "Uptime for EU" });
     // In column order, the 30d column left blank.
@@ -975,7 +992,33 @@ describe("small pieces", () => {
     expect(windowName("ytd")).toBe("ytd");
   });
 
-  it("orders a product's uptime columns by length, components' windows included", () => {
+  it("shows a muted dash where a row's kind publishes a window the source sent no figure for", () => {
+    const windows = {
+      columns: ["7d", "30d", "90d", "12mo"],
+      region: new Set(["7d", "30d", "90d", "12mo"]),
+      component: new Set(["30d", "90d"]),
+    };
+    wrap(
+      <ProductUptime.Provider value={windows}>
+        <UptimeFigures uptime={[]} label="Uptime for Test Agent" kind="component" />
+      </ProductUptime.Provider>,
+    );
+    const group = screen.getByRole("group", { name: "Uptime for Test Agent" });
+    // Only the component columns: 7d and 12mo stay blank, as for every component.
+    expect(
+      within(group)
+        .getAllByRole("definition")
+        .map((d) => d.textContent),
+    ).toEqual(["-not published", "-not published"]);
+    expect(
+      within(group)
+        .getAllByRole("term")
+        .map((t) => t.textContent),
+    ).toEqual(["30 days", "90 days"]);
+    expect(within(group).getAllByText("-")[0]).toHaveAttribute("aria-hidden", "true");
+  });
+
+  it("orders a product's uptime columns by length, and tells regions' windows from components'", () => {
     const region = (windows: string[], component: string[] = []) => ({
       id: "r",
       name: "R",
@@ -996,19 +1039,16 @@ describe("small pieces", () => {
         },
       ],
     });
-    expect(uptimeColumns([region(["12mo", "7d"]), region(["90d"], ["30d", "ytd"])])).toEqual([
-      "7d",
-      "30d",
-      "90d",
-      "12mo",
-      "ytd",
-    ]);
+    const windows = uptimeWindows([region(["12mo", "7d"]), region(["90d"], ["30d", "ytd"])]);
+    expect(windows.columns).toEqual(["7d", "30d", "90d", "12mo", "ytd"]);
+    expect([...windows.region]).toEqual(["12mo", "7d", "90d"]);
+    expect([...windows.component]).toEqual(["30d", "ytd"]);
   });
 
   it("formats uptime percentages", () => {
     expect(formatPercent(99.99412)).toBe("99.994%");
     expect(formatPercent(100)).toBe("100%");
-    const { container } = wrap(<UptimeFigures uptime={[]} label="none" />);
+    const { container } = wrap(<UptimeFigures uptime={[]} label="none" kind="region" />);
     expect(container).toBeEmptyDOMElement();
   });
 

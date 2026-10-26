@@ -257,8 +257,9 @@ test.describe("all operational", () => {
         .getByRole("gridcell", { name })
         .first()
         .evaluate((el) => {
-          const cs = getComputedStyle(el);
-          return { image: cs.backgroundImage, size: cs.backgroundSize };
+          // The day is drawn by the cell's ::before bar.
+          const bar = getComputedStyle(el, "::before");
+          return { image: bar.backgroundImage, height: bar.height };
         });
     const problem = await paint(new RegExp(RECENT_INCIDENT));
     const quiet = await paint(/: No incidents$/);
@@ -266,9 +267,23 @@ test.describe("all operational", () => {
     expect(problem.image).not.toBe("none");
     expect(quiet.image).not.toBe("none");
     expect(problem.image).not.toBe(quiet.image);
-    expect(problem.size).not.toBe(quiet.size);
+    expect(problem.height).not.toBe(quiet.height);
     await page.screenshot({ path: shotPath("e2e-forced-colors"), animations: "disabled" });
     await context.close();
+  });
+
+  test("a component the source sends no figures for shows a muted dash, read as not published", async ({
+    page,
+  }) => {
+    await readyProduct(page, "agent-platform", "Agent Platform");
+    const closed = page.locator('section[aria-labelledby="regions"] button[aria-expanded="false"]');
+    while ((await closed.count()) > 0) await closed.first().click();
+    const figures = page.getByRole("group", { name: "Uptime for Test Agent" });
+    // Its components publish 30 and 90 days: a dash in each, the region-only columns blank.
+    await expect(figures.getByRole("definition")).toHaveText(["-not published", "-not published"]);
+    await expect(figures.getByRole("term")).toHaveText(["30 days", "90 days"]);
+    const dash = figures.getByText("-", { exact: true }).first();
+    await expect(dash).toHaveAttribute("aria-hidden", "true");
   });
 
   test("the products table reflows at 320 px and under WCAG 1.4.12 text spacing", async ({
@@ -344,10 +359,12 @@ test.describe("all operational", () => {
       // The entries start on the line below the intro.
       const text = await label.boundingBox();
       expect(text?.y ?? 0).toBeGreaterThanOrEqual((intro?.y ?? 0) + (intro?.height ?? 0));
-      // Each swatch is centred on its label's line, and all are one size.
-      const swatch = await label.locator("xpath=preceding-sibling::*[1]").boundingBox();
+      // Each swatch is centred on its label's line, and all are one size, as painted.
+      const mark = label.locator("xpath=preceding-sibling::*[1]");
+      const swatch = await mark.boundingBox();
       expect(Math.abs(middle(swatch) - middle(text))).toBeLessThanOrEqual(1);
-      swatches.add(`${String(swatch?.width)}x${String(swatch?.height)}`);
+      const painted = await mark.evaluate((el) => getComputedStyle(el, "::before").height);
+      swatches.add(`${String(swatch?.width)}x${String(swatch?.height)}, painted ${painted}`);
     }
     expect(swatches.size).toBe(1);
     // The intro's text and each line of entries are centred under the strip.

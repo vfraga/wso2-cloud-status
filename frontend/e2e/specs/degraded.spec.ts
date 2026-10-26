@@ -227,13 +227,24 @@ test.describe("outage, degraded and maintenance components in one place, and an 
     await expect(list).toContainText(
       "Elevated latency for API proxy invocation in the EU data plane",
     );
-    // Problem days stand out by height as well as colour.
+    // Problem days stand out by height as well as colour: a problem bar fills its cell, a quiet one
+    // stands at 60%, and every bar is rounded at the top as well as the bottom.
     const strip = api.getByRole("grid");
     const marked = strip.getByRole("gridcell", { name: /Incidents:/ }).first();
     const quiet = strip.getByRole("gridcell", { name: /: No incidents$/ }).first();
-    const size = (l: Locator) => l.evaluate((el) => getComputedStyle(el).backgroundSize);
-    expect(await size(quiet)).toBe("100% 60%");
-    expect(await size(marked)).not.toBe("100% 60%");
+    const bar = (l: Locator) =>
+      l.evaluate((el) => {
+        const cs = getComputedStyle(el, "::before");
+        return {
+          share: parseFloat(cs.height) / el.getBoundingClientRect().height,
+          top: cs.borderTopLeftRadius,
+        };
+      });
+    const [q, m] = [await bar(quiet), await bar(marked)];
+    expect(q.share).toBeCloseTo(0.6, 2);
+    expect(m.share).toBeCloseTo(1, 2);
+    expect(q.top).not.toBe("0px");
+    expect(m.top).not.toBe("0px");
     await api.screenshot({ path: shotPath("e2e-degraded-days"), animations: "disabled" });
   });
 

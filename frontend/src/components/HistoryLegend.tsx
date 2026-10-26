@@ -27,8 +27,8 @@ import { dayFill } from "./dayFill";
 const ENTRIES: readonly Status[] = ["outage", "degraded", "maintenance", "operational", "unknown"];
 
 /**
- * Drawn like a strip cell, at its height for the status, and centred on the
- * text line.
+ * Drawn like a strip cell, one size for every colour so the entries read
+ * alike, as a legend's marks do, and centred on the text line.
  */
 function Swatch({ status }: { status: Status }) {
   return (
@@ -37,10 +37,10 @@ function Swatch({ status }: { status: Status }) {
       sx={{
         display: "inline-block",
         width: 8,
-        height: 16,
+        height: 14,
         borderRadius: "1px",
         flexShrink: 0,
-        ...dayFill(status),
+        ...dayFill(status, { full: true }),
       }}
     />
   );

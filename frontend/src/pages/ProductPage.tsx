@@ -29,7 +29,7 @@ import { IncidentItem } from "../components/IncidentMeta";
 import { IncidentsUnavailable } from "../components/IncidentsUnavailable";
 import { ProductNotes } from "../components/ProductNotes";
 import { LocationPanel, RegionDetailPanel } from "../components/RegionDetailPanel";
-import { GridRow, UptimeColumns, UptimeHeader, uptimeColumns } from "../components/Uptime";
+import { GridRow, ProductUptime, UptimeHeader, uptimeWindows } from "../components/Uptime";
 import { ProductListSkeleton } from "../components/Skeletons";
 import { pageTitle, useDocumentTitle } from "../hooks/useDocumentTitle";
 import { PageNowProvider, usePageNow } from "../hooks/useNow";
@@ -138,7 +138,7 @@ function ProductBody({
     [product],
   );
   const self = useMemo(() => new Map([[product.id, product]]), [product]);
-  const columns = useMemo(() => uptimeColumns(product.regionDetails), [product]);
+  const windows = useMemo(() => uptimeWindows(product.regionDetails), [product]);
   const partly = partlyShown(product);
   return (
     <>
@@ -190,7 +190,7 @@ function ProductBody({
             {UPTIME_NOTE}
           </Typography>
         )}
-        <UptimeColumns.Provider value={columns}>
+        <ProductUptime.Provider value={windows}>
           {/* Each location's row carries the window codes; regions without one get them here. */}
           {product.locations.length === 0 && (
             <Box sx={{ mt: 1.5 }}>
@@ -210,7 +210,7 @@ function ProductBody({
               ),
             )}
           </Box>
-        </UptimeColumns.Provider>
+        </ProductUptime.Provider>
       </Box>
       <RecentIncidents product={product} now={now} />
     </>

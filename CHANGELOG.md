@@ -73,9 +73,10 @@ section here. The public API has its own version, in `api/openapi.yaml`.
 - A product's page heads "Developer Platform (Choreo): All systems
   operational", the other name lighter, instead of a line of its own, and
   its footer adds the product's privacy policy and terms of use.
-- A day's bar in the history is as tall as its impact is severe, in the
-  legend too, so outage, degraded and maintenance differ by shape as well as
-  colour, also in Windows High Contrast.
+- Every history bar is rounded at both ends; a short one no longer has a
+  square top.
+- A component the source publishes no uptime for shows a muted dash in its
+  columns, read as "not published".
 - Legend entries are buttons: Enter or Space shows a colour's description.
 - A screen reader hears the status of every plane a home cell names.
 

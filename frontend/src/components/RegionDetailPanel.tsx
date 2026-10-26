@@ -117,7 +117,7 @@ function ComponentRow({ component }: { component: Component }) {
           <UptimeFigures
             uptime={component.uptime}
             label={`Uptime for ${component.name}`}
-            strong={false}
+            kind="component"
           />
         }
         status={
@@ -164,7 +164,9 @@ export function RegionDetailPanel({
             )}
           </Box>
         }
-        figures={<UptimeFigures uptime={region.uptime} label={`Uptime for ${region.name}`} />}
+        figures={
+          <UptimeFigures uptime={region.uptime} label={`Uptime for ${region.name}`} kind="region" />
+        }
         status={<StatusLabel status={region.status}>{STATUS_LABEL[region.status]}</StatusLabel>}
       />
       <Collapse in={expanded && region.groups.length > 0} id={panelId} unmountOnExit>

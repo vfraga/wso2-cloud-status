@@ -97,6 +97,8 @@ export const PARTIAL_HEADLINE = "Some status data is unavailable";
 /** Under a product's Regions: what CSM's uptime figures count (answered question 9b). */
 export const UPTIME_NOTE =
   "Uptime counts outages only, as WSO2 measures them daily; a region's figure averages its services.";
+/** Read after a window's name where the source sent no figure for it; the eye sees a dash. */
+export const UPTIME_NOT_PUBLISHED = "not published";
 /** A region whose components are unknown and lists none. */
 export const NO_COMPONENT_DATA = "No component data is available right now.";
 export const COMPONENTS_UNAVAILABLE = "some component data is unavailable";

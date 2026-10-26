@@ -25,46 +25,50 @@ const HATCH = (colour: string): string =>
   `repeating-linear-gradient(45deg, ${colour} 0 1.5px, transparent 1.5px 4px)`;
 const SOLID = (colour: string): string => `linear-gradient(${colour}, ${colour})`;
 
-/** Height of a day's mark by severity, so impacts differ by shape as well as colour. */
-const HEIGHT: Record<Status, string> = {
-  outage: "100%",
-  degraded: "85%",
-  maintenance: "70%",
-  operational: "60%",
-  unknown: "60%",
-};
+/** A problem day fills its cell; a quiet or no-data day stands at 60% of it. */
+export function dayHeight(status: Status): string {
+  return isProblem(status) ? "100%" : "60%";
+}
 
 /**
- * How one day of history is painted, for the strip cells and the legend.
- *
- * Each day is a bar in its status colour, as tall as its impact is severe:
- * an outage fills the cell, degraded 85%, maintenance 70%, and healthy and
- * no-data days 60%. So a problem day, and which problem, shows by shape as
- * well as colour (WCAG 1.4.1); "No data" is also hatched.
+ * How one day of history is painted, for the strip cells and the legend: a
+ * bar in its status colour, rounded at both ends, standing on the bottom of
+ * its cell. A problem day fills the cell; healthy and no-data days are drawn
+ * at 60% height, so a problem day stands out by its shape as well as its
+ * colour (WCAG 1.4.1); "No data" is also hatched. The bar is its own box, so
+ * a short one keeps its rounded top; the cell stays full height for pointing
+ * and focus. `full` draws every status at full height: a legend's marks are
+ * one size, told apart by colour and name.
  *
  * Forced colors (Windows High Contrast) replace background colours with the
- * page colour and drop gradients, which erased the strip. There the cells opt
- * out of the override and use system colours instead, at the same heights: a
- * problem day in CanvasText, a healthy day in GrayText, a no-data day hatched.
+ * page colour and drop gradients, which erased the strip. There the bars opt
+ * out of the override and use system colours instead: a problem day in
+ * CanvasText, a healthy day in GrayText, a no-data day hatched.
  */
-export function dayFill(status: Status) {
+export function dayFill(status: Status, { full = false }: { full?: boolean } = {}) {
   const fill = statusVar(status, "fill");
   const tint = statusVar(status, "tint");
   const unknown = status === "unknown";
   const system = isProblem(status) ? "CanvasText" : "GrayText";
   return {
-    backgroundImage: unknown ? `${HATCH(fill)}, ${SOLID(tint)}` : SOLID(fill),
-    backgroundSize: `100% ${HEIGHT[status]}`,
-    backgroundPosition: "bottom",
-    backgroundRepeat: "no-repeat",
-    [FORCED_COLORS]: {
-      forcedColorAdjust: "none",
-      backgroundImage: unknown ? HATCH(system) : SOLID(system),
+    position: "relative",
+    "&::before": {
+      content: '""',
+      position: "absolute",
+      left: 0,
+      right: 0,
+      bottom: 0,
+      height: full ? "100%" : dayHeight(status),
+      borderRadius: "inherit",
+      backgroundImage: unknown ? `${HATCH(fill)}, ${SOLID(tint)}` : SOLID(fill),
+      [FORCED_COLORS]: {
+        forcedColorAdjust: "none",
+        backgroundImage: unknown ? HATCH(system) : SOLID(system),
+      },
     },
-  };
+  } as const;
 }
 
-/** Focus ring that survives forced colors, where the cell opts out of the override. */
 export const dayFocusSx = {
   "&:focus-visible": { outline: "2px solid var(--cs-focus)", outlineOffset: "1px" },
   [FORCED_COLORS]: { "&:focus-visible": { outlineColor: "Highlight" } },
