@@ -95,6 +95,8 @@ section here. The public API has its own version, in `api/openapi.yaml`.
 - Opening a product's name in another tab from the home page (Cmd, Ctrl or
   Shift and click) no longer also leaves the home page.
 - A product record without its regions or locations reads as incomplete.
+- The frontend image cuts off a client that takes more than 5 s to send its
+  request head, as statusd does.
 - When the page's own data stops, the history no longer paints the days
   after that point green: a day not fully covered reads "No data" unless a
   problem is known, as it already did when a product's incident feed

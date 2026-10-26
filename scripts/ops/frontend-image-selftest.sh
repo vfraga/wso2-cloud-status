@@ -35,6 +35,7 @@
 #                         400 or 414 with no-store: nginx answers before it
 #                         picks a location, so a cached copy would replace
 #                         the file
+#   half a request head   the connection closed after about 5 s
 #   /api/x                404 with no-store, not the HTML shell; with
 #                         /etc/nginx/api.conf replaced, that file answers it,
 #                         with no Cache-Control added by nginx
@@ -254,6 +255,21 @@ get bigheader "${assets[0]:-/}" -H "X-Selftest: $long"
 expect bigheader "${assets[0]:-/} with a 9000-byte header" 400 "no-store"
 get biguri "/assets/$long.js"
 expect biguri "a 9000-character URI" 414 "no-store"
+
+# A client that sends half a request head is cut off as statusd cuts it.
+# read returns as soon as nginx closes the connection, and after 15 s if it
+# does not.
+start=$SECONDS
+closed=false
+exec 3<>"/dev/tcp/127.0.0.1/$port"
+printf 'GET / HTTP/1.1\r\nHost: selftest\r\n' >&3
+if read -r -t 15 -u 3 _; [[ $? -lt 128 ]]; then closed=true; fi
+exec 3<&-
+waited=$((SECONDS - start))
+cut=false
+[[ "$closed" == true && "$waited" -le 8 ]] && cut=true
+verdict "half a request head is cut off after ${waited} s" \
+  "half a request head was still open after ${waited} s, want about 5 s" [ "$cut" = true ]
 
 get api /api/x
 expect api "/api/x" 404 "no-store"

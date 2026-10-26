@@ -1,6 +1,9 @@
 # External synthetic check of the public status page (scripts/ops/
-# synthetic-check.sh), every 5 minutes from GitHub-hosted runners: outside our
-# Azure subscription and region, though GitHub runs them on Azure too. It
+# synthetic-check.sh), scheduled every 5 minutes on GitHub-hosted runners:
+# outside our Azure subscription and region, though GitHub runs them on Azure
+# too. GitHub starts scheduled runs late and drops some (15 minutes apart is
+# common, 2 hours happens), so a monitor with a fixed interval should page
+# first; this is the deeper check. It
 # sees what alerts on statusd's own metrics cannot: DNS, TLS, Front Door,
 # WAF, the origin lock and the frontend origin (the page and the scripts it
 # loads). Off until the repository variable SYNTHETIC_BASE_URL is set, and it

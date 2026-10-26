@@ -18,10 +18,10 @@
 # This workflow runs from the tagged commit, so its own checks are only as
 # trustworthy as whoever may push a v* tag. Before setting REGISTRY: a tag
 # ruleset limits who may create v* tags, and the environment "release",
-# limited to v* tags with required reviewers, holds both secrets (open
-# question 29). Artifact attestations need a public repository, or GitHub
-# Enterprise Cloud for a private one. Every third-party action is pinned to a
-# full commit SHA, as in ci.yml. A job that holds secrets or id-token: write
+# limited to v* tags with required reviewers, holds both secrets. Artifact
+# attestations need a public repository, or GitHub Enterprise Cloud for a
+# private one. Every third-party action is pinned to a full commit SHA, as in
+# ci.yml. A job that holds secrets or id-token: write
 # must not restore an Actions cache: any job on main can write one, and a
 # tool binary or database restored from it would run with this job's
 # credentials. So every trivy-action step sets cache "false", and make pins

@@ -15,13 +15,14 @@
 # specific language governing permissions and limitations
 # under the License.
 
-# Self-test of the gate scripts CI relies on to fail: scripts/npm-licenses.sh
-# and scripts/coverage-gate.sh each get inputs that must pass and inputs that
-# must fail, so a gate that always passes is caught.
+# Self-test of the gates CI relies on to fail: scripts/npm-licenses.sh,
+# scripts/coverage-gate.sh and the Makefile's workflow-cache and pins each get
+# inputs that must pass and inputs that must fail, so a gate that always
+# passes is caught.
 #
 #   scripts/gates-selftest.sh      (or: make gates-selftest)
 #
-# Needs go and jq.
+# Needs go, jq and make.
 set -euo pipefail
 
 root="$(cd "$(dirname "$0")/.." && pwd)"
@@ -72,6 +73,80 @@ cd "$root/backend/go"
 go test -count=1 -coverprofile="$work/cover.out" ./internal/domain/ >/dev/null
 expect "coverage: above the minimum" 0 "$root/scripts/coverage-gate.sh" "$work/cover.out" 50
 expect "coverage: below the minimum" 1 "$root/scripts/coverage-gate.sh" "$work/cover.out" 101
+
+# workflow-cache and pins run in a directory holding only the workflows given.
+cd "$root"
+# workflows NAME: a directory for one case, its workflow read from stdin.
+workflows() {
+  mkdir -p "$work/$1/.github/workflows"
+  cat >"$work/$1/.github/workflows/w.yml"
+  printf '%s' "$work/$1"
+}
+# gate DIR TARGET: the Makefile's TARGET run in DIR, exit 1 when it fails.
+gate() {
+  make -s -C "$1" -f "$root/Makefile" "$2" 2>/dev/null || return 1
+}
+# shellcheck disable=SC2016 # a workflow's own expression, not the shell's
+privileged_job='jobs:
+  build:
+    runs-on: ubuntu-24.04
+    env:
+      TOKEN: ${{ secrets.TOKEN }}
+    steps:'
+expect "workflow-cache: a job with secrets, its caches off" 0 gate "$(workflows off <<YAML
+$privileged_job
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          cache: false
+YAML
+)" workflow-cache
+expect "workflow-cache: a job without secrets, a cache on" 0 gate "$(workflows plain <<'YAML'
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/setup-go@v6
+YAML
+)" workflow-cache
+expect "workflow-cache: a job with secrets, a cache on" 1 gate "$(workflows on <<YAML
+$privileged_job
+      - uses: actions/setup-go@v6
+YAML
+)" workflow-cache
+expect "workflow-cache: an action the check does not know" 1 gate "$(workflows unknown <<YAML
+$privileged_job
+      - uses: actions/setup-python@v6
+        with:
+          cache: pip
+YAML
+)" workflow-cache
+expect "workflow-cache: id-token for the whole workflow" 1 gate "$(workflows wide-token <<'YAML'
+permissions:
+  id-token: write
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/setup-go@v6
+YAML
+)" workflow-cache
+expect "workflow-cache: a secret in the whole workflow's env" 1 gate "$(workflows wide-secret <<'YAML'
+env:
+  TOKEN: ${{ secrets.TOKEN }}
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/setup-go@v6
+YAML
+)" workflow-cache
+mkdir -p "$work/pins/.github/workflows" "$work/drift/.github/workflows"
+cp .github/workflows/ci.yml .github/workflows/release.yml "$work/pins/.github/workflows/"
+expect "pins: the workflows as they are" 0 gate "$work/pins" pins
+cp .github/workflows/release.yml "$work/drift/.github/workflows/"
+sed -E 's/(hadolint-action@[0-9a-f]+ # )v[0-9.]+$/\1v0.0.1/' .github/workflows/ci.yml >"$work/drift/.github/workflows/ci.yml"
+expect "pins: ci.yml moved to another hadolint-action" 1 gate "$work/drift" pins
 
 if [[ "$failures" -gt 0 ]]; then
   echo "gates-selftest: $failures of $cases cases failed" >&2

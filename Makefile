@@ -7,12 +7,14 @@ SHELL := /bin/bash
 .SHELLFLAGS := -euo pipefail -c
 
 GO_DIR       := backend/go
-COVERAGE_MIN ?= 85
+# CI's minimum (ci.yml), unless set on the command line.
+COVERAGE_MIN ?= $(shell sed -nE 's/^  COVERAGE_MIN: "?([0-9]+)"?$$/\1/p' .github/workflows/ci.yml)
 GOVULNCHECK  := golang.org/x/vuln/cmd/govulncheck@v1.9.0
 GOLICENSES   := github.com/google/go-licenses/v2@v2.0.1
 LICENSES_OK  := Apache-2.0,MIT,BSD-2-Clause,BSD-3-Clause,ISC
 PROMETHEUS   := prom/prometheus:v3.15.1@sha256:fa3302279710be2f21a8301ec17a8b4f2301fd829bd113839b3b6b02b6f191a2
-# The hadolint that hadolint/hadolint-action v3.5.0 (ci.yml) runs.
+# The hadolint that hadolint/hadolint-action HADOLINT_ACTION (ci.yml) runs.
+HADOLINT_ACTION := v3.5.0
 HADOLINT     := ghcr.io/hadolint/hadolint:v2.15.1-debian@sha256:9a3944b7fddcb947d1ffd90829ac1a6e5c30479223358f249d8b96c7d0019e27
 SHELLCHECK   := koalaman/shellcheck:v0.11.0@sha256:61862eba1fcf09a484ebcc6feea46f1782532571a34ed51fedf90dd25f925a8d
 SPECTRAL     := stoplight/spectral:6.17.0@sha256:c8ffae6ee561b70e80402f1ea669e8b37c74fee48a3dbe2147b71359ed987239
@@ -46,6 +48,8 @@ fmt: ## Format Go code (gofumpt, goimports), backend and contract tests
 	cd tests/contract && golangci-lint fmt --config ../../$(GO_DIR)/.golangci.yml ./...
 
 lint: ## Lint backend and contract tests: vet, staticcheck, gosec, complexity, license headers
+	@want="$$(sed -nE 's/^  GOLANGCI_LINT_VERSION: v?//p' .github/workflows/ci.yml)"; have="$$(golangci-lint version --short)"; \
+	  [[ -n "$$want" && "$$have" == "$$want" ]] || { echo "golangci-lint $$have here, ci.yml runs $${want:-?}"; exit 1; }
 	cd $(GO_DIR) && golangci-lint run ./...
 	cd tests/contract && golangci-lint run --config ../../$(GO_DIR)/.golangci.yml ./...
 
@@ -129,11 +133,19 @@ headers: ## License headers on every source file, the check CI runs (Docker)
 workflow-lint: ## Lint the GitHub workflows with actionlint, as CI does (Docker)
 	docker run --rm -v "$$PWD:/repo:ro" -w /repo $(ACTIONLINT) -color
 
-# A job that holds secrets or id-token: write must not restore an Actions
-# cache, which any job on main can write. Each action below caches unless the
-# step turns it off; actions/cache always does.
+# A job that holds secrets or id-token: write, itself or through the
+# workflow's own permissions or env, must not restore an Actions cache, which
+# any job on main can write. The actions in the middle of the list cache
+# unless the step turns it off, actions/cache always does, and those in
+# nocache never do; any other action in such a job fails the check until it
+# is listed.
 workflow-cache: ## No workflow job with secrets or id-token: write uses an action with its cache on
 	@awk ' \
+	  BEGIN { \
+	    nocache = "^(actions/(checkout|upload-artifact|download-artifact|attest|dependency-review-action)" \
+	      "|docker/(login-action|setup-buildx-action)|sigstore/cosign-installer|github/codeql-action/[a-z-]+" \
+	      "|apache/skywalking-eyes/header|hadolint/hadolint-action)$$"; \
+	  } \
 	  function end_step(  on) { \
 	    if (action == "") return; \
 	    if (action ~ /^actions\/cache(\/|$$)/) on = 1; \
@@ -141,16 +153,18 @@ workflow-cache: ## No workflow job with secrets or id-token: write uses an actio
 	    else if (action == "actions/setup-node") on = w["package-manager-cache"] != "false" || w["cache"] != ""; \
 	    else if (action == "golangci/golangci-lint-action") on = w["skip-cache"] != "true"; \
 	    else if (action == "docker/build-push-action") on = w["cache-from"] != ""; \
+	    else if (action !~ nocache) found = found FILENAME ": job " job " uses " action ", not known to keep off the cache\n"; \
 	    if (on) found = found FILENAME ": job " job " uses " action " with its cache on\n"; \
 	    action = ""; inwith = 0; split("", w); \
 	  } \
 	  function end_job() { \
 	    end_step(); \
-	    if (privileged && found != "") { printf "%s", found; bad = 1 } \
+	    if ((privileged || wprivileged) && found != "") { printf "%s", found; bad = 1 } \
 	    job = ""; privileged = 0; found = ""; \
 	  } \
-	  FNR == 1 { end_job(); injobs = 0 } \
+	  FNR == 1 { end_job(); injobs = 0; wprivileged = 0 } \
 	  { line = $$0; sub(/[ \t]+#.*$$/, "", line) } \
+	  !injobs && line ~ /secrets\.|secrets: *inherit|id-token: *write/ { wprivileged = 1 } \
 	  line ~ /^jobs:/ { injobs = 1; next } \
 	  line ~ /^[^ ]/ { end_job(); injobs = 0; next } \
 	  !injobs { next } \
@@ -179,6 +193,9 @@ pins: workflow-cache ## The tool versions copied from ci.yml, here and in releas
 	while IFS= read -r line; do \
 	  grep -qxF -- "$$line" .github/workflows/ci.yml || { echo "release.yml pin not in ci.yml: $$line"; status=1; }; \
 	done < <(grep -E '^  (TRIVY_VERSION|BUILDKIT_IMAGE):' .github/workflows/release.yml); \
+	hadolint_uses="$$(grep -E 'uses: hadolint/hadolint-action@' .github/workflows/ci.yml || true)"; \
+	[[ -n "$$hadolint_uses" ]] && ! grep -vqE ' # $(HADOLINT_ACTION)$$' <<<"$$hadolint_uses" \
+	  || { echo "ci.yml runs a hadolint-action other than $(HADOLINT_ACTION), whose hadolint HADOLINT copies"; status=1; }; \
 	[[ $$status == 0 ]] && echo "pins match ci.yml"; exit $$status
 
 ci: lint cover vuln licenses check-config contract contract-edge synthetic-selftest gates-selftest ## The CI go job's gates, locally (the Docker gates are separate targets)

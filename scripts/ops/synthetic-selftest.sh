@@ -45,11 +45,13 @@
 #      the product endpoint answers with another product, on incidents alone
 #      when only the incident list is missing, and with a timeout when the
 #      API hangs;
+#   8c. fail on deep-link alone when a product's page answers 404;
 #   9. print a problem title that holds newlines and workflow commands on
 #      one line, so a response cannot add GitHub workflow commands;
 #  10. fail when the API is stopped, while the page still passes.
 # Before those, it fails when the page polls an API path (the paths in
-# frontend/src/hooks/useResources.ts) that the check does not fetch.
+# frontend/src/hooks/useResources.ts) that the check does not fetch; after
+# them, when a check the check's header lists failed in none of them.
 # Then scripts/ops/synthetic-notify.sh:
 #  11. its decision (page, recover or quiet) for a table of results and
 #      earlier runs;
@@ -162,6 +164,7 @@ expect() {
   env -u GITHUB_ACTIONS STATUS_BASE_URL="http://127.0.0.1:${page_port}" STATUS_API_URL="http://127.0.0.1:${api_port}" \
     "$@" "$check_shell" "$check" >"$work/out" 2>&1 || got=$?
   sed 's/^\([[:space:]]*\)::/> \1::/' "$work/out"
+  grep -oE '^FAIL [a-z-]+' "$work/out" | cut -d' ' -f2 >>"$work/failed" || true
   if [[ "$got" != "$want" ]]; then
     broken "$name exited $got, want $want"
   elif ! grep -Eq "$pattern" "$work/out"; then
@@ -222,6 +225,7 @@ page html-style /assets/index-selftest.js
 sed -i.bak 's#/assets/index-selftest.css#/assets/fallback.html#' "$work/site/html-style/index.html"
 page no-root /assets/index-selftest.js
 sed -i.bak 's#<div id="root"></div>#<div id="app"></div>#' "$work/site/no-root/index.html"
+page no-deep-link /assets/index-selftest.js
 python3 -m http.server "$page_port" --bind 127.0.0.1 --directory "$work/site" >"$work/page.log" 2>&1 &
 pids+=("$!")
 wait_for "http://127.0.0.1:${page_port}/"
@@ -408,6 +412,10 @@ expect "a stylesheet answers with HTML" 1 \
 expect "the page has no app root" 1 \
   '^FAIL page +http://127\.0\.0\.1:[0-9]+/no-root/ answered 200 but the HTML has no app root' \
   STATUS_BASE_URL="http://127.0.0.1:${page_port}/no-root"
+expect "a product's page answers 404" 1 \
+  '^FAIL deep-link +http://127\.0\.0\.1:[0-9]+/no-deep-link/products/moesif answered HTTP 404, want 200' \
+  STATUS_BASE_URL="http://127.0.0.1:${page_port}/no-deep-link" PRODUCT_ID=moesif
+[[ "$(grep -c '^FAIL' "$work/out")" == 1 ]] || broken "a product's page answers 404: deep-link should be the only failure"
 expect "the summary has no Cache-Control" 1 '^FAIL cache-control +the summary has no Cache-Control header$' \
   STATUS_API_URL="http://127.0.0.1:${copy_port}/nocache" PRODUCT_ID=nosuch
 expect "the product endpoint answers with another product" 1 \
@@ -434,6 +442,16 @@ kill "$api_pid"
 wait "$api_pid" 2>/dev/null || true
 expect "API stopped" 1 '^FAIL summary +.* request failed: '
 grep -q '^PASS assets ' "$work/out" || broken "API stopped: the page's assets should still pass"
+
+cases=$((cases + 1))
+echo
+echo "== every check has a case that makes it fail"
+checks="$(sed -n '/^# Checks:/,/^# Prints/ s/^#   \([a-z][a-z-]*\) .*/\1/p' "$check")"
+echo "checks: $(paste -sd ' ' - <<<"$checks")"
+[[ -n "$checks" ]] || broken "found no check names under '# Checks:' in synthetic-check.sh"
+for name in $checks; do
+  grep -qxF "$name" "$work/failed" || broken "no case makes the $name check fail"
+done
 
 # 11. The notifier's decision.
 echo
