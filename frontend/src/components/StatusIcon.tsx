@@ -51,9 +51,18 @@ export function StatusIcon({ status, size = 18 }: { status: Status; size?: numbe
 /**
  * Icon plus text, so a status is never carried by colour alone. It is body2
  * text with the icon centred on the line, so it sits on the same text line as
- * neighbouring body2 text.
+ * neighbouring body2 text. `quiet` shows the icon alone, its shape telling
+ * the status, and keeps the text for screen readers.
  */
-export function StatusLabel({ status, children }: { status: Status; children: ReactNode }) {
+export function StatusLabel({
+  status,
+  children,
+  quiet = false,
+}: {
+  status: Status;
+  children: ReactNode;
+  quiet?: boolean;
+}) {
   return (
     <Typography
       component="span"
@@ -67,7 +76,7 @@ export function StatusLabel({ status, children }: { status: Status; children: Re
       }}
     >
       <StatusIcon status={status} size={16} />
-      <span>{children}</span>
+      <span className={quiet ? "cs-visually-hidden" : undefined}>{children}</span>
     </Typography>
   );
 }

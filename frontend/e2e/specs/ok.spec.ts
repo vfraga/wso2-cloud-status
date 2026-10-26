@@ -70,7 +70,9 @@ test.describe("all operational", () => {
     const first = productRows(page).first();
     await first.getByRole("cell").first().click();
     await expect(page).toHaveURL(/\/products\/agent-platform$/);
-    await expect(page.getByRole("heading", { level: 1 })).toHaveText(/^Agent Platform: /);
+    await expect(page.getByRole("heading", { level: 1 })).toHaveText(
+      /^Agent Platform \(Agent Manager\): /,
+    );
     await page.getByRole("link", { name: "All products" }).click();
     await productRows(page).nth(1).getByRole("link", { name: "API Platform" }).click();
     await expect(page).toHaveURL(/\/products\/api-platform$/);
@@ -256,14 +258,15 @@ test.describe("all operational", () => {
         .first()
         .evaluate((el) => {
           const cs = getComputedStyle(el);
-          const card = getComputedStyle(el.closest("section") ?? document.body).backgroundColor;
-          return { bg: cs.backgroundColor, image: cs.backgroundImage, card };
+          return { image: cs.backgroundImage, size: cs.backgroundSize };
         });
     const problem = await paint(new RegExp(RECENT_INCIDENT));
     const quiet = await paint(/: No incidents$/);
-    expect(problem.bg).not.toBe(problem.card);
+    // Both drawn in system colours, a problem day in a different one, and taller.
+    expect(problem.image).not.toBe("none");
     expect(quiet.image).not.toBe("none");
-    expect(quiet.bg).not.toBe(problem.bg);
+    expect(problem.image).not.toBe(quiet.image);
+    expect(problem.size).not.toBe(quiet.size);
     await page.screenshot({ path: shotPath("e2e-forced-colors"), animations: "disabled" });
     await context.close();
   });
@@ -489,10 +492,10 @@ test.describe("all operational", () => {
     // The view change is announced: the h1 has focus and names the product; the tab has its own title.
     await expect(page.getByRole("heading", { level: 1 })).toBeFocused();
     await expect(page.getByRole("heading", { level: 1 })).toHaveAccessibleName(
-      "API Platform: All systems operational",
+      "API Platform (Bijira): All systems operational",
     );
     await expect(page).toHaveTitle("API Platform - WSO2 Cloud Status");
-    await expect(page.getByText(/^Uptime counts service outages only/)).toBeVisible();
+    await expect(page.getByText(/^Uptime counts outages only/)).toBeVisible();
     await expect(
       page.getByRole("link", { name: "Open the API Platform status page" }),
     ).toHaveAttribute("href", "https://status.bijira.dev");
@@ -501,6 +504,17 @@ test.describe("all operational", () => {
       page.getByRole("heading", { level: 4, name: "Control plane" }).first(),
     ).toBeVisible();
     await expect(page.getByText("12mo").first()).toBeVisible();
+    // Each figure sits right under its window's code: the columns are shared by every row.
+    const codeRight = await page
+      .getByText("12mo", { exact: true })
+      .first()
+      .evaluate((el) => el.getBoundingClientRect().right);
+    const figureRight = await page
+      .getByRole("group", { name: "Uptime for US control plane" })
+      .locator("dd")
+      .last()
+      .evaluate((el) => el.getBoundingClientRect().right);
+    expect(Math.abs(figureRight - codeRight)).toBeLessThanOrEqual(1);
     await expectNoSeriousViolations(page);
     // The pointer stayed where the link was, over a legend entry: move it off for the picture.
     await page.mouse.move(0, 0);

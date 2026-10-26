@@ -21,7 +21,7 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { config as pageConfig } from "../config";
-import { FALLBACK_PRODUCTS, type FallbackProduct } from "./fallbackProducts";
+import { FALLBACK_PRODUCTS, PRODUCT_LEGAL, type FallbackProduct } from "./fallbackProducts";
 
 /*
  * A YAML library is not worth a dependency for three keys in a file whose
@@ -65,6 +65,14 @@ describe("fallback product links", () => {
       expect(p.pageUrl).toMatch(/^https:\/\//);
     }
     expect(FALLBACK_PRODUCTS).toEqual(fromConfig);
+  });
+
+  it("give every product, and only those, a privacy policy and terms of use", () => {
+    expect(Object.keys(PRODUCT_LEGAL)).toEqual(FALLBACK_PRODUCTS.map((p) => p.id));
+    for (const legal of Object.values(PRODUCT_LEGAL)) {
+      expect(legal.privacy).toMatch(/^https:\/\//);
+      expect(legal.terms).toMatch(/^https:\/\//);
+    }
   });
 
   it("match the links index.html shows without JavaScript or when the app does not load", () => {

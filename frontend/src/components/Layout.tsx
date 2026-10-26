@@ -28,16 +28,17 @@ import {
 import { Moon, Sun } from "@wso2/oxygen-ui-icons-react";
 import { useCallback, useEffect, useRef, type ReactNode } from "react";
 import { ViewFocus } from "../hooks/useViewFocus";
-import { Link, usePathname } from "../lib/router";
-import { FOOTER_TIMES } from "../lib/status";
+import { knownProduct, PRODUCT_LEGAL } from "../lib/fallbackProducts";
+import { Link, matchRoute, usePathname } from "../lib/router";
+import { FOOTER_TIMES, PRIVACY_POLICY, TERMS_OF_USE } from "../lib/status";
 import { CARD_RADIUS } from "../theme/shape";
 import { Wso2Logo } from "./Wso2Logo";
 
 /** WSO2's legal pages, as every WSO2 status page links them. */
 const LEGAL_LINKS = [
-  { text: "Privacy policy", href: "https://wso2.com/privacy-policy" },
+  { text: PRIVACY_POLICY, href: "https://wso2.com/privacy-policy" },
   { text: "Cookie policy", href: "https://wso2.com/cookie-policy" },
-  { text: "Terms of use", href: "https://wso2.com/terms-of-use" },
+  { text: TERMS_OF_USE, href: "https://wso2.com/terms-of-use" },
   { text: "Modern slavery statement", href: "https://wso2.com/modern-slavery-statement" },
   {
     text: "Do not sell my personal information",
@@ -46,19 +47,36 @@ const LEGAL_LINKS = [
 ] as const;
 
 /**
- * The legal links in the footer's own colour, underlined. Each is at least
- * 24 px tall (WCAG 2.5.8), as they wrap onto several lines on a phone.
+ * Legal links in the footer's own colour, underlined. Each is at least 24 px
+ * tall (WCAG 2.5.8), as they wrap onto several lines on a phone. A product's
+ * page adds a row of the product's own, led by its name.
  */
-function LegalLinks() {
+function LegalLinks({
+  label,
+  lead,
+  links,
+}: {
+  label: string;
+  lead?: string;
+  links: readonly { text: string; href: string }[];
+}) {
   return (
     <Stack
       component="nav"
-      aria-label="Legal"
+      aria-label={label}
       direction="row"
       useFlexGap
-      sx={{ flexWrap: "wrap", justifyContent: "center", columnGap: 2, rowGap: 0, mb: 1 }}
+      sx={{
+        flexWrap: "wrap",
+        justifyContent: "center",
+        alignItems: "center",
+        columnGap: 2,
+        rowGap: 0,
+        mb: 1,
+      }}
     >
-      {LEGAL_LINKS.map((link) => (
+      {lead !== undefined && <Typography variant="caption">{lead}</Typography>}
+      {links.map((link) => (
         <MuiLink
           key={link.href}
           href={link.href}
@@ -76,6 +94,24 @@ function LegalLinks() {
         </MuiLink>
       ))}
     </Stack>
+  );
+}
+
+/** On a product's page, its own privacy policy and terms of use. */
+function ProductLegalLinks() {
+  const route = matchRoute(usePathname());
+  const product = route.name === "product" ? knownProduct(route.id) : undefined;
+  const legal = product === undefined ? undefined : PRODUCT_LEGAL[product.id];
+  if (product === undefined || legal === undefined) return null;
+  return (
+    <LegalLinks
+      label={`${product.name} legal`}
+      lead={`${product.name}:`}
+      links={[
+        { text: PRIVACY_POLICY, href: legal.privacy },
+        { text: TERMS_OF_USE, href: legal.terms },
+      ]}
+    />
   );
 }
 
@@ -206,7 +242,8 @@ export function Layout({ children }: { children: ReactNode }) {
             textAlign: "center",
           }}
         >
-          <LegalLinks />
+          <ProductLegalLinks />
+          <LegalLinks label="Legal" links={LEGAL_LINKS} />
           <Typography variant="caption" component="p">
             {FOOTER_TIMES} Each product keeps its full history on its own status page.
           </Typography>

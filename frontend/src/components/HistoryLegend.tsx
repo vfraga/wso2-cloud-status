@@ -27,8 +27,8 @@ import { dayFill } from "./dayFill";
 const ENTRIES: readonly Status[] = ["outage", "degraded", "maintenance", "operational", "unknown"];
 
 /**
- * Drawn like a strip cell, one size for every colour so the entries read
- * alike, and centred on the text line.
+ * Drawn like a strip cell, at its height for the status, and centred on the
+ * text line.
  */
 function Swatch({ status }: { status: Status }) {
   return (
@@ -37,11 +37,10 @@ function Swatch({ status }: { status: Status }) {
       sx={{
         display: "inline-block",
         width: 8,
-        height: 14,
+        height: 16,
         borderRadius: "1px",
         flexShrink: 0,
         ...dayFill(status),
-        backgroundSize: "100% 100%",
       }}
     />
   );
@@ -63,17 +62,18 @@ const tipSx = {
 } as const;
 
 /**
- * One colour and its name. Its description opens on hover, on keyboard focus
- * and on a tap, can be hovered, and closes on Escape (WCAG 1.4.13); a screen
- * reader hears it as the entry's description. A tap opens it at once and
- * keeps it open until the reader taps elsewhere or presses Escape: nothing
- * else a touch screen sends (the tooltip's own touch timer, emulated mouse
- * events, a blur) closes it before it can be read.
+ * One colour and its name, as a button that shows what it means. Its
+ * description opens on hover, on keyboard focus, on Enter or Space and on a
+ * tap, can be hovered, and closes on Escape (WCAG 1.4.13); a screen reader
+ * hears it as the button's description. A tap opens it at once and keeps it
+ * open until the reader taps elsewhere or presses Escape: nothing else a
+ * touch screen sends (the tooltip's own touch timer, emulated mouse events, a
+ * blur) closes it before it can be read.
  */
 function Entry({ status }: { status: Status }) {
   const [open, setOpen] = useState(false);
   const byTouch = useRef(false);
-  const entry = useRef<HTMLSpanElement>(null);
+  const entry = useRef<HTMLButtonElement>(null);
   useEffect(() => {
     if (!open) return undefined;
     const away = (event: PointerEvent): void => {
@@ -105,15 +105,29 @@ function Entry({ status }: { status: Status }) {
     >
       <Stack
         ref={entry}
-        component="span"
-        tabIndex={0}
+        component="button"
+        type="button"
         direction="row"
         useFlexGap
         onPointerDown={(event) => {
           byTouch.current = event.pointerType === "touch";
           if (byTouch.current) setOpen(true);
         }}
-        sx={{ alignItems: "center", gap: 0.75, cursor: "help" }}
+        onClick={() => {
+          setOpen(true);
+        }}
+        sx={{
+          alignItems: "center",
+          gap: 0.75,
+          cursor: "help",
+          // A button that reads as the legend text around it.
+          font: "inherit",
+          color: "inherit",
+          background: "none",
+          border: 0,
+          p: 0,
+          minHeight: 24,
+        }}
       >
         <Swatch status={status} />
         <span>{status === "unknown" ? LEGEND_NO_DATA : DAY_LABEL[status]}</span>

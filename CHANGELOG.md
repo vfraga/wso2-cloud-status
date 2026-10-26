@@ -67,6 +67,17 @@ section here. The public API has its own version, in `api/openapi.yaml`.
 - On a phone, the home table puts a product's regions one under the other
   when they do not fit side by side.
 - The footer is centred, and the copyright year follows the clock.
+- A product's regions sit in aligned columns: the window codes once per
+  location, every row's figures in shared columns, a description under a
+  name, and an operational component as a check alone.
+- A product's page heads "Developer Platform (Choreo): All systems
+  operational", the other name lighter, instead of a line of its own, and
+  its footer adds the product's privacy policy and terms of use.
+- A day's bar in the history is as tall as its impact is severe, in the
+  legend too, so outage, degraded and maintenance differ by shape as well as
+  colour, also in Windows High Contrast.
+- Legend entries are buttons: Enter or Space shows a colour's description.
+- A screen reader hears the status of every plane a home cell names.
 
 ### Fixed
 

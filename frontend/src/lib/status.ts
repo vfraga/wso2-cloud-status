@@ -83,16 +83,22 @@ export function noRegionIn(place: string): string {
 }
 /** A part under a place's status: its name, and its own status when it differs ("Control plane: under maintenance"). */
 export function partNote(name: string, status: Status, place: Status): string {
-  return status === place ? name : `${name}: ${STATUS_LABEL[status].toLowerCase()}`;
+  return status === place ? name : partStatus(name, status);
+}
+
+/** A part with its status, "Data plane: service outage": what a screen reader hears in a cell. */
+export function partStatus(name: string, status: Status): string {
+  return `${name}: ${STATUS_LABEL[status].toLowerCase()}`;
 }
 
 export const CHECKING_LABEL = "Checking status";
 /** Banner headline when every known status is operational but some data is missing. */
 export const PARTIAL_HEADLINE = "Some status data is unavailable";
-export const UPTIME_LABEL = "Uptime";
-/** Under a product's Regions: what CSM's figures count (answered question 9b). */
+/** Under a product's Regions: what CSM's uptime figures count (answered question 9b). */
 export const UPTIME_NOTE =
-  "Uptime counts service outages only, as WSO2 measures them daily. A region's figure averages its services, so an outage of one service lowers it by that service's share.";
+  "Uptime counts outages only, as WSO2 measures them daily; a region's figure averages its services.";
+/** A region whose components are unknown and lists none. */
+export const NO_COMPONENT_DATA = "No component data is available right now.";
 export const COMPONENTS_UNAVAILABLE = "some component data is unavailable";
 
 /** The text with its first letter in upper case, for a fragment that starts a line. */
@@ -275,6 +281,10 @@ export const LEGEND_DESCRIPTION: Record<Status, string> = {
 export const RENDER_FAILED = "Something went wrong showing this page";
 export const RENDER_FAILED_DETAIL =
   "This page will try again on its own. Meanwhile, check each product's own status page:";
+
+/** Legal pages in the footer: WSO2's, and on a product's page the product's own. */
+export const PRIVACY_POLICY = "Privacy policy";
+export const TERMS_OF_USE = "Terms of use";
 
 /** Every page; a product page's history legend says its bars are UTC days. */
 export const FOOTER_TIMES = "Times are shown in your local time zone unless marked UTC.";

@@ -41,6 +41,39 @@ export const FALLBACK_PRODUCTS: readonly FallbackProduct[] = [
   { id: "moesif", name: "Moesif", pageUrl: "https://status.moesif.com" },
 ];
 
+/**
+ * Each product's privacy policy and terms of use, as its own status page
+ * links them (the final address after redirects, checked 2026-10-26). Four
+ * products use WSO2's privacy policy. A product's page shows them in its
+ * footer; fallbackProducts.test.ts fails when a product has none.
+ */
+export const PRODUCT_LEGAL: Readonly<Record<string, { privacy: string; terms: string }>> = {
+  "agent-platform": {
+    privacy: "https://wso2.com/privacy-policy",
+    terms: "https://wso2.com/cloud/agent-manager/terms-of-use",
+  },
+  "api-platform": {
+    privacy: "https://wso2.com/privacy-policy",
+    terms: "https://wso2.com/api-platform/terms-of-use/",
+  },
+  "integration-platform": {
+    privacy: "https://wso2.com/privacy-policy",
+    terms: "https://wso2.com/integration-platform/terms-of-use/",
+  },
+  "identity-platform": {
+    privacy: "https://wso2.com/privacy-policy",
+    terms: "https://wso2.com/identity-platform/terms-of-use/",
+  },
+  "developer-platform": {
+    privacy: "https://wso2.com/engineering-platform/developer-platform/privacy-policy/",
+    terms: "https://wso2.com/engineering-platform/developer-platform/terms-of-use/",
+  },
+  moesif: {
+    privacy: "https://www.moesif.com/privacy",
+    terms: "https://www.moesif.com/terms",
+  },
+};
+
 /** Products the summary has listed in this page's lifetime, by id. */
 const listed = new Map<string, FallbackProduct>();
 

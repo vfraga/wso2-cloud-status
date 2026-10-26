@@ -55,6 +55,8 @@ interface BannerProps extends FreshnessInputs {
   secondary?: string;
   /** Read before the headline by screen readers, for example the product name. */
   subject?: string;
+  /** The name readers also know the subject by, after it in a lighter weight: "(Choreo)". */
+  alias?: string;
 }
 
 const staleAfter = formatMinutes(config.staleAfterMs);
@@ -139,9 +141,29 @@ function useChangeAnnouncement(label: string, settled: boolean): string {
   return seen.text;
 }
 
-/** The h1: the status, after the product's name on a product page. */
-function headingText(subject: string | undefined, label: string): string {
-  return subject === undefined ? label : `${subject}: ${label}`;
+/** The h1: the status, after the product's name (and the name it is also known by) on a product page. */
+function HeadingText({
+  subject,
+  alias,
+  label,
+}: {
+  subject: string | undefined;
+  alias: string | undefined;
+  label: string;
+}) {
+  if (subject === undefined) return <>{label}</>;
+  return (
+    <>
+      {subject}
+      {alias !== undefined && (
+        <>
+          {" "}
+          <span style={{ fontWeight: 400 }}>({alias})</span>
+        </>
+      )}
+      {`: ${label}`}
+    </>
+  );
 }
 
 /** "Status checked 3 min ago", or "Other products ..." when some are late and named in the notice. */
@@ -176,6 +198,7 @@ export function Banner({
   someLate = false,
   secondary,
   subject,
+  alias,
   ...inputs
 }: BannerProps) {
   const now = useBannerNow();
@@ -215,7 +238,7 @@ export function Banner({
             color: statusVar(status, "fg"),
           }}
         >
-          {headingText(subject, shown.label)}
+          <HeadingText subject={subject} alias={alias} label={shown.label} />
         </Typography>
       </Stack>
       <Detail headline={shown} />

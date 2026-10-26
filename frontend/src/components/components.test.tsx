@@ -30,13 +30,14 @@ import {
   formatUtcDateTime,
 } from "../lib/time";
 import { days, incident, locatedProduct, part, product } from "../test/factories";
+import { dayFill } from "./dayFill";
 import { HistoryLegend } from "./HistoryLegend";
 import { Banner } from "./Banner";
 import { HistoryStrip } from "./HistoryStrip";
 import { IncidentItem } from "./IncidentMeta";
 import { LocationPanel, RegionDetailPanel } from "./RegionDetailPanel";
 import { ThemeRoot } from "../theme/ThemeRoot";
-import { UptimeList, formatPercent, windowName } from "./UptimeList";
+import { UptimeColumns, UptimeFigures, formatPercent, uptimeColumns, windowName } from "./Uptime";
 import { ErrorBoundary } from "./ErrorBoundary";
 import { ProductListSkeleton } from "./Skeletons";
 import { StatusLabel } from "./StatusIcon";
@@ -186,13 +187,22 @@ describe("HistoryStrip", () => {
     scroll.mockRestore();
   });
 
+  it("draws a day as tall as its impact is severe, quiet and no-data days alike", () => {
+    const height = (status: Status) => dayFill(status).backgroundSize;
+    expect(
+      ["outage", "degraded", "maintenance", "operational", "unknown"].map((s) =>
+        height(s as Status),
+      ),
+    ).toEqual(["100% 100%", "100% 85%", "100% 70%", "100% 60%", "100% 60%"]);
+  });
+
   it("draws the days in system colours under forced colors", () => {
     wrap(<HistoryStrip productName="X" days={d} incidents={new Map()} />);
     const css = Array.from(document.querySelectorAll("style"))
       .map((el) => el.textContent)
       .join("\n");
     expect(css).toMatch(
-      /@media \(forced-colors: active\)\{[^}]*forced-color-adjust:none;background-color:CanvasText/,
+      /@media \(forced-colors: active\)\{[^}]*forced-color-adjust:none;background-image:linear-gradient\(CanvasText, CanvasText\)/,
     );
     expect(css).toMatch(
       /forced-color-adjust:none;background-image:linear-gradient\(GrayText, GrayText\)/,
@@ -357,8 +367,7 @@ describe("HistoryLegend", () => {
       "Maintenance",
       "No incidents",
       "No data: information for this day is unavailable",
-    ].map((name) => screen.getByText(name).parentElement!);
-    for (const entry of entries) expect(entry).toHaveAttribute("tabindex", "0");
+    ].map((name) => screen.getByRole("button", { name }));
     await user.tab();
     expect(entries[0]).toHaveFocus();
     expect(await screen.findByRole("tooltip")).toHaveTextContent(
@@ -369,6 +378,12 @@ describe("HistoryLegend", () => {
     await waitFor(() => {
       expect(screen.queryByRole("tooltip")).not.toBeInTheDocument();
     });
+    // A button: Enter opens the description again.
+    await user.keyboard("{Enter}");
+    expect(await screen.findByRole("tooltip")).toHaveTextContent(
+      "An incident that day was a service outage.",
+    );
+    await user.keyboard("{Escape}");
     await user.hover(entries[2]!);
     expect(await screen.findByRole("tooltip")).toHaveTextContent(
       "Planned maintenance that day, and no outage or degraded performance.",
@@ -405,6 +420,9 @@ describe("RegionDetailPanel", () => {
     await user.click(toggle);
     const panel = document.getElementById(toggle.getAttribute("aria-controls") ?? "");
     expect(panel).toContainElement(screen.getByText("Gateway"));
+    // An operational component shows the check alone; a screen reader still hears the word.
+    const row = screen.getByText("Gateway").closest("li")!;
+    expect(within(row).getByText("Operational")).toHaveClass("cs-visually-hidden");
     await user.click(toggle);
     expect(toggle).not.toHaveAttribute("aria-controls");
   });
@@ -461,7 +479,7 @@ describe("RegionDetailPanel without components", () => {
       </ThemeRoot>,
     );
     expect(screen.queryByText("No component data is available right now.")).not.toBeInTheDocument();
-    expect(screen.getByText("Uptime")).toBeInTheDocument();
+    expect(screen.getByRole("group", { name: "Uptime for US" })).toBeInTheDocument();
   });
 });
 
@@ -876,6 +894,9 @@ describe("StatusTable", () => {
     expect(within(cells[1]!).getByText("Service outage")).toBeInTheDocument();
     expect(within(cells[1]!).getByText("Data plane")).toBeInTheDocument();
     expect(within(cells[1]!).getByText("Control plane: under maintenance")).toBeInTheDocument();
+    // A screen reader hears the bare part's status too.
+    expect(cells[1]).toHaveTextContent(/Data plane: service outage/);
+    expect(within(cells[1]!).getByText("Data plane")).toHaveAttribute("aria-hidden", "true");
     expect(within(cells[0]!).queryByText(/plane/)).not.toBeInTheDocument();
   });
 
@@ -924,22 +945,70 @@ describe("StatusTable", () => {
 });
 
 describe("small pieces", () => {
-  it("labels uptime figures; the product page says once what they count", () => {
-    wrap(<UptimeList uptime={[{ window: "7d", percent: 100 }]} label="Uptime for EU" />);
-    expect(screen.getByText("Uptime")).toBeInTheDocument();
-    // The group carries the region's name; a window code is read in words.
-    expect(screen.getByRole("group", { name: "Uptime for EU" })).toBeInTheDocument();
-    expect(screen.getByRole("term")).toHaveTextContent("7 days");
-    expect(screen.getByRole("definition")).toHaveTextContent("100%");
+  it("puts uptime figures in the product's columns, named after their region, windows in words", () => {
+    wrap(
+      <UptimeColumns.Provider value={["7d", "30d", "12mo"]}>
+        <UptimeFigures
+          uptime={[
+            { window: "12mo", percent: 99.994 },
+            { window: "7d", percent: 100 },
+          ]}
+          label="Uptime for EU"
+        />
+      </UptimeColumns.Provider>,
+    );
+    const group = screen.getByRole("group", { name: "Uptime for EU" });
+    // In column order, the 30d column left blank.
+    expect(
+      within(group)
+        .getAllByRole("term")
+        .map((t) => t.textContent),
+    ).toEqual(["7 days", "12 months"]);
+    expect(
+      within(group)
+        .getAllByRole("definition")
+        .map((d) => d.textContent),
+    ).toEqual(["100%", "99.994%"]);
+    expect(group.querySelector("dl")?.children).toHaveLength(3);
     expect(windowName("12mo")).toBe("12 months");
     expect(windowName("1d")).toBe("1 day");
     expect(windowName("ytd")).toBe("ytd");
   });
 
+  it("orders a product's uptime columns by length, components' windows included", () => {
+    const region = (windows: string[], component: string[] = []) => ({
+      id: "r",
+      name: "R",
+      status: "operational" as const,
+      pageUrl: "",
+      uptime: windows.map((w) => ({ window: w, percent: 100 })),
+      groups: [
+        {
+          name: "G",
+          status: "operational" as const,
+          components: [
+            {
+              name: "C",
+              status: "operational" as const,
+              uptime: component.map((w) => ({ window: w, percent: 100 })),
+            },
+          ],
+        },
+      ],
+    });
+    expect(uptimeColumns([region(["12mo", "7d"]), region(["90d"], ["30d", "ytd"])])).toEqual([
+      "7d",
+      "30d",
+      "90d",
+      "12mo",
+      "ytd",
+    ]);
+  });
+
   it("formats uptime percentages", () => {
     expect(formatPercent(99.99412)).toBe("99.994%");
     expect(formatPercent(100)).toBe("100%");
-    const { container } = wrap(<UptimeList uptime={[]} label="none" />);
+    const { container } = wrap(<UptimeFigures uptime={[]} label="none" />);
     expect(container).toBeEmptyDOMElement();
   });
 

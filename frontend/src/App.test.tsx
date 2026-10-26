@@ -551,7 +551,7 @@ describe("product page", () => {
     ).toHaveAttribute("href", "https://status.example.test/api");
     // The h1 names the product, visibly; no second heading repeats it.
     expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(
-      "API Platform: Degraded performance",
+      "API Platform (Bijira): Degraded performance",
     );
     expect(screen.queryByRole("heading", { level: 2, name: "API Platform" })).toBeNull();
     expect(screen.getByText("API Proxy Invocation")).toBeInTheDocument();
@@ -562,6 +562,23 @@ describe("product page", () => {
     expect(screen.getByText(/^Incidents last updated .+ UTC \(2\d min ago\)$/)).toBeInTheDocument();
     expect(screen.getByText("99.994%")).toBeInTheDocument();
     expect(screen.getByText("Elevated latency")).toBeInTheDocument();
+    // The name readers also know it by sits in the title, not on a line of its own.
+    expect(screen.queryByText("Bijira")).toBeNull();
+    // A component that is not operational says so in words.
+    const component = screen.getByText("API Proxy Invocation").closest("li")!;
+    expect(within(component).getByText("Degraded performance")).not.toHaveClass(
+      "cs-visually-hidden",
+    );
+    // The footer adds the product's own legal pages under its name.
+    const legal = screen.getByRole("navigation", { name: "API Platform legal" });
+    expect(within(legal).getByRole("link", { name: "Privacy policy" })).toHaveAttribute(
+      "href",
+      "https://wso2.com/privacy-policy",
+    );
+    expect(within(legal).getByRole("link", { name: "Terms of use" })).toHaveAttribute(
+      "href",
+      "https://wso2.com/api-platform/terms-of-use/",
+    );
   });
 
   it("lists recent incidents under their local day and counts them as the strip does", async () => {
@@ -789,7 +806,7 @@ describe("product page", () => {
     expect(
       await screen.findByRole("heading", {
         level: 1,
-        name: "API Platform: Some status data is unavailable",
+        name: "API Platform (Bijira): Some status data is unavailable",
       }),
     ).toBeInTheDocument();
     expect(screen.getByText("1 of 2 regions unavailable.")).toBeInTheDocument();
@@ -810,7 +827,10 @@ describe("product page", () => {
     );
     render(<App />);
     expect(
-      await screen.findByRole("heading", { level: 1, name: "API Platform: Status unavailable" }),
+      await screen.findByRole("heading", {
+        level: 1,
+        name: "API Platform (Bijira): Status unavailable",
+      }),
     ).toBeInTheDocument();
   });
 
@@ -915,7 +935,7 @@ describe("product page", () => {
       await screen.findByRole("link", { name: "Open the API Platform status page" }),
     ).toBeInTheDocument();
     // The new view is announced: its h1 has focus and the tab has its own title.
-    await expectHeadingFocused("API Platform: Degraded performance");
+    await expectHeadingFocused("API Platform (Bijira): Degraded performance");
     await expectTitle("API Platform - WSO2 Cloud Status");
     await user.click(screen.getByRole("link", { name: "All products" }));
     await expectHeadingFocused("Degraded performance");
@@ -949,7 +969,7 @@ describe("product page", () => {
       await waitFor(() => {
         expect(screen.getByRole("heading", { level: 1 })).toHaveFocus();
       });
-      expect(focused).toEqual(["API Platform: Degraded performance"]);
+      expect(focused).toEqual(["API Platform (Bijira): Degraded performance"]);
     } finally {
       document.removeEventListener("focusin", record);
     }
@@ -986,7 +1006,10 @@ describe("product page", () => {
     const toggle = screen.getByRole("button", { name: /Switch to (dark|light) mode/ });
     toggle.focus();
     expect(
-      await screen.findByRole("heading", { level: 1, name: "API Platform: Degraded performance" }),
+      await screen.findByRole("heading", {
+        level: 1,
+        name: "API Platform (Bijira): Degraded performance",
+      }),
     ).not.toHaveFocus();
     expect(toggle).toHaveFocus();
   });

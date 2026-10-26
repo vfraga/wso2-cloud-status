@@ -66,7 +66,10 @@ export async function ready(page: Page): Promise<void> {
 /** Opens a product page and waits for its data: the h1 names the product and its status. */
 export async function readyProduct(page: Page, id: string, name: string): Promise<void> {
   await page.goto(`/products/${id}`);
-  await expect(page.getByRole("heading", { level: 1 })).toHaveText(new RegExp(`^${name}: `));
+  // The name, then the one readers also know it by when it has one: "API Platform (Bijira): ".
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText(
+    new RegExp(`^${name}( \\([^)]+\\))?: `),
+  );
   await expect(page.getByRole("heading", { level: 1 })).not.toHaveText(/Checking status/);
 }
 

@@ -29,6 +29,7 @@ import { IncidentItem } from "../components/IncidentMeta";
 import { IncidentsUnavailable } from "../components/IncidentsUnavailable";
 import { ProductNotes } from "../components/ProductNotes";
 import { LocationPanel, RegionDetailPanel } from "../components/RegionDetailPanel";
+import { GridRow, UptimeColumns, UptimeHeader, uptimeColumns } from "../components/Uptime";
 import { ProductListSkeleton } from "../components/Skeletons";
 import { pageTitle, useDocumentTitle } from "../hooks/useDocumentTitle";
 import { PageNowProvider, usePageNow } from "../hooks/useNow";
@@ -137,14 +138,12 @@ function ProductBody({
     [product],
   );
   const self = useMemo(() => new Map([[product.id, product]]), [product]);
+  const columns = useMemo(() => uptimeColumns(product.regionDetails), [product]);
   const partly = partlyShown(product);
   return (
     <>
       {/* The banner's h1 names the product; the link out stays below the status. */}
       <Box sx={{ mt: 2 }}>
-        {product.description !== undefined && (
-          <Typography sx={{ color: "var(--cs-muted)" }}>{product.description}</Typography>
-        )}
         <ProductNotes product={product} partly={partly} />
         <Box sx={{ mt: 1.5 }}>
           <ExternalAnchor
@@ -191,19 +190,27 @@ function ProductBody({
             {UPTIME_NOTE}
           </Typography>
         )}
-        <Box component="ul" sx={{ m: 0, mt: 1, p: 0 }}>
-          {regionRows(product.locations, product.regionDetails).map((row) =>
-            row.kind === "location" ? (
-              <LocationPanel
-                key={`location-${row.location.id}`}
-                location={row.location}
-                regions={row.regions}
-              />
-            ) : (
-              <RegionDetailPanel key={row.region.id} region={row.region} />
-            ),
+        <UptimeColumns.Provider value={columns}>
+          {/* Each location's row carries the window codes; regions without one get them here. */}
+          {product.locations.length === 0 && (
+            <Box sx={{ mt: 1.5 }}>
+              <GridRow name={null} status={null} figures={<UptimeHeader />} />
+            </Box>
           )}
-        </Box>
+          <Box component="ul" sx={{ m: 0, mt: 1, p: 0 }}>
+            {regionRows(product.locations, product.regionDetails).map((row) =>
+              row.kind === "location" ? (
+                <LocationPanel
+                  key={`location-${row.location.id}`}
+                  location={row.location}
+                  regions={row.regions}
+                />
+              ) : (
+                <RegionDetailPanel key={row.region.id} region={row.region} />
+              ),
+            )}
+          </Box>
+        </UptimeColumns.Provider>
       </Box>
       <RecentIncidents product={product} now={now} />
     </>
@@ -254,6 +261,7 @@ function ProductBanner({
       loading={product === null && !state.failed && state.lastSuccessAt === null}
       {...bannerFreshness(state, product ? [product] : null, product?.incidents ?? [], now)}
       {...(name === undefined ? {} : { subject: name })}
+      {...(product?.description === undefined ? {} : { alias: product.description })}
     />
   );
 }

@@ -16,17 +16,20 @@
  * under the License.
  */
 
-import { Box, Button, Collapse, Stack, Typography } from "@wso2/oxygen-ui";
+import { Box, Button, Collapse, Typography } from "@wso2/oxygen-ui";
 import { ChevronDown } from "@wso2/oxygen-ui-icons-react";
 import { useId } from "react";
-import type { Location, RegionDetail } from "../api/types";
+import type { Component, Location, RegionDetail } from "../api/types";
 import { useAutoExpanded } from "../hooks/useAutoExpanded";
 import { shortName } from "../lib/regions";
-import { STATUS_LABEL } from "../lib/status";
+import { NO_COMPONENT_DATA, STATUS_LABEL } from "../lib/status";
 import { StatusLabel } from "./StatusIcon";
-import { UptimeList } from "./UptimeList";
+import { GridRow, UptimeFigures, UptimeHeader } from "./Uptime";
 
 const regionNameSx = { fontSize: "1rem", fontWeight: 600 } as const;
+/** A part under its location, and a component under its part, step in; the columns do not. */
+const PART_INDENT = { xs: 1.5, md: 2 } as const;
+const COMPONENT_INDENT = { xs: 3, md: 4 } as const;
 
 /** The heading level of a region: h3 on its own, h4 under its location. Its groups are one below. */
 type Level = 3 | 4;
@@ -70,11 +73,60 @@ function RegionName({
             style={{ transform: expanded ? "rotate(180deg)" : "none" }}
           />
         }
-        sx={{ color: "var(--cs-text)", ml: -1, textTransform: "none", ...regionNameSx }}
+        sx={{
+          color: "var(--cs-text)",
+          ml: -1,
+          textTransform: "none",
+          // A name that wraps on a phone stays flush left.
+          textAlign: "left",
+          ...regionNameSx,
+        }}
       >
         {name}
       </Button>
     </Typography>
+  );
+}
+
+/**
+ * A component on one line when it has no description: its name, its figures
+ * in the shared columns, and its status. Operational shows the check alone
+ * (a screen reader still hears the word); anything else says what it is.
+ */
+function ComponentRow({ component }: { component: Component }) {
+  return (
+    <Box component="li" sx={{ listStyle: "none", py: 0.625 }}>
+      <GridRow
+        align="start"
+        name={
+          <Box sx={{ pl: COMPONENT_INDENT }}>
+            <Typography variant="body2">{component.name}</Typography>
+            {component.description !== undefined && (
+              <Typography variant="caption" component="p" sx={{ m: 0, color: "var(--cs-muted)" }}>
+                {component.description}
+              </Typography>
+            )}
+            {component.message !== undefined && (
+              <Typography variant="caption" component="p" sx={{ m: 0 }}>
+                {component.message}
+              </Typography>
+            )}
+          </Box>
+        }
+        figures={
+          <UptimeFigures
+            uptime={component.uptime}
+            label={`Uptime for ${component.name}`}
+            strong={false}
+          />
+        }
+        status={
+          <StatusLabel status={component.status} quiet={component.status === "operational"}>
+            {STATUS_LABEL[component.status]}
+          </StatusLabel>
+        }
+      />
+    </Box>
   );
 }
 
@@ -91,77 +143,47 @@ export function RegionDetailPanel({
   const [expanded, setExpanded] = useAutoExpanded(region.status !== "operational");
   const panelId = useId();
   return (
-    <Box
-      component="li"
-      sx={{ listStyle: "none", py: 1.5, borderTop: "1px solid var(--cs-border)" }}
-    >
-      <Stack
-        direction="row"
-        useFlexGap
-        sx={{ justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 1 }}
-      >
-        <RegionName
-          region={region}
-          name={name}
-          level={level}
-          expanded={expanded}
-          panelId={panelId}
-          onToggle={() => {
-            setExpanded(!expanded);
-          }}
-        />
-        <StatusLabel status={region.status}>{STATUS_LABEL[region.status]}</StatusLabel>
-      </Stack>
-      <UptimeList uptime={region.uptime} label={`Uptime for ${region.name}`} />
-      {region.groups.length === 0 && region.status === "unknown" && (
-        <Typography variant="body2" sx={{ color: "var(--cs-muted)", mt: 0.5 }}>
-          No component data is available right now.
-        </Typography>
-      )}
+    <Box component="li" sx={{ listStyle: "none", py: 1, borderTop: "1px solid var(--cs-border)" }}>
+      <GridRow
+        name={
+          <Box sx={level === 4 ? { pl: PART_INDENT } : {}}>
+            <RegionName
+              region={region}
+              name={name}
+              level={level}
+              expanded={expanded}
+              panelId={panelId}
+              onToggle={() => {
+                setExpanded(!expanded);
+              }}
+            />
+            {region.groups.length === 0 && region.status === "unknown" && (
+              <Typography variant="body2" sx={{ color: "var(--cs-muted)" }}>
+                {NO_COMPONENT_DATA}
+              </Typography>
+            )}
+          </Box>
+        }
+        figures={<UptimeFigures uptime={region.uptime} label={`Uptime for ${region.name}`} />}
+        status={<StatusLabel status={region.status}>{STATUS_LABEL[region.status]}</StatusLabel>}
+      />
       <Collapse in={expanded && region.groups.length > 0} id={panelId} unmountOnExit>
         {region.groups.map((group) => (
-          <Box key={group.name} sx={{ mt: 2 }}>
-            <Typography component={heading(level + 1)} variant="body2" sx={{ fontWeight: 700 }}>
+          <Box key={group.name} sx={{ mt: 1.5 }}>
+            <Typography
+              component={heading(level + 1)}
+              sx={{
+                pl: COMPONENT_INDENT,
+                fontSize: "0.8125rem",
+                fontWeight: 600,
+                color: "var(--cs-muted)",
+              }}
+            >
               {group.name}
             </Typography>
             <Box component="ul" sx={{ m: 0, p: 0 }}>
               {group.components.map((component) => (
-                <Stack
-                  key={component.name}
-                  component="li"
-                  direction="row"
-                  useFlexGap
-                  sx={{
-                    listStyle: "none",
-                    justifyContent: "space-between",
-                    flexWrap: "wrap",
-                    gap: 1,
-                    py: 0.75,
-                    borderTop: "1px solid var(--cs-border)",
-                  }}
-                >
-                  <Box sx={{ minWidth: 0, flex: "1 1 240px" }}>
-                    <Typography variant="body2" sx={{ fontWeight: 500 }}>
-                      {component.name}
-                    </Typography>
-                    {component.description !== undefined && (
-                      <Typography variant="caption" sx={{ color: "var(--cs-muted)" }}>
-                        {component.description}
-                      </Typography>
-                    )}
-                    {component.message !== undefined && (
-                      <Typography variant="caption" component="p" sx={{ m: 0 }}>
-                        {component.message}
-                      </Typography>
-                    )}
-                  </Box>
-                  <Stack sx={{ alignItems: { xs: "flex-start", sm: "flex-end" }, gap: 0.25 }}>
-                    <StatusLabel status={component.status}>
-                      {STATUS_LABEL[component.status]}
-                    </StatusLabel>
-                    <UptimeList uptime={component.uptime} label={`Uptime for ${component.name}`} />
-                  </Stack>
-                </Stack>
+                <ComponentRow key={component.name} component={component} />
               ))}
             </Box>
           </Box>
@@ -172,8 +194,9 @@ export function RegionDetailPanel({
 }
 
 /**
- * A location (US) with its parts as h4 panels under its h3 name and status.
- * The parts are listed, never folded away: the page is about this product.
+ * A location (US) with its parts under its h3 name and status; its row
+ * carries the window codes over the parts' figures. The parts are listed,
+ * never folded away: the page is about this product.
  */
 export function LocationPanel({
   location,
@@ -183,21 +206,17 @@ export function LocationPanel({
   regions: readonly RegionDetail[];
 }) {
   return (
-    <Box
-      component="li"
-      sx={{ listStyle: "none", pt: 1.5, borderTop: "1px solid var(--cs-border)" }}
-    >
-      <Stack
-        direction="row"
-        useFlexGap
-        sx={{ justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 1 }}
-      >
-        <Typography component="h3" sx={{ fontSize: "1.125rem", fontWeight: 600 }}>
-          {location.name}
-        </Typography>
-        <StatusLabel status={location.status}>{STATUS_LABEL[location.status]}</StatusLabel>
-      </Stack>
-      <Box component="ul" sx={{ m: 0, mt: 0.5, p: 0, pl: 2 }}>
+    <Box component="li" sx={{ listStyle: "none", pt: 2.5 }}>
+      <GridRow
+        name={
+          <Typography component="h3" sx={{ fontSize: "1.125rem", fontWeight: 600 }}>
+            {location.name}
+          </Typography>
+        }
+        figures={<UptimeHeader />}
+        status={<StatusLabel status={location.status}>{STATUS_LABEL[location.status]}</StatusLabel>}
+      />
+      <Box component="ul" sx={{ m: 0, mt: 1, p: 0 }}>
         {regions.map((region) => (
           <RegionDetailPanel
             key={region.id}

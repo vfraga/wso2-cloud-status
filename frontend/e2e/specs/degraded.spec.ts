@@ -177,7 +177,7 @@ test.describe("outage, degraded and maintenance components in one place, and an 
     await readyProduct(page, "api-platform", "API Platform");
     const banner = page.getByRole("region", { name: "Overall status" });
     await expect(banner.getByRole("heading", { level: 1 })).toHaveAccessibleName(
-      "API Platform: Service outage",
+      "API Platform (Bijira): Service outage",
     );
     await expect(banner).toContainText("Service outage: EU data plane.");
     await expect(banner).toContainText("Under maintenance: EU control plane.");

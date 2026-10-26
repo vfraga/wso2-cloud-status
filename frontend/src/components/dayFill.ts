@@ -25,36 +25,41 @@ const HATCH = (colour: string): string =>
   `repeating-linear-gradient(45deg, ${colour} 0 1.5px, transparent 1.5px 4px)`;
 const SOLID = (colour: string): string => `linear-gradient(${colour}, ${colour})`;
 
+/** Height of a day's mark by severity, so impacts differ by shape as well as colour. */
+const HEIGHT: Record<Status, string> = {
+  outage: "100%",
+  degraded: "85%",
+  maintenance: "70%",
+  operational: "60%",
+  unknown: "60%",
+};
+
 /**
  * How one day of history is painted, for the strip cells and the legend.
  *
- * A day with incidents fills the cell in its status colour. Healthy and
- * no-data days are drawn at 60% height, so a problem day stands out by its
- * shape as well as its colour (WCAG 1.4.1); "No data" is also hatched.
+ * Each day is a bar in its status colour, as tall as its impact is severe:
+ * an outage fills the cell, degraded 85%, maintenance 70%, and healthy and
+ * no-data days 60%. So a problem day, and which problem, shows by shape as
+ * well as colour (WCAG 1.4.1); "No data" is also hatched.
  *
  * Forced colors (Windows High Contrast) replace background colours with the
  * page colour and drop gradients, which erased the strip. There the cells opt
- * out of the override and use system colours instead: a problem day in full
- * CanvasText, a healthy day in solid GrayText, a no-data day hatched.
+ * out of the override and use system colours instead, at the same heights: a
+ * problem day in CanvasText, a healthy day in GrayText, a no-data day hatched.
  */
 export function dayFill(status: Status) {
-  if (isProblem(status)) {
-    return {
-      bgcolor: statusVar(status, "fill"),
-      [FORCED_COLORS]: { forcedColorAdjust: "none", backgroundColor: "CanvasText" },
-    };
-  }
   const fill = statusVar(status, "fill");
   const tint = statusVar(status, "tint");
   const unknown = status === "unknown";
+  const system = isProblem(status) ? "CanvasText" : "GrayText";
   return {
     backgroundImage: unknown ? `${HATCH(fill)}, ${SOLID(tint)}` : SOLID(fill),
-    backgroundSize: "100% 60%",
+    backgroundSize: `100% ${HEIGHT[status]}`,
     backgroundPosition: "bottom",
     backgroundRepeat: "no-repeat",
     [FORCED_COLORS]: {
       forcedColorAdjust: "none",
-      backgroundImage: unknown ? HATCH("GrayText") : SOLID("GrayText"),
+      backgroundImage: unknown ? HATCH(system) : SOLID(system),
     },
   };
 }
