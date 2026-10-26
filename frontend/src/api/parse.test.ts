@@ -115,6 +115,12 @@ describe("parseSummary", () => {
     expect(complete({ ...ok, regions: [region] })).toBe(false);
     // A region record without an id is dropped, and the product is then incomplete.
     expect(complete({ ...ok, regions: [{ name: "no id", status: "operational" }] })).toBe(false);
+    // A record without its lists, or with a location it could not read, is not complete.
+    const without = (key: string) =>
+      Object.fromEntries(Object.entries(ok).filter(([k]) => k !== key));
+    expect(complete(without("regions"))).toBe(false);
+    expect(complete(without("locations"))).toBe(false);
+    expect(complete({ ...ok, locations: [{ name: "no id" }] })).toBe(false);
   });
 
   it("reads checked_at and stale per kind, failing closed", () => {

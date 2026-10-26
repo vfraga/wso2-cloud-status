@@ -173,6 +173,39 @@ test.describe("outage, degraded and maintenance components in one place, and an 
     await context.close();
   });
 
+  test("long words from the upstream wrap at 320 px on both pages", async ({ browser }) => {
+    // CSM operators write titles, messages and names; one may hold a URL. Each gets one here.
+    const url = `https://status.example.com/incidents/${"x".repeat(80)}`;
+    const context = await browser.newContext({ viewport: { width: 320, height: 800 } });
+    await context.route("**/api/v1/**", async (route) => {
+      const response = await route.fetch();
+      if (response.status() !== 200) return route.fulfill({ response });
+      const body = JSON.stringify(await response.json(), function (key, value: unknown) {
+        const upstream =
+          key === "title" ||
+          key === "message" ||
+          key === "description" ||
+          (key === "name" && ("components" in this || "uptime" in this) && !("id" in this));
+        return upstream && typeof value === "string" ? `${value} ${url}` : value;
+      });
+      return route.fulfill({ response, body });
+    });
+    const page = await context.newPage();
+    const overflow = () =>
+      page.evaluate(
+        () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+      );
+    await ready(page);
+    await expect(page.getByRole("region", { name: "Active incidents" })).toContainText(url);
+    expect(await overflow()).toBeLessThanOrEqual(0);
+    await readyProduct(page, "api-platform", "API Platform");
+    const closed = page.locator('button[aria-expanded="false"][aria-controls]');
+    while ((await closed.count()) > 0) await closed.first().click();
+    await expect(page.getByText(`API Proxy Invocation ${url}`)).toBeVisible();
+    expect(await overflow()).toBeLessThanOrEqual(0);
+    await context.close();
+  });
+
   test("the product page names the affected regions under the headline", async ({ page }) => {
     await readyProduct(page, "api-platform", "API Platform");
     const banner = page.getByRole("region", { name: "Overall status" });

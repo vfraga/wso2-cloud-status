@@ -196,19 +196,25 @@ function toProduct(r: Rec): ProductSummary | null {
   const regions = records(sent)
     .map((x) => toRegion(x, pageUrl))
     .filter(nonNull);
+  const sentLocations = list(r.locations);
+  const locations = records(sentLocations).map(toLocation).filter(nonNull);
   return {
     id,
     name: str(r.name, id),
     pageUrl,
     status: toStatus(r.status),
-    // Fails closed: complete only when the API says so, every region it sent
-    // could be read, and none of them is unknown.
+    // Fails closed: complete only when the API says so, sent both lists,
+    // every region and location in them could be read, and no region is
+    // unknown.
     dataComplete:
       r.data_complete === true &&
+      Array.isArray(r.regions) &&
+      Array.isArray(r.locations) &&
       regions.length === sent.length &&
+      locations.length === sentLocations.length &&
       regions.every((x) => x.status !== "unknown"),
     freshness: toFreshness(r),
-    locations: records(r.locations).map(toLocation).filter(nonNull),
+    locations,
     regions,
     history: records(r.history).map(toDay).filter(nonNull),
     ...optionalString("description", r.description),

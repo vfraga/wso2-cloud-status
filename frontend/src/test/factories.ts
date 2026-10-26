@@ -181,6 +181,7 @@ export function summaryBody(
         data_complete: true,
         outdated: false,
         ...currentBody(),
+        locations: [],
         regions: [
           {
             id: "us",

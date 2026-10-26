@@ -87,6 +87,7 @@ function productBody(
       uptime: iso(feeds.uptime === undefined ? now : feeds.uptime),
     },
     stale,
+    locations: [],
     regions: [
       {
         id: "us",
@@ -116,8 +117,6 @@ function serve(
   options: {
     generatedAt?: Date;
     active?: unknown[];
-    incidents?: unknown[] | "fail";
-    incidentsAt?: Date;
   } = {},
 ) {
   const generated = iso(options.generatedAt ?? ago(0));
@@ -134,14 +133,6 @@ function serve(
         },
         { headers: { Date: new Date().toUTCString() } },
       ),
-    ),
-    http.get("http://api.test/api/v1/incidents", () =>
-      options.incidents === "fail"
-        ? new HttpResponse(null, { status: 503 })
-        : HttpResponse.json({
-            generated_at: iso(options.incidentsAt ?? options.generatedAt ?? ago(0)),
-            incidents: options.incidents ?? [],
-          }),
     ),
   );
 }
@@ -244,7 +235,6 @@ describe("an incident feed that stopped after answering", () => {
     };
     serve([productBody("a", "A"), { ...moesif(), status: "degraded" }], {
       active: [open],
-      incidents: [open],
     });
     render(<App />);
     await screen.findByRole("heading", { level: 1, name: "Degraded performance" });

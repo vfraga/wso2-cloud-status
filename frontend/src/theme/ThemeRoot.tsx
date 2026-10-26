@@ -31,6 +31,8 @@ body, html[data-color-scheme] body {
   color: var(--cs-text);
   margin: 0;
   font-variant-numeric: tabular-nums;
+  /* Upstream text (a URL in an incident title, a long component name) wraps rather than scroll the page sideways. */
+  overflow-wrap: anywhere;
 }
 a { color: inherit; }
 :focus-visible { outline: 2px solid var(--cs-focus); outline-offset: 2px; }

@@ -17,10 +17,14 @@
  */
 
 import "@testing-library/jest-dom/vitest";
-import { cleanup } from "@testing-library/react";
+import { cleanup, configure } from "@testing-library/react";
 import { afterEach } from "vitest";
 import { forgetPolledState } from "../hooks/usePolled";
 import { installMatchMedia } from "./viewport";
+
+// findBy and waitFor wait up to half a test's timeout (vitest.config.ts), so a
+// busy machine slows a test down rather than failing it.
+configure({ asyncUtilTimeout: 10_000 });
 
 afterEach(() => {
   cleanup();

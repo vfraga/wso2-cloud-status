@@ -32,9 +32,10 @@ Content-Security-Policy allows `connect-src 'self'` only, so a cross-origin
 
 How the frontend behaves in each state, data missing included:
 
-- Polling, not push: `/api/v1/summary` every 30 s, `/api/v1/incidents` every
-  60 s and a product every 30 s (`src/config.ts`), with `cache: "no-cache"` so
-  the browser revalidates with the ETag. Polling pauses while the tab is
+- Polling, not push: the home page reads `/api/v1/summary` and a product's
+  page `/api/v1/products/{id}`, each every 30 s (`src/config.ts`), with
+  `cache: "no-cache"` so the browser revalidates with the ETag. Neither reads
+  `/api/v1/incidents`. Polling pauses while the tab is
   hidden and refreshes when it is visible again. A request that has not
   answered after 15 s fails; failures back off exponentially to 2 minutes.
 - Status: the banner shows the summary's `status`, which statusd computes;

@@ -111,7 +111,13 @@ function StatusCell({ product, place }: { product: ProductSummary; place: string
     <Box
       component="td"
       role="cell"
-      sx={{ ...cellSx, pt: { xs: 0, sm: 2 }, [PHONE]: { flex: "1 1 0" } }}
+      sx={{
+        ...cellSx,
+        pt: { xs: 0, sm: 2 },
+        // Whole words: a place's width, set by its longest word, decides when places stack.
+        overflowWrap: "break-word",
+        [PHONE]: { flex: "1 1 0" },
+      }}
     >
       <Box sx={{ display: "flex", alignItems: "flex-start", gap: 1 }}>
         {/* A screen reader takes the place from the column header; on a phone, where the header is hidden, the eye needs it here. */}
@@ -122,6 +128,8 @@ function StatusCell({ product, place }: { product: ProductSummary; place: string
           sx={{
             display: { xs: "block", sm: "none" },
             minWidth: "1.75rem",
+            // A region the configuration does not name shows the upstream's key here.
+            overflowWrap: "anywhere",
             fontWeight: 600,
             color: "var(--cs-muted)",
           }}
@@ -165,6 +173,8 @@ function ProductStatusRow({
   // stays the link, for the keyboard, screen readers and a new tab.
   const open = (event: MouseEvent<HTMLTableRowElement>): void => {
     if (event.defaultPrevented || event.button !== 0) return;
+    // A modified click asks for another tab or window (the name's link opens one); this tab stays.
+    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
     if (window.getSelection()?.toString()) return;
     navigate(path);
   };

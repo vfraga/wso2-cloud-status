@@ -240,6 +240,7 @@ describe("summaryHeadline", () => {
       affected_regions: 0,
       data_complete: true,
       outdated: false,
+      locations: [],
       regions: [{ id: "us", name: "US", status: "operational", page_url: "" }],
       history: [],
     };

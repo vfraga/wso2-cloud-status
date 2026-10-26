@@ -94,7 +94,7 @@ export function partStatus(name: string, status: Status): string {
 export const CHECKING_LABEL = "Checking status";
 /** Banner headline when every known status is operational but some data is missing. */
 export const PARTIAL_HEADLINE = "Some status data is unavailable";
-/** Under a product's Regions: what CSM's uptime figures count (answered question 9b). */
+/** Under a product's Regions: what CSM's uptime figures count (outages only, a weighted mean of a region's services). */
 export const UPTIME_NOTE =
   "Uptime counts outages only, as WSO2 measures them daily; a region's figure averages its services.";
 /** Read after a window's name where the source sent no figure for it; the eye sees a dash. */

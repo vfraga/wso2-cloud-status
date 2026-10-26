@@ -949,6 +949,18 @@ describe("StatusTable", () => {
     expect(window.location.pathname).toBe("/products/api-platform");
   });
 
+  it("leaves this tab where it is when the name is opened in another", async () => {
+    window.history.replaceState(null, "", "/");
+    wrap(<StatusTable products={[locatedProduct()]} />);
+    const user = userEvent.setup();
+    for (const key of ["Meta", "Control", "Shift", "Alt"]) {
+      await user.keyboard(`{${key}>}`);
+      await user.click(screen.getByRole("link", { name: /API Platform/ }));
+      await user.keyboard(`{/${key}}`);
+      expect(window.location.pathname, key).toBe("/");
+    }
+  });
+
   it("holds the table's place while loading", () => {
     wrap(<StatusTableSkeleton />);
     expect(document.querySelector('[aria-busy="true"]')).toBeInTheDocument();

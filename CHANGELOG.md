@@ -26,13 +26,13 @@ section here. The public API has its own version, in `api/openapi.yaml`.
 
 - The home page shows the current status at a glance: the banner, the
   active incidents while there are any, and a table with a row per product
-  and a column per region (US, EU). Each cell is the region's status as
+  and a column per location (US, EU). Each cell is the location's status as
   icon and word, naming the planes that are not operational, and the whole
-  row opens the product's page. On a phone each row puts its regions side
+  row opens the product's page. On a phone each row puts its locations side
   by side under the product's name. History, uptime and incidents are on
   each product's page; the home page no longer fetches the incident list.
-- Control and data planes are parts of a region: each product's page lists
-  US and EU with their planes. Region names are in sentence case ("EU data
+- Control and data planes are the regions of a location: each product's
+  page lists US and EU with their planes. Region names are in sentence case ("EU data
   plane").
 - Links to other sites take the text colour with an underline, so they no
   longer look like a status.
@@ -64,7 +64,7 @@ section here. The public API has its own version, in `api/openapi.yaml`.
   region status, and says "no incident reported yet" until one is filed.
 - On the home page, a product whose active incident names no region shows
   its status under its name ("Service outage, region not stated").
-- On a phone, the home table puts a product's regions one under the other
+- On a phone, the home table puts a product's locations one under the other
   when they do not fit side by side.
 - The footer is centred, and the copyright year follows the clock.
 - A product's regions sit in aligned columns: the window codes once per
@@ -90,6 +90,11 @@ section here. The public API has its own version, in `api/openapi.yaml`.
   no longer inflate every response or stop every product's snapshot.
 - A request that panics is counted as the 500 it answers, so the
   server-error alert sees it.
+- A long word from the upstream, such as a URL in an incident title, wraps
+  instead of making the page scroll sideways on a phone.
+- Opening a product's name in another tab from the home page (Cmd, Ctrl or
+  Shift and click) no longer also leaves the home page.
+- A product record without its regions or locations reads as incomplete.
 - When the page's own data stops, the history no longer paints the days
   after that point green: a day not fully covered reads "No data" unless a
   problem is known, as it already did when a product's incident feed

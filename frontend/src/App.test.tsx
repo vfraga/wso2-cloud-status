@@ -29,6 +29,12 @@ import { formatDayHeading } from "./lib/time";
 import { apiTime, currentBody, summaryBody } from "./test/factories";
 
 const server = setupServer();
+// Neither page asks for the incident list: the home page takes active
+// incidents from the summary, and a product's page has its own.
+const incidentListRequests: string[] = [];
+server.events.on("request:start", ({ request }) => {
+  if (new URL(request.url).pathname === "/api/v1/incidents") incidentListRequests.push(request.url);
+});
 beforeAll(() => {
   server.listen({ onUnhandledFrame: "error" });
 });
@@ -36,6 +42,7 @@ afterEach(() => {
   server.resetHandlers();
   vi.useRealTimers();
   forgetListedProducts();
+  expect(incidentListRequests.splice(0)).toEqual([]);
 });
 afterAll(() => {
   server.close();
@@ -66,6 +73,7 @@ function degradedSummary() {
         affected_regions: 1,
         data_complete: true,
         ...currentBody(),
+        locations: [],
         regions: [
           {
             id: "us",
@@ -92,6 +100,7 @@ function degradedSummary() {
         affected_regions: 0,
         data_complete: true,
         ...incidentsStopped(),
+        locations: [],
         regions: [
           {
             id: "us",
@@ -135,15 +144,12 @@ async function expectTitle(title: string): Promise<void> {
 }
 
 /** `summary` is a body, or a function that builds one per request (times move with the clock). */
-function serve(summary: unknown, incidents: unknown = { incidents: [] }) {
+function serve(summary: unknown) {
   const body = (): unknown =>
     typeof summary === "function" ? (summary as () => unknown)() : summary;
   server.use(
     http.get("http://api.test/api/v1/summary", () =>
       HttpResponse.json(body() as Record<string, unknown>),
-    ),
-    http.get("http://api.test/api/v1/incidents", () =>
-      HttpResponse.json(incidents as Record<string, unknown>),
     ),
   );
 }
@@ -193,7 +199,6 @@ describe("home page", () => {
   it("links every product's own page when the API is down from the first load", async () => {
     server.use(
       http.get("http://api.test/api/v1/summary", () => new HttpResponse(null, { status: 503 })),
-      http.get("http://api.test/api/v1/incidents", () => new HttpResponse(null, { status: 503 })),
     );
     render(<App />);
     expect(
@@ -244,6 +249,7 @@ describe("home page", () => {
             affected_regions: 0,
             data_complete: false,
             outdated: false,
+            locations: [],
             regions: [
               {
                 id: "us",
@@ -275,10 +281,7 @@ describe("home page", () => {
         products: [{ ...product, ...currentBody(at) }],
       });
     };
-    server.use(
-      http.get("http://api.test/api/v1/summary", () => HttpResponse.json(old())),
-      http.get("http://api.test/api/v1/incidents", () => HttpResponse.json({ incidents: [] })),
-    );
+    server.use(http.get("http://api.test/api/v1/summary", () => HttpResponse.json(old())));
     render(<App />);
     expect(
       await screen.findByRole("heading", { level: 1, name: "Status unavailable" }),
@@ -303,7 +306,6 @@ describe("home page", () => {
         http.get("http://api.test/api/v1/summary", () =>
           HttpResponse.json(body() as Record<string, unknown>, { headers: headers() }),
         ),
-        http.get("http://api.test/api/v1/incidents", () => HttpResponse.json({ incidents: [] })),
       );
     };
 
@@ -345,7 +347,6 @@ describe("home page", () => {
             { headers: { Date: serverNow.toUTCString() } },
           ),
         ),
-        http.get("http://api.test/api/v1/incidents", () => HttpResponse.json({ incidents: [] })),
       );
       render(<App />);
       const region = await screen.findByRole("region", { name: "Active incidents" });
@@ -379,7 +380,6 @@ describe("home page", () => {
       http.get("http://api.test/api/v1/summary", () =>
         up ? HttpResponse.json(degradedSummary()) : new HttpResponse(null, { status: 503 }),
       ),
-      http.get("http://api.test/api/v1/incidents", () => HttpResponse.json({ incidents: [] })),
     );
     render(<App />);
     const heading = await screen.findByRole("heading", {
@@ -420,11 +420,6 @@ describe("home page", () => {
       http.get("http://api.test/api/v1/summary", () =>
         up
           ? HttpResponse.json({ ...degradedSummary(), active_incidents: [open] })
-          : new HttpResponse(null, { status: 503 }),
-      ),
-      http.get("http://api.test/api/v1/incidents", () =>
-        up
-          ? HttpResponse.json({ generated_at: apiTime().toISOString(), incidents: [open] })
           : new HttpResponse(null, { status: 503 }),
       ),
     );
@@ -502,6 +497,7 @@ describe("product page", () => {
     data_complete: true,
     generated_at: apiTime().toISOString(),
     ...incidentsStopped(),
+    locations: [],
     regions: [
       { id: "eu", name: "EU", status: "degraded", page_url: "https://status.example.test/api" },
     ],
@@ -780,6 +776,7 @@ describe("product page", () => {
       affected_regions: 0,
       data_complete: false,
       ...currentBody(),
+      locations: [],
       regions: [
         {
           id: "us",
