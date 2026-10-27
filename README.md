@@ -3,8 +3,7 @@
 The status page for the WSO2 Cloud products: Agent Platform, API Platform,
 Integration Platform, Identity Platform, Developer Platform and Moesif. One
 summary page with each product's status per region, a page per product with
-its history, regions and incidents, and links to each product's own status
-page.
+its history, regions and incidents, and an incident history by month.
 
 This repository holds the status API (`backend/go`), the web frontend
 (`frontend`, React and WSO2 Oxygen UI), the API contract
@@ -49,7 +48,7 @@ cd frontend && nvm use && npm ci && npm run dev   # http://localhost:5173, proxi
 |---|---|
 | `GET /api/v1/summary` | overall status, product rows with regions (grouped by location, with uptime) and 90-day history, active incidents |
 | `GET /api/v1/products/{id}` | regions, component groups, uptime and incidents for one product |
-| `GET /api/v1/incidents` | active incidents and those within the history window |
+| `GET /api/v1/incidents` | every incident the sources keep, with each product's coverage and freshness |
 | `GET /healthz`, `GET /readyz` | probes (also on the admin port) |
 | `GET :9090/metrics` | Prometheus metrics, admin port only |
 
