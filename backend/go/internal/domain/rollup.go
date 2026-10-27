@@ -33,3 +33,29 @@ func RegionStatus(groups []Group) Status {
 	}
 	return Worst(statuses...)
 }
+
+// Extent tells how much of a roll-up carries its status: every part of it,
+// or only some. A problem is worded by it: a major outage when every part
+// is out, a partial one when some are.
+type Extent string
+
+// Extents.
+const (
+	ExtentAll  Extent = "all"
+	ExtentSome Extent = "some"
+)
+
+// ExtentOf is ExtentAll when there are parts and each has the rolled-up
+// status, else ExtentSome: a status raised by an incident that no part
+// shows is some.
+func ExtentOf(rolled Status, parts ...Status) Extent {
+	if len(parts) == 0 {
+		return ExtentSome
+	}
+	for _, s := range parts {
+		if s != rolled {
+			return ExtentSome
+		}
+	}
+	return ExtentAll
+}

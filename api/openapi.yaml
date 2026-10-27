@@ -292,6 +292,13 @@ components:
         treat a value they do not know as "unknown".
       enum: [unknown, operational, maintenance, degraded, outage]
 
+    Extent:
+      type: string
+      description: >-
+        How much of a roll-up carries its status: every part of it ("all")
+        or only some ("some").
+      enum: [all, some]
+
     Uptime:
       type: object
       additionalProperties: false
@@ -464,7 +471,7 @@ components:
 
     ProductSummary:
       type: object
-      required: [id, name, status, affected_regions, data_complete, outdated, checked_at, stale, locations, regions, history]
+      required: [id, name, status, extent, affected_regions, data_complete, outdated, checked_at, stale, locations, regions, history]
       properties:
         id: { $ref: "#/components/schemas/Slug" }
         name: { type: string }
@@ -475,6 +482,11 @@ components:
             The most severe known status among the product's regions and the
             impacts of its active incidents (an unknown impact counting as
             degraded).
+        extent:
+          $ref: "#/components/schemas/Extent"
+          description: >-
+            "all" when every region of the product has "status", else "some"
+            (also when the status comes from an incident no region shows).
         affected_regions:
           type: integer
           minimum: 0
@@ -530,7 +542,7 @@ components:
     Summary:
       type: object
       additionalProperties: false
-      required: [status, data_complete, generated_at, products, active_incidents]
+      required: [status, extent, data_complete, generated_at, products, active_incidents]
       properties:
         status:
           $ref: "#/components/schemas/Status"
@@ -538,7 +550,13 @@ components:
             The overall status, failing closed: "unknown" when data_complete
             is false and no product is in maintenance, degraded or outage;
             otherwise the most severe known product status. The status page
-            shows this value as its headline.
+            shows this value as its headline, worded with "extent".
+        extent:
+          $ref: "#/components/schemas/Extent"
+          description: >-
+            "all" when every region of every product has "status", else
+            "some". The status page reads an outage in some as a partial
+            outage, naming the products, and in all as a major outage.
         data_complete:
           type: boolean
           description: >-

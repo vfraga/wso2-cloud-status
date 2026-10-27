@@ -28,6 +28,8 @@ import (
 // Summary is the body of GET /api/v1/summary.
 type Summary struct {
 	Status domain.Status `json:"status"`
+	// Extent is whether every region of every product has Status.
+	Extent domain.Extent `json:"extent"`
 	// DataComplete is true when every product has complete data
 	// (ProductSummary.DataComplete) and a known status.
 	DataComplete bool `json:"data_complete"`
@@ -44,6 +46,8 @@ type ProductSummary struct {
 	Name        string        `json:"name"`
 	Description string        `json:"description,omitempty"`
 	Status      domain.Status `json:"status"`
+	// Extent is whether every region of the product has Status.
+	Extent domain.Extent `json:"extent"`
 	// AffectedRegions counts regions that are not operational.
 	AffectedRegions int `json:"affected_regions"`
 	// DataComplete is false when the status of any region, or of any

@@ -391,6 +391,38 @@ func TestStaleDataNeverReadsHealthy(t *testing.T) {
 	}
 }
 
+// TestExtentSaysHowMuchCarriesTheStatus: a product or the whole page is
+// "all" only when every one of its regions has its status.
+func TestExtentSaysHowMuchCarriesTheStatus(t *testing.T) {
+	t.Parallel()
+	down := source.Components{"cp": []domain.Group{group(domain.StatusOutage)}}
+	st := freshState()
+	s3 := st["b/s3"]
+	s3.components.data = down
+	st["b/s3"] = s3
+	b := build(params(st, t0))
+	if two := b.Products["two"]; two.Status != domain.StatusOutage || two.Extent != domain.ExtentSome {
+		t.Fatalf("two = %v %s, want outage in some of its regions", two.Status, two.Extent)
+	}
+	if b.Summary.Status != domain.StatusOutage || b.Summary.Extent != domain.ExtentSome {
+		t.Fatalf("summary = %v %s, want outage in some", b.Summary.Status, b.Summary.Extent)
+	}
+	s2 := st["b/s2"]
+	s2.components.data = down
+	st["b/s2"] = s2
+	if two := build(params(st, t0)).Products["two"]; two.Extent != domain.ExtentAll {
+		t.Fatalf("two = %s, want all once both its regions are out", two.Extent)
+	}
+	s1 := st["b/s1"]
+	s1.components.data = source.Components{
+		"us": []domain.Group{group(domain.StatusOutage)}, "eu": []domain.Group{group(domain.StatusOutage)},
+	}
+	st["b/s1"] = s1
+	if all := build(params(st, t0)).Summary; all.Extent != domain.ExtentAll {
+		t.Fatalf("summary = %s, want all when every region of every product is out", all.Extent)
+	}
+}
+
 func TestOneStaleSourceLeavesTheOtherVisible(t *testing.T) {
 	t.Parallel()
 	st := freshState()

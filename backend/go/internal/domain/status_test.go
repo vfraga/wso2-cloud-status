@@ -121,3 +121,23 @@ func TestStatusesListsEveryStatusOnce(t *testing.T) {
 		t.Fatalf("Statuses() has %d statuses, want %d", len(all), len(statusNames))
 	}
 }
+
+func TestExtentOf(t *testing.T) {
+	t.Parallel()
+	out, op := StatusOutage, StatusOperational
+	for _, tc := range []struct {
+		rolled Status
+		parts  []Status
+		want   Extent
+	}{
+		{out, []Status{out, out}, ExtentAll},
+		{out, []Status{out, op}, ExtentSome},
+		{out, []Status{op, op}, ExtentSome}, // raised by an incident no part shows
+		{op, []Status{op}, ExtentAll},
+		{out, nil, ExtentSome},
+	} {
+		if got := ExtentOf(tc.rolled, tc.parts...); got != tc.want {
+			t.Errorf("ExtentOf(%v, %v) = %s, want %s", tc.rolled, tc.parts, got, tc.want)
+		}
+	}
+}

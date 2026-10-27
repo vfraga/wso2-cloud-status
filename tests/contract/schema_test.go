@@ -32,9 +32,9 @@ func TestSchemaRejectsContractViolations(t *testing.T) {
 	checked := `"checked_at":{"components":"2026-10-21T14:05:00Z","incidents":null,"uptime":"2026-10-21T14:00:00Z"},"stale":{"components":false,"incidents":true,"uptime":false}`
 	locations := `"locations":[{"id":"us","name":"US","status":"operational"}]`
 	regions := `"regions":[{"id":"us-cp","location":"us","name":"US control plane","status":"operational","uptime":[{"window":"90d","percent":99.994}]}]`
-	row := `{"id":"p","name":"P","status":"operational","affected_regions":0,"data_complete":true,"outdated":true,` + checked + `,` + locations + `,` + regions + `,"history":[]}`
+	row := `{"id":"p","name":"P","status":"operational","extent":"all","affected_regions":0,"data_complete":true,"outdated":true,` + checked + `,` + locations + `,` + regions + `,"history":[]}`
 	generated := `"generated_at":"2026-10-21T14:06:00Z"`
-	valid := `{"status":"operational","data_complete":true,` + generated + `,"products":[` + row + `],"active_incidents":[]}`
+	valid := `{"status":"operational","extent":"all","data_complete":true,` + generated + `,"products":[` + row + `],"active_incidents":[]}`
 	detail := row[:len(row)-1] + `,` + generated + `,"region_details":[],"incidents":[]}`
 	list := `{` + generated + `,"products":[{"id":"p","name":"P","covered_from":"2026-05-01T00:00:00Z","checked_at":"2026-10-21T14:05:00Z","stale":false}],"incidents":[]}`
 	for name, c := range map[string]struct{ schema, body string }{
@@ -45,13 +45,15 @@ func TestSchemaRejectsContractViolations(t *testing.T) {
 		}
 	}
 	withRow := func(r string) string {
-		return `{"status":"operational","data_complete":true,` + generated + `,"products":[` + r + `],"active_incidents":[]}`
+		return `{"status":"operational","extent":"all","data_complete":true,` + generated + `,"products":[` + r + `],"active_incidents":[]}`
 	}
 	invalid := map[string]struct{ schema, body string }{
 		"unknown status":                {"Summary", strings.Replace(valid, `"status":"operational"`, `"status":"partial_outage"`, 1)},
 		"extra top-level field":         {"Summary", strings.Replace(valid, `"products"`, `"surprise":1,"products"`, 1)},
 		"extra product field":           {"Summary", withRow(row[:len(row)-1] + `,"uptime":1}`)},
 		"missing required field":        {"Summary", strings.Replace(valid, `,"active_incidents":[]`, "", 1)},
+		"unknown extent":                {"Summary", strings.Replace(valid, `"extent":"all"`, `"extent":"most"`, 1)},
+		"product without extent":        {"Summary", withRow(strings.Replace(row, `"extent":"all",`, "", 1))},
 		"missing summary data_complete": {"Summary", strings.Replace(valid, `"data_complete":true,`, "", 1)},
 		"summary data_complete string":  {"Summary", strings.Replace(valid, `"data_complete":true,`, `"data_complete":"yes",`, 1)},
 		"missing outdated":              {"Summary", withRow(strings.Replace(row, `"outdated":true,`, "", 1))},

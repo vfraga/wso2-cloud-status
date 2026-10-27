@@ -158,6 +158,7 @@ func build(p buildParams) Built {
 	}
 	all := []domain.Incident{}
 	statuses := make([]domain.Status, 0, len(p.products))
+	var regions []domain.Status
 	configured := configuredKeys(p.products)
 	for _, prod := range p.products {
 		pb := buildProduct(p, prod, configured)
@@ -175,11 +176,15 @@ func build(p buildParams) Built {
 			CheckedAt: detail.CheckedAt.Incidents, Stale: detail.Stale.Incidents,
 		})
 		statuses = append(statuses, detail.Status)
+		for _, r := range detail.Regions {
+			regions = append(regions, r.Status)
+		}
 		all = append(all, pb.allIncidents...)
 	}
 	domain.SortIncidents(all)
 	b.Summary.DataComplete = allComplete(b.Summary.Products)
 	b.Summary.Status = failClosed(statuses, b.Summary.DataComplete)
+	b.Summary.Extent = domain.ExtentOf(b.Summary.Status, regions...)
 	b.Summary.ActiveIncidents = filter(all, func(i domain.Incident) bool { return i.Active() })
 	b.Incidents.Incidents = all
 	b.Ready = ready(p.state)
@@ -310,10 +315,12 @@ func buildProduct(p buildParams, prod config.Product, configured map[string]map[
 	incidents := filter(allIncidents, func(i domain.Incident) bool { return overlaps(i, cutoff) })
 	up := feedOf(p.state, prod.Sources, p.now, p.stale.uptime, func(st sourceState) time.Time { return st.uptime.at })
 	statuses := make([]domain.Status, 0, len(regions)+len(incidents))
+	regionStatuses := make([]domain.Status, 0, len(regions))
 	summaries := make([]RegionSummary, 0, len(regions))
 	affected, complete := 0, len(regions) > 0
 	for _, r := range regions {
 		statuses = append(statuses, r.Status)
+		regionStatuses = append(regionStatuses, r.Status)
 		summaries = append(summaries, RegionSummary{
 			ID: r.ID, Location: r.Location, Name: r.Name, Status: r.Status, Uptime: r.Uptime,
 		})
@@ -327,10 +334,12 @@ func buildProduct(p buildParams, prod config.Product, configured map[string]map[
 			statuses = append(statuses, inc.EffectiveImpact())
 		}
 	}
+	status := domain.Worst(statuses...)
 	detail := ProductDetail{
 		ProductSummary: ProductSummary{
 			ID: prod.ID, Name: prod.Name, Description: prod.Description,
-			Status:          domain.Worst(statuses...),
+			Status:          status,
+			Extent:          domain.ExtentOf(status, regionStatuses...),
 			AffectedRegions: affected,
 			DataComplete:    complete,
 			Outdated:        inc.stale || up.stale,
