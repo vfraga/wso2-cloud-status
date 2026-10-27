@@ -17,7 +17,7 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { parseProductDetail, parseSummary, toStatus } from "./parse";
+import { parseIncidentList, parseProductDetail, parseSummary, toStatus } from "./parse";
 import { summaryBody } from "../test/factories";
 
 describe("toStatus", () => {
@@ -277,5 +277,31 @@ describe("parseProductDetail", () => {
   it("returns null for a malformed product", () => {
     expect(parseProductDetail(null)).toBeNull();
     expect(parseProductDetail({})).toBeNull();
+  });
+});
+
+describe("parseIncidentList", () => {
+  const product = {
+    id: "moesif",
+    name: "Moesif",
+    covered_from: "2026-05-01T00:00:00Z",
+    checked_at: "2026-10-27T10:00:00Z",
+    stale: false,
+  };
+
+  it("keeps a product's coverage when its incidents can be read", () => {
+    const parsed = parseIncidentList({ products: [product], incidents: [] });
+    expect(parsed.products[0]?.coveredFrom).not.toBeNull();
+    expect(parsed.products[0]?.freshness.stale.incidents).toBe(false);
+  });
+
+  it.each([
+    ["without", {}],
+    ["with a null", { incidents: null }],
+    ["with a non-list", { incidents: {} }],
+  ])("counts every product as not received for an answer %s incidents", (_, incidents) => {
+    const parsed = parseIncidentList({ products: [product], ...incidents });
+    expect(parsed.products[0]?.coveredFrom).toBeNull();
+    expect(parsed.products[0]?.freshness.stale.incidents).toBe(true);
   });
 });

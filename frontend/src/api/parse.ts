@@ -322,15 +322,18 @@ function toListProduct(r: Rec): IncidentListProduct | null {
 /**
  * The incident list. A product whose incidents cannot all be read counts as
  * not received (no coverage, stale with no time), so the page never calls a
- * month quiet over a record it could not read.
+ * month quiet over a record it could not read; an answer without its list of
+ * incidents counts so for every product.
  */
 export function parseIncidentList(raw: unknown): IncidentList {
   const r = isRec(raw) ? raw : {};
-  const unreadable = new Set(
-    list(r.incidents)
-      .filter((x) => !isRec(x) || toIncident(x) === null)
-      .map((x) => (isRec(x) ? str(x.product_id) : "")),
-  );
+  const unreadable = Array.isArray(r.incidents)
+    ? new Set(
+        r.incidents
+          .filter((x) => !isRec(x) || toIncident(x) === null)
+          .map((x) => (isRec(x) ? str(x.product_id) : "")),
+      )
+    : new Set([""]);
   const products = records(r.products)
     .map(toListProduct)
     .filter(nonNull)

@@ -365,6 +365,35 @@ describe("LocationPanel", () => {
     expect(screen.getByRole("heading", { level: 4, name: "Data plane" })).toBeInTheDocument();
     expect(screen.getAllByRole("heading", { level: 5, name: "Runtime" })).toHaveLength(2);
   });
+
+  it("words the location as the home table does: partial when some parts are out, major when all", () => {
+    const outPart = (name: string, status: "outage" | "operational") => ({
+      ...part(name, status),
+      groups: [],
+    });
+    const { unmount } = wrap(
+      <ul>
+        <LocationPanel
+          location={{ id: "eu", name: "EU", status: "outage" }}
+          regions={[outPart("EU control plane", "operational"), outPart("EU data plane", "outage")]}
+        />
+      </ul>,
+    );
+    // The location rolls up; the plane that is out keeps CSM's words.
+    expect(screen.getByText("Partial outage")).toBeInTheDocument();
+    expect(screen.getAllByText("Service outage")).toHaveLength(1);
+    unmount();
+    wrap(
+      <ul>
+        <LocationPanel
+          location={{ id: "eu", name: "EU", status: "outage" }}
+          regions={[outPart("EU control plane", "outage"), outPart("EU data plane", "outage")]}
+        />
+      </ul>,
+    );
+    expect(screen.getByText("Major outage")).toBeInTheDocument();
+    expect(screen.getAllByText("Service outage")).toHaveLength(2);
+  });
 });
 
 describe("HistoryLegend", () => {

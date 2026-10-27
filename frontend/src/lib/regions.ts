@@ -96,7 +96,8 @@ export function placeStatus(product: ProductSummary, name: string): PlaceStatus 
   if (row === undefined) return undefined;
   if (row.kind === "region") return { status: row.region.status, parts: [] };
   const { location, regions } = row;
-  const differ = regions.some((r) => r.status !== location.status);
+  const extent = locationExtent(location, regions);
+  const differ = extent === "some";
   // The parts that carry the place's status first, then the others by severity.
   const parts = differ
     ? regions
@@ -104,7 +105,19 @@ export function placeStatus(product: ProductSummary, name: string): PlaceStatus 
         .map((r) => ({ name: shortName(r, location), status: r.status }))
         .sort((a, b) => rank(b.status, location.status) - rank(a.status, location.status))
     : [];
-  return { status: location.status, extent: differ ? "some" : "all", parts };
+  return { status: location.status, extent, parts };
+}
+
+/**
+ * How many of a location's parts carry its status: "all" when every part
+ * does, "some" when they differ. The home table and the product page word a
+ * location by it (rolledUp).
+ */
+export function locationExtent(
+  location: { status: Status },
+  regions: readonly { status: Status }[],
+): Extent {
+  return regions.some((r) => r.status !== location.status) ? "some" : "all";
 }
 
 /**

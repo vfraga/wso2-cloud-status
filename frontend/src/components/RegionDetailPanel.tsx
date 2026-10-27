@@ -21,8 +21,8 @@ import { ChevronDown } from "@wso2/oxygen-ui-icons-react";
 import { useId } from "react";
 import type { Component, Location, RegionDetail } from "../api/types";
 import { useAutoExpanded } from "../hooks/useAutoExpanded";
-import { shortName } from "../lib/regions";
-import { NO_COMPONENT_DATA, STATUS_LABEL } from "../lib/status";
+import { locationExtent, shortName } from "../lib/regions";
+import { NO_COMPONENT_DATA, rolledUp, STATUS_LABEL } from "../lib/status";
 import { StatusLabel } from "./StatusIcon";
 import { GridRow, UptimeFigures, UptimeHeader } from "./Uptime";
 
@@ -196,9 +196,10 @@ export function RegionDetailPanel({
 }
 
 /**
- * A location (US) with its parts under its h3 name and status; its row
- * carries the window codes over the parts' figures. The parts are listed,
- * never folded away: the page is about this product.
+ * A location (US) with its parts under its h3 name and status, worded as a
+ * roll-up as the home table words it; its row carries the window codes over
+ * the parts' figures. The parts are listed, never folded away: the page is
+ * about this product.
  */
 export function LocationPanel({
   location,
@@ -207,6 +208,7 @@ export function LocationPanel({
   location: Location;
   regions: readonly RegionDetail[];
 }) {
+  const shown = rolledUp(location.status, locationExtent(location, regions));
   return (
     <Box component="li" sx={{ listStyle: "none", pt: 2.5 }}>
       <GridRow
@@ -216,7 +218,7 @@ export function LocationPanel({
           </Typography>
         }
         figures={<UptimeHeader />}
-        status={<StatusLabel status={location.status}>{STATUS_LABEL[location.status]}</StatusLabel>}
+        status={<StatusLabel status={shown.status}>{shown.label}</StatusLabel>}
       />
       <Box component="ul" sx={{ m: 0, mt: 1, p: 0 }}>
         {regions.map((region) => (
