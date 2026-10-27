@@ -20,6 +20,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/wso2/wso2-cloud-status/backend/go/internal/source"
 )
@@ -29,23 +30,31 @@ import (
 // good data stays, not news that every region or month is gone.
 var ErrEmptyResponse = errors.New("legacyapi: empty response")
 
+// fetcher reads one kind of answer ("monitors", "availabilities",
+// "incidents") for one cloud and decodes its payload into out: the legacy
+// API answers with the payload, CSM wraps it in an envelope.
+type fetcher interface {
+	fetch(ctx context.Context, kind, cloud string, out any) error
+}
+
 // Source reads one cloud (for example "choreo" or "asgardeo") from a backend.
 type Source struct {
-	client *Client
-	cloud  string
+	fetcher  fetcher
+	location *time.Location
+	cloud    string
 }
 
 var _ source.Source = (*Source)(nil)
 
 // NewSource binds a client to one cloud key.
 func NewSource(client *Client, cloud string) *Source {
-	return &Source{client: client, cloud: cloud}
+	return &Source{fetcher: client, location: client.location, cloud: cloud}
 }
 
 // Components returns each region's component groups.
 func (s *Source) Components(ctx context.Context) (source.Components, error) {
 	var raw map[string][]wireGroup
-	if err := s.client.getJSON(ctx, "monitors", s.cloud, &raw); err != nil {
+	if err := s.fetcher.fetch(ctx, "monitors", s.cloud, &raw); err != nil {
 		return nil, err
 	}
 	if len(raw) == 0 {
@@ -60,7 +69,7 @@ func (s *Source) Components(ctx context.Context) (source.Components, error) {
 // Uptime returns each region's trailing uptime windows.
 func (s *Source) Uptime(ctx context.Context) (source.Uptime, error) {
 	var raw map[string][]wireAvailability
-	if err := s.client.getJSON(ctx, "availabilities", s.cloud, &raw); err != nil {
+	if err := s.fetcher.fetch(ctx, "availabilities", s.cloud, &raw); err != nil {
 		return nil, err
 	}
 	if len(raw) == 0 {
@@ -75,13 +84,13 @@ func (s *Source) Uptime(ctx context.Context) (source.Uptime, error) {
 // Incidents returns the incident history, newest first.
 func (s *Source) Incidents(ctx context.Context) (source.Incidents, error) {
 	var raw map[string]wireMonth
-	if err := s.client.getJSON(ctx, "incidents", s.cloud, &raw); err != nil {
+	if err := s.fetcher.fetch(ctx, "incidents", s.cloud, &raw); err != nil {
 		return source.Incidents{}, err
 	}
 	if len(raw) == 0 {
 		return source.Incidents{}, s.empty("incidents")
 	}
-	return toIncidents(raw, s.client.location)
+	return toIncidents(raw, s.location)
 }
 
 func (s *Source) empty(path string) error {

@@ -22,6 +22,11 @@ section here. The public API has its own version, in `api/openapi.yaml`.
   older incidents there.
 - `/api/v1/incidents` holds every incident the sources keep (six months
   today) and, per product, `covered_from`, `checked_at` and `stale`.
+- A CSM backend type, `csm-cloud-status`: CSM's cloud-status API through
+  its gateway, with a client-credentials token refreshed at half its life
+  and kept while the issuer is down, a shared back-off on 429, and an
+  envelope that reports a failure read as a failed fetch. The contract
+  tests also run with every backend read through it.
 - Each colour in the history legend has its own label, and a description
   on hover, keyboard focus or tap.
 - The WSO2 logo heads the page, and the WSO2 pulse glyph is the favicon and

@@ -19,6 +19,7 @@
 #
 #   scripts/contract.sh <command that starts the backend>
 #   CONTRACT_SCENARIO=edge scripts/contract.sh <command>
+#   CONTRACT_SOURCE=csm scripts/contract.sh <command>
 #
 # Starts a fixture upstream, writes a configuration pointing at it, starts the
 # backend with STATUSD_CONFIG set, waits for readiness, runs tests/contract,
@@ -32,6 +33,10 @@
 # configuration does not name, an active Maintenance incident, and a second
 # source of a two-source product that answers {} for components and
 # incidents), and the tests it enables check how the backend reads it.
+#
+# CONTRACT_SOURCE=csm points every backend at the upstream's CSM side
+# instead (cloud-status reads in ServiceNow's envelope, behind a client
+# credentials token), so the same tests check the CSM adapter.
 set -euo pipefail
 
 root="$(cd "$(dirname "$0")/.." && pwd)"
@@ -39,6 +44,7 @@ upstream_port="${UPSTREAM_PORT:-18090}"
 api_port="${API_PORT:-18091}"
 admin_port="${ADMIN_PORT:-18092}"
 scenario="${CONTRACT_SCENARIO:-}"
+source_type="${CONTRACT_SOURCE:-legacy}"
 work="$(mktemp -d)"
 pids=()
 
@@ -73,6 +79,15 @@ if [[ -n "$scenario" ]]; then
   cp "$root/testdata/contract-$scenario"/*.json "$fixtures/"
 fi
 
+case "$source_type" in
+  legacy | csm) ;;
+  *) echo "contract: CONTRACT_SOURCE must be legacy or csm, not $source_type" >&2; exit 2 ;;
+esac
+# A throwaway secret the fake token endpoint and statusd both read from the
+# environment, as statusd reads the real one.
+CSM_CLIENT_SECRET="$(od -An -N16 -tx1 /dev/urandom | tr -d ' \n')"
+export CSM_CLIENT_SECRET
+
 (cd "$root/tests/contract" && go build -o "$work/upstream" ./cmd/upstream)
 "$work/upstream" -addr "127.0.0.1:${upstream_port}" -dir "$fixtures" >"$work/upstream.log" 2>&1 &
 pids+=("$!")
@@ -83,6 +98,17 @@ sed -E \
   -e "s#^  addr: .*#  addr: \"127.0.0.1:${api_port}\"#" \
   -e "s#^  admin_addr: .*#  admin_addr: \"127.0.0.1:${admin_port}\"#" \
   "$root/config/statusd.yaml" >"$work/statusd.yaml"
+if [[ "$source_type" == csm ]]; then
+  awk -v token="http://127.0.0.1:${upstream_port}/oauth2/token" '
+    /^    type: legacy-status-api$/ {
+      print "    type: csm-cloud-status"
+      print "    options: {token_url: \"" token "\", client_id: contract, client_secret: \"${CSM_CLIENT_SECRET}\"}"
+      next
+    }
+    { print }' "$work/statusd.yaml" >"$work/statusd.csm.yaml"
+  grep -q "csm-cloud-status" "$work/statusd.csm.yaml" || { echo "contract: no backend switched to CSM" >&2; exit 1; }
+  mv "$work/statusd.csm.yaml" "$work/statusd.yaml"
+fi
 
 export STATUSD_CONFIG="$work/statusd.yaml"
 "$@" >"$work/backend.log" 2>&1 &

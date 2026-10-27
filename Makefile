@@ -35,7 +35,7 @@ CHECK_CONFIG_ENV ?= FRONT_DOOR_ID=00000000-0000-0000-0000-000000000000
 SHELL_SCRIPTS = $(shell git ls-files '*.sh' 2>/dev/null || find . -name '*.sh' -not -path '*/node_modules/*' | sort)
 
 .DEFAULT_GOAL := help
-.PHONY: help fmt lint test cover vuln licenses rules contract contract-edge check-config live build run docker ci clean \
+.PHONY: help fmt lint test cover vuln licenses rules contract contract-edge contract-csm check-config live build run docker ci clean \
 	web-install web-check web-licenses web-e2e web-docker web-docker-selftest dockerfile-lint shellcheck api-lint \
 	headers workflow-lint workflow-cache pins gates-selftest verify \
 	synthetic synthetic-selftest
@@ -75,6 +75,9 @@ contract: build ## Contract tests against the Go backend
 
 contract-edge: build ## Contract tests against the Go backend, edge-case upstream data
 	CONTRACT_SCENARIO=edge scripts/contract.sh ./bin/statusd
+
+contract-csm: build ## Contract tests with every backend read through the CSM adapter
+	CONTRACT_SOURCE=csm scripts/contract.sh ./bin/statusd
 
 check-config: build ## Validate every file in config/ as a start would (statusd -check-config)
 	for f in config/*.yaml; do env $(CHECK_CONFIG_ENV) ./bin/statusd -check-config "$$f"; done
@@ -198,7 +201,7 @@ pins: workflow-cache ## The tool versions copied from ci.yml, here and in releas
 	  || { echo "ci.yml runs a hadolint-action other than $(HADOLINT_ACTION), whose hadolint HADOLINT copies"; status=1; }; \
 	[[ $$status == 0 ]] && echo "pins match ci.yml"; exit $$status
 
-ci: lint cover vuln licenses check-config contract contract-edge synthetic-selftest gates-selftest ## The CI go job's gates, locally (the Docker gates are separate targets)
+ci: lint cover vuln licenses check-config contract contract-edge contract-csm synthetic-selftest gates-selftest ## The CI go job's gates, locally (the Docker gates are separate targets)
 
 verify: ci rules web-check web-licenses web-e2e web-docker-selftest dockerfile-lint api-lint shellcheck headers workflow-lint pins ## Every local gate (not CI's gitleaks, Trivy or statusd image smoke test); make -k verify reports every failure (needs Node and Docker)
 

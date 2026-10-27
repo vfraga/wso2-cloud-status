@@ -33,10 +33,11 @@ import (
 )
 
 // DefaultRegistry lists every data source adapter the service ships. A new
-// adapter (CSM) is one more Register line.
+// adapter is one more Register line.
 func DefaultRegistry() *source.Registry {
 	r := source.NewRegistry()
 	r.Register(legacyapi.Type, legacyapi.NewProvider)
+	r.Register(legacyapi.CSMType, legacyapi.NewCSMProvider)
 	return r
 }
 

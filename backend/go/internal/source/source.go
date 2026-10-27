@@ -16,8 +16,8 @@
 
 // Package source defines the contract every status data source implements.
 //
-// The interim implementation reads the existing status API (legacyapi); the
-// CSM integration will be a second implementation of the same interface.
+// legacyapi implements it for the existing status API and for CSM's
+// cloud-status API, which serves the same payloads.
 package source
 
 import (

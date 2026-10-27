@@ -63,6 +63,17 @@ backends:
     type: legacy-status-api
     base_url: https://api.status.asgardeo.io
     timezone: UTC
+  # CSM's cloud-status API (csm-integration-service behind Choreo's API
+  # gateway) serves every cloud once a client exists for it; point a
+  # product's sources at it by changing their backend to csm:
+  # csm:
+  #   type: csm-cloud-status
+  #   base_url: https://<gateway>/<csm-integration-service context>
+  #   timezone: UTC
+  #   options:
+  #     token_url: https://<token endpoint>
+  #     client_id: "${CSM_CLIENT_ID}"
+  #     client_secret: "${CSM_CLIENT_SECRET}"
 
 products:
   - id: agent-platform

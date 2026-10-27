@@ -15,10 +15,10 @@
 // under the License.
 
 // Package legacyapi reads the status API behind the existing per-product
-// status pages (api.status.cloudservices.wso2.com and api.status.asgardeo.io).
-//
-// It is the interim data source until the CSM integration exists; both
-// implement source.Source.
+// status pages (api.status.cloudservices.wso2.com and api.status.asgardeo.io),
+// and CSM's cloud-status API, which serves the same payloads in ServiceNow's
+// envelope behind a client-credentials token (csm.go). Both backend types
+// decode with the same code and implement source.Source.
 package legacyapi
 
 import (
@@ -73,7 +73,7 @@ func (c *Client) endpoint(path, cloud string) string {
 	return u.String()
 }
 
-func (c *Client) getJSON(ctx context.Context, path, cloud string, out any) error {
+func (c *Client) fetch(ctx context.Context, path, cloud string, out any) error {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.endpoint(path, cloud), nil)
 	if err != nil {
 		return fmt.Errorf("legacyapi: build request: %w", err)

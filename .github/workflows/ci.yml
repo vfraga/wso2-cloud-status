@@ -101,6 +101,8 @@ jobs:
           scripts/contract.sh ./bin/statusd
       - name: Contract tests, edge-case upstream data
         run: CONTRACT_SCENARIO=edge scripts/contract.sh ./bin/statusd
+      - name: Contract tests, every backend read through the CSM adapter
+        run: CONTRACT_SOURCE=csm scripts/contract.sh ./bin/statusd
       - name: Every configuration file, as a start would read it (statusd -check-config)
         env:
           # Every ${NAME} the files use must be set; a placeholder will do.
