@@ -14,6 +14,14 @@ section here. The public API has its own version, in `api/openapi.yaml`.
 - API 1.1.0: each product lists its `locations` (US, EU) with a status
   that fails closed over their regions, and each region names its
   `location`; summary regions carry their `uptime`.
+- An incident history page (`/history`): every incident the API holds,
+  under the reader's local month each started, for all products or one
+  (`/history?product=<id>`), saying from when the list is complete and
+  calling a month quiet only when the data covers all of it. The home page
+  links it under the table, and a product's Recent incidents links its
+  older incidents there.
+- `/api/v1/incidents` holds every incident the sources keep (six months
+  today) and, per product, `covered_from`, `checked_at` and `stale`.
 - Each colour in the history legend has its own label, and a description
   on hover, keyboard focus or tap.
 - The WSO2 logo heads the page, and the WSO2 pulse glyph is the favicon and
@@ -52,8 +60,8 @@ section here. The public API has its own version, in `api/openapi.yaml`.
   the banner's clock.
 - A product's page lists the incidents of its history's days under the
   reader's local day they started, without repeating the product's name,
-  and links older incidents on the product's own status page. The API's
-  product `incidents` holds the same days, as `/api/v1/incidents` does.
+  and links older incidents on the incident history. The API's product
+  `incidents` holds the same days.
 - The history strip counts incidents, each once however many UTC days it
   touches ("1 incident", "2 incidents and 1 maintenance window"), and names
   its span when it shows fewer days than the incident list ("No incidents
@@ -173,6 +181,13 @@ section here. The public API has its own version, in `api/openapi.yaml`.
   the six libraries only curl used.
 - The statusd image is built on the current distroless base image, with
   the Prometheus client library 1.25.0.
+
+### Removed
+
+- Every link to the products' own status pages: on a product's page, under
+  an active incident, in the footer, in Recent incidents' notes, and in the
+  fallbacks shown when the API, the scripts or rendering fail. The API and
+  the configuration drop `page_url`.
 
 ## [0.1.0] - not released
 

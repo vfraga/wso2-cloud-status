@@ -26,7 +26,6 @@ import {
 } from "../lib/status";
 import { formatUtcDateTime } from "../lib/time";
 import { DataNote } from "./DataNote";
-import { ExternalAnchor } from "./ExternalAnchor";
 
 function text({ product, coverage, partly }: MissingIncidents): string {
   if (coverage.state === "until") {
@@ -38,9 +37,9 @@ function text({ product, coverage, partly }: MissingIncidents): string {
 }
 
 /**
- * One line per product whose incident data is unavailable or incomplete,
- * each with a link to its own page: "Incident information for Moesif is
- * incomplete after Oct 21, 2026, 2:05 PM UTC. See the Moesif status page".
+ * One line per product whose incident data is unavailable or incomplete:
+ * "Incident information for Moesif is incomplete after Oct 21, 2026, 2:05 PM
+ * UTC."
  */
 export function IncidentsUnavailable({ missing }: { missing: readonly MissingIncidents[] }) {
   if (missing.length === 0) return null;
@@ -48,16 +47,7 @@ export function IncidentsUnavailable({ missing }: { missing: readonly MissingInc
     <Stack spacing={0.75} sx={{ mt: 2 }}>
       {missing.map((m) => (
         <DataNote key={m.product.id} icon={<CircleHelp aria-hidden="true" size={14} />}>
-          {text(m)}{" "}
-          {m.product.pageUrl !== "" && (
-            <ExternalAnchor
-              href={m.product.pageUrl}
-              label={`See the ${m.product.name} status page`}
-              inline
-            >
-              See the {m.product.name} status page
-            </ExternalAnchor>
-          )}
+          {text(m)}
         </DataNote>
       ))}
     </Stack>

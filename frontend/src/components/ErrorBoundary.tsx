@@ -19,7 +19,6 @@
 import { Component, type ErrorInfo, type ReactElement, type ReactNode } from "react";
 import { config } from "../config";
 import { pageTitle } from "../hooks/useDocumentTitle";
-import { FALLBACK_PRODUCTS } from "../lib/fallbackProducts";
 import { RENDER_FAILED, RENDER_FAILED_DETAIL } from "../lib/status";
 
 interface State {
@@ -27,9 +26,9 @@ interface State {
 }
 
 /**
- * Last resort: a plain message and every product's own status page instead
- * of a blank page. The title says so too, since nothing polls meanwhile and
- * the last status would stay in the tab. After one summary interval it
+ * Last resort: a plain message instead of a blank page. The title says so
+ * too, since nothing polls meanwhile and the last status would stay in the
+ * tab. After one summary interval it
  * renders the page again, which polls again, so a tab left open recovers
  * once the data does.
  */
@@ -63,13 +62,6 @@ export class ErrorBoundary extends Component<{ children: ReactNode }, State> {
       >
         <h1 style={{ fontSize: "1.25rem" }}>{RENDER_FAILED}</h1>
         <p>{RENDER_FAILED_DETAIL}</p>
-        <ul>
-          {FALLBACK_PRODUCTS.map((p) => (
-            <li key={p.id}>
-              <a href={p.pageUrl}>{p.name} status page</a>
-            </li>
-          ))}
-        </ul>
       </div>
     );
   }

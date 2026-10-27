@@ -406,7 +406,6 @@ describe("RegionDetailPanel", () => {
     id: "eu",
     name: "EU",
     status: "operational" as const,
-    pageUrl: "",
     uptime: [],
     groups: [
       {
@@ -465,7 +464,7 @@ describe("RegionDetailPanel without components", () => {
     const { rerender } = wrap(
       <ul>
         <RegionDetailPanel
-          region={{ id: "us", name: "US", status: "unknown", pageUrl: "", uptime: [], groups: [] }}
+          region={{ id: "us", name: "US", status: "unknown", uptime: [], groups: [] }}
         />
       </ul>,
     );
@@ -476,7 +475,6 @@ describe("RegionDetailPanel without components", () => {
       id: "us",
       name: "US",
       status: "operational" as const,
-      pageUrl: "",
       uptime: [{ window: "7d", percent: 100 }],
       groups: [],
     };
@@ -836,7 +834,7 @@ describe("incidents", () => {
     expect(screen.queryByRole("link")).not.toBeInTheDocument();
   });
 
-  it("links an active incident to its product here and to the updates on its own page", () => {
+  it("links an active incident to its product here, and nowhere else", () => {
     wrap(
       <ActiveIncidents
         incidents={[incident({ resolvedAt: null, state: "investigating" })]}
@@ -847,9 +845,7 @@ describe("incidents", () => {
       "href",
       "/products/api-platform",
     );
-    expect(
-      screen.getByRole("link", { name: "Updates on the API Platform status page" }),
-    ).toHaveAttribute("href", "https://status.example.test/api");
+    expect(screen.getAllByRole("link")).toHaveLength(1);
     expect(screen.getByText("Degraded performance")).toBeInTheDocument();
   });
 });
@@ -1035,7 +1031,6 @@ describe("small pieces", () => {
       id: "r",
       name: "R",
       status: "operational" as const,
-      pageUrl: "",
       uptime: windows.map((w) => ({ window: w, percent: 100 })),
       groups: [
         {
@@ -1089,10 +1084,8 @@ describe("small pieces", () => {
     expect(screen.getByRole("alert")).toHaveTextContent("Something went wrong");
     // Nothing polls while the boundary shows, so the last status cannot stay in the tab.
     expect(document.title).toBe("Something went wrong showing this page - WSO2 Cloud Status");
-    expect(screen.getByRole("link", { name: "API Platform status page" })).toHaveAttribute(
-      "href",
-      "https://status.bijira.dev",
-    );
+    expect(screen.getByRole("alert")).toHaveTextContent("This page will try again on its own.");
+    expect(screen.queryByRole("link")).toBeNull();
     expect(spy).toHaveBeenCalled();
     spy.mockRestore();
   });

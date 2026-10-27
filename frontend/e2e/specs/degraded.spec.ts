@@ -76,9 +76,7 @@ test.describe("outage, degraded and maintenance components in one place, and an 
       "href",
       "/products/api-platform",
     );
-    await expect(
-      active.getByRole("link", { name: "Updates on the API Platform status page" }),
-    ).toHaveAttribute("href", "https://status.bijira.dev");
+    await expect(active.getByRole("link")).toHaveCount(1);
     await expect(active).toContainText("Investigating");
     await expect(active).toContainText(/Ongoing for 1h/);
     await expect(active.locator("time").first()).toHaveAttribute("title", /UTC$/);
@@ -173,7 +171,7 @@ test.describe("outage, degraded and maintenance components in one place, and an 
     await context.close();
   });
 
-  test("long words from the upstream wrap at 320 px on both pages", async ({ browser }) => {
+  test("long words from the upstream wrap at 320 px on every page", async ({ browser }) => {
     // CSM operators write titles, messages and names; one may hold a URL. Each gets one here.
     const url = `https://status.example.com/incidents/${"x".repeat(80)}`;
     const context = await browser.newContext({ viewport: { width: 320, height: 800 } });
@@ -203,7 +201,28 @@ test.describe("outage, degraded and maintenance components in one place, and an 
     while ((await closed.count()) > 0) await closed.first().click();
     await expect(page.getByText(`API Proxy Invocation ${url}`)).toBeVisible();
     expect(await overflow()).toBeLessThanOrEqual(0);
+    await page.getByRole("link", { name: "Older incidents" }).click();
+    await expect(page.getByText(`Console sign-in failures ${url}`).first()).toBeVisible();
+    expect(await overflow()).toBeLessThanOrEqual(0);
     await context.close();
+  });
+
+  test("a product's older incidents open the incident history filtered to it", async ({ page }) => {
+    await readyProduct(page, "api-platform", "API Platform");
+    await page.getByRole("link", { name: "Older incidents" }).click();
+    await expect(page).toHaveURL(/\/history\?product=api-platform$/);
+    await expect(page.getByRole("heading", { level: 1, name: "Incident history" })).toBeFocused();
+    await expect(page).toHaveTitle("Incident history - WSO2 Cloud Status");
+    await expect(page.getByRole("combobox", { name: "Product" })).toHaveValue("api-platform");
+    await expect(page.getByText("Console sign-in failures").first()).toBeVisible();
+    await page.getByRole("combobox", { name: "Product" }).selectOption("");
+    await expect(page).toHaveURL(/\/history$/);
+    await expectNoSeriousViolations(page);
+    await page.getByRole("link", { name: "All products" }).click();
+    await expect(page.getByRole("link", { name: "Incident history" })).toHaveAttribute(
+      "href",
+      "/history",
+    );
   });
 
   test("the product page names the affected regions under the headline", async ({ page }) => {

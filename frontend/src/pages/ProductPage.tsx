@@ -22,7 +22,6 @@ import { useMemo } from "react";
 import type { Incident, ProductDetail } from "../api/types";
 import { ActiveIncidents } from "../components/ActiveIncidents";
 import { Banner } from "../components/Banner";
-import { ExternalAnchor } from "../components/ExternalAnchor";
 import { HistoryLegend } from "../components/HistoryLegend";
 import { HistoryStrip } from "../components/HistoryStrip";
 import { IncidentItem } from "../components/IncidentMeta";
@@ -35,7 +34,7 @@ import { pageTitle, useDocumentTitle } from "../hooks/useDocumentTitle";
 import { PageNowProvider, usePageNow } from "../hooks/useNow";
 import { useKnownUntil, type PolledState } from "../hooks/usePolled";
 import { useProduct } from "../hooks/useResources";
-import { knownProduct, type FallbackProduct } from "../lib/fallbackProducts";
+import { knownProduct } from "../lib/fallbackProducts";
 import {
   bannerFreshness,
   completeUntil,
@@ -50,9 +49,9 @@ import {
   BANNER_LABEL,
   NO_INCIDENTS,
   NO_OTHER_INCIDENTS,
+  OLDER_INCIDENTS,
   PRODUCT_STATUS_UNAVAILABLE,
   UPTIME_NOTE,
-  olderIncidents,
   recentSpan,
 } from "../lib/status";
 import { earliest } from "../lib/time";
@@ -73,9 +72,9 @@ function partlyShown(product: ProductDetail): PartlyShown {
 }
 
 /**
- * The resolved incidents of the history's days (the API lists no older
- * ones), under the reader's local day they started; the ongoing ones are
- * listed at the top of the page.
+ * The resolved incidents of the history's days, under the reader's local
+ * day they started, with a link to older ones on the incident history; the
+ * ongoing ones are listed at the top of the page.
  */
 function RecentIncidents({ product, now }: { product: ProductDetail; now: Date }) {
   const missing = missingIncidents([product], product.incidents);
@@ -88,9 +87,7 @@ function RecentIncidents({ product, now }: { product: ProductDetail; now: Date }
       </Typography>
       <Typography variant="body2" sx={sectionNote}>
         {recentSpan(product.history.length)}{" "}
-        <ExternalAnchor href={product.pageUrl} label={olderIncidents(product.name)} inline>
-          {olderIncidents(product.name)}
-        </ExternalAnchor>
+        <Link to={`/history?product=${encodeURIComponent(product.id)}`}>{OLDER_INCIDENTS}</Link>
       </Typography>
       <IncidentsUnavailable missing={missing} />
       {/* "No incidents reported." only when the incident data is complete. */}
@@ -142,18 +139,8 @@ function ProductBody({
   const partly = partlyShown(product);
   return (
     <>
-      {/* The banner's h1 names the product; the link out stays below the status. */}
       <Box sx={{ mt: 2 }}>
         <ProductNotes product={product} partly={partly} />
-        <Box sx={{ mt: 1.5 }}>
-          <ExternalAnchor
-            href={product.pageUrl}
-            label={`Open the ${product.name} status page`}
-            weight={600}
-          >
-            Open the {product.name} status page
-          </ExternalAnchor>
-        </Box>
       </Box>
       {/* Ongoing incidents first, as on the home page, above history and regions. */}
       <ActiveIncidents
@@ -228,22 +215,10 @@ function KnownProductBody({
   return <ProductBody product={product} knownUntil={useKnownUntil(state)} />;
 }
 
-/**
- * Without data: a skeleton while loading, or, when the API failed or sent
- * something unreadable, a link to the product's own page.
- */
-function Pending({ failed, known }: { failed: boolean; known: FallbackProduct | undefined }) {
+/** Without data: a skeleton while loading, or a line when the API failed or sent something unreadable. */
+function Pending({ failed }: { failed: boolean }) {
   if (!failed) return <ProductListSkeleton />;
-  return (
-    <Typography sx={{ mt: 3 }}>
-      {PRODUCT_STATUS_UNAVAILABLE}{" "}
-      {known && (
-        <ExternalAnchor href={known.pageUrl} label={`Open the ${known.name} status page`} inline>
-          Open the {known.name} status page
-        </ExternalAnchor>
-      )}
-    </Typography>
-  );
+  return <Typography sx={{ mt: 3 }}>{PRODUCT_STATUS_UNAVAILABLE}</Typography>;
 }
 
 function ProductBanner({
@@ -291,7 +266,7 @@ export function ProductPage({ id }: { id: string }) {
         {product ? (
           <KnownProductBody state={state} product={product} />
         ) : (
-          <Pending failed={state.failed || state.lastSuccessAt !== null} known={known} />
+          <Pending failed={state.failed || state.lastSuccessAt !== null} />
         )}
       </PageNowProvider>
     </>

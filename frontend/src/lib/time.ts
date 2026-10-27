@@ -49,6 +49,7 @@ const dayHeading = new Intl.DateTimeFormat(undefined, {
   month: "long",
   day: "numeric",
 });
+const monthHeading = new Intl.DateTimeFormat(undefined, { year: "numeric", month: "long" });
 
 const pad = (n: number): string => String(n).padStart(2, "0");
 /** The earliest of the times given, ignoring nulls; null when there is none. */
@@ -69,6 +70,26 @@ export function formatDayHeading(date: Date): string {
   return dayHeading.format(date);
 }
 
+/** The start of the reader's local month that holds `date`. */
+export function localMonthStart(date: Date): Date {
+  return new Date(date.getFullYear(), date.getMonth(), 1);
+}
+
+/** The start of the reader's local month after the one that holds `date`. */
+export function nextLocalMonth(date: Date): Date {
+  return new Date(date.getFullYear(), date.getMonth() + 1, 1);
+}
+
+/** The reader's local month, "2026-10". */
+export function localMonthKey(date: Date): string {
+  return `${String(date.getFullYear())}-${pad(date.getMonth() + 1)}`;
+}
+
+/** A local month as a heading, "October 2026" (en-US). */
+export function formatMonthHeading(date: Date): string {
+  return monthHeading.format(date);
+}
+
 /** UTC calendar day key, "2026-10-20". */
 export function utcDayKey(date: Date): string {
   return date.toISOString().slice(0, 10);
@@ -87,6 +108,11 @@ export function formatUtcDateTime(date: Date): string {
 /** The UTC clock on the same UTC day as `now`, else the UTC date and clock. */
 export function formatUtcTime(date: Date, now: Date): string {
   return utcDayKey(date) === utcDayKey(now) ? formatUtcClock(date) : formatUtcDateTime(date);
+}
+
+/** The UTC calendar day of an instant, "May 1, 2026" (en-US). */
+export function formatUtcDate(date: Date): string {
+  return utcDate.format(date);
 }
 
 /** A history day (a UTC calendar day), "Oct 20, 2026" (en-US); the text as is when it is no date. */

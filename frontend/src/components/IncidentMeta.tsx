@@ -28,7 +28,6 @@ import {
   formatUtcDateTime,
   formatUtcTime,
 } from "../lib/time";
-import { ExternalAnchor } from "./ExternalAnchor";
 import { StatusLabel } from "./StatusIcon";
 
 function When({ date, withDate }: { date: Date; withDate: boolean }) {
@@ -48,8 +47,8 @@ interface IncidentItemProps {
   withDate?: boolean;
   /** Heading level of the title; one below the section heading. */
   titleAs?: "h3" | "h4";
-  /** Links the product name to its page here and adds a link to the updates on its own status page. */
-  links?: { productPath: string; pageUrl: string };
+  /** Links the product name to its page here. */
+  productPath?: string;
   /**
    * For an open incident whose feed stopped, its last successful fetch: the
    * duration stops there and the line says it is the last known state.
@@ -74,7 +73,7 @@ export function IncidentItem({
   now,
   withDate = false,
   titleAs = "h4",
-  links,
+  productPath,
   lastKnownAt = null,
 }: IncidentItemProps) {
   const ongoing = isOngoing(incident);
@@ -91,7 +90,7 @@ export function IncidentItem({
       >
         {productName !== undefined && (
           <Typography variant="body2" sx={{ color: "var(--cs-muted)" }}>
-            {links ? <Link to={links.productPath}>{productName}</Link> : productName}
+            {productPath === undefined ? productName : <Link to={productPath}>{productName}</Link>}
           </Typography>
         )}
         <StatusLabel status={incident.impact}>{IMPACT_LABEL[incident.impact]}</StatusLabel>
@@ -102,9 +101,6 @@ export function IncidentItem({
         )}
       </Stack>
       <Times incident={incident} now={now} withDate={withDate} lastKnownAt={lastKnownAt} />
-      {links && productName !== undefined && (
-        <UpdatesLink productName={productName} pageUrl={links.pageUrl} />
-      )}
     </Box>
   );
 }
@@ -135,18 +131,6 @@ function Times({
       )}
       {`. ${durationText(incident, now, lastKnownAt)}`}
     </Typography>
-  );
-}
-
-function UpdatesLink({ productName, pageUrl }: { productName: string; pageUrl: string }) {
-  if (pageUrl === "") return null;
-  const text = `Updates on the ${productName} status page`;
-  return (
-    <Box sx={{ mt: 0.5 }}>
-      <ExternalAnchor href={pageUrl} label={text} weight={500}>
-        {text}
-      </ExternalAnchor>
-    </Box>
   );
 }
 

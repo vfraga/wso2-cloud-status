@@ -65,9 +65,7 @@ describe("parseSummary", () => {
     expect(p).toBeDefined();
     expect(p).not.toHaveProperty("description");
     expect(p?.name).toBe("x");
-    expect(p?.regions).toEqual([
-      { id: "r", name: "r", status: "unknown", pageUrl: "", uptime: [] },
-    ]);
+    expect(p?.regions).toEqual([{ id: "r", name: "r", status: "unknown", uptime: [] }]);
     expect(p?.locations).toEqual([]);
     expect(p?.history).toEqual([]);
     expect(s.activeIncidents).toEqual([]);
@@ -111,7 +109,7 @@ describe("parseSummary", () => {
       Object.entries(ok).filter(([key]) => key !== "data_complete"),
     );
     expect(complete(withoutField)).toBe(false);
-    const region = { id: "eu", name: "EU", status: "unknown", page_url: "" };
+    const region = { id: "eu", name: "EU", status: "unknown" };
     expect(complete({ ...ok, regions: [region] })).toBe(false);
     // A region record without an id is dropped, and the product is then incomplete.
     expect(complete({ ...ok, regions: [{ name: "no id", status: "operational" }] })).toBe(false);

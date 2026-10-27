@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import { parseProductDetail, parseSummary } from "../api/parse";
+import { parseIncidentList, parseProductDetail, parseSummary } from "../api/parse";
 import { config } from "../config";
 import { usePolled } from "./usePolled";
 
@@ -29,3 +29,6 @@ export const useProduct = (id: string) =>
     parseProductDetail,
     config.productIntervalMs,
   );
+
+export const useIncidentList = () =>
+  usePolled("/api/v1/incidents", parseIncidentList, config.productIntervalMs);

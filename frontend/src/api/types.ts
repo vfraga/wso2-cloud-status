@@ -51,7 +51,6 @@ export interface RegionSummary {
   id: string;
   name: string;
   status: Status;
-  pageUrl: string;
   uptime: Uptime[];
   /** The id of the location the region is part of, if any. */
   location?: string;
@@ -101,7 +100,6 @@ export interface ProductSummary {
   id: string;
   name: string;
   description?: string;
-  pageUrl: string;
   status: Status;
   /** False when any region or component status is unknown. */
   dataComplete: boolean;
@@ -115,6 +113,28 @@ export interface ProductSummary {
 
 export interface ProductDetail extends ProductSummary {
   regionDetails: RegionDetail[];
+  incidents: Incident[];
+}
+
+/** How current a product's incident data is: what the incident notes need. */
+export interface IncidentFeed {
+  id: string;
+  name: string;
+  freshness: {
+    checkedAt: Pick<PerKind<Date | null>, "incidents">;
+    stale: Pick<PerKind<boolean>, "incidents">;
+  };
+}
+
+/** A product in the incident list, and how far back its incidents are all listed. */
+export interface IncidentListProduct extends IncidentFeed {
+  /** From this instant every incident of the product is listed; null when not known. */
+  coveredFrom: Date | null;
+}
+
+/** /api/v1/incidents: every incident the sources keep. */
+export interface IncidentList {
+  products: IncidentListProduct[];
   incidents: Incident[];
 }
 

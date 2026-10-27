@@ -2,9 +2,9 @@
 
 The status page for the WSO2 Cloud products. The home page is the current status:
 one banner, the active incidents, and a table of each product's status per region.
-Each product's page has its 90-day history, regions with uptime, and incidents. It
-reads the status API in `../backend/go` (contract: `../api/openapi.yaml`) and links
-each product to its own status page, where the full history lives.
+Each product's page has its 90-day history, regions with uptime, and incidents; the
+incident history lists every incident the API holds, by month. It reads the status
+API in `../backend/go` (contract: `../api/openapi.yaml`).
 
 ## Run
 
@@ -66,11 +66,13 @@ How the frontend behaves in each state, data missing included:
   phone layout keeps it a table; the history strip is one tab stop with
   arrow keys; status is never colour alone. axe runs in the end-to-end tests.
 - Without JavaScript, or when the app's scripts do not load, `index.html`
-  lists every product's own status page (hidden for 3 seconds so a normal
-  load does not flash it); the same list appears when the API cannot be
-  reached from the first load, and after a rendering error, which retries
-  after one summary interval. `fallbackProducts.test.ts` ties both lists to
-  `config/statusd.yaml`.
+  says so (hidden for 3 seconds so a normal load does not flash it). When
+  the API cannot be reached from the first load the products' card says
+  their status is not available; a rendering error shows a plain message
+  and retries after one summary interval. The page links no product's own
+  status page. `src/lib/fallbackProducts.ts` holds each product's id and
+  name for a product page that loads before the API answers;
+  `fallbackProducts.test.ts` ties it to `config/statusd.yaml`.
 
 ## End-to-end tests
 

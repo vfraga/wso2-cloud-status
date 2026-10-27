@@ -47,7 +47,6 @@ const region = (name: string, status: Status): RegionSummary => ({
   id: name.toLowerCase().replaceAll(" ", "-"),
   name,
   status,
-  pageUrl: "",
   uptime: [],
 });
 
@@ -235,13 +234,12 @@ describe("summaryHeadline", () => {
     const good = {
       id: "a",
       name: "A",
-      page_url: "",
       status: "operational",
       affected_regions: 0,
       data_complete: true,
       outdated: false,
       locations: [],
-      regions: [{ id: "us", name: "US", status: "operational", page_url: "" }],
+      regions: [{ id: "us", name: "US", status: "operational" }],
       history: [],
     };
     const label = (body: unknown) => summaryHeadline(parseSummary(body)).label;
@@ -261,9 +259,7 @@ describe("summaryHeadline", () => {
     expect(
       label({
         status: "operational",
-        products: [
-          { ...noField, regions: [{ id: "us", name: "US", status: "unknown", page_url: "" }] },
-        ],
+        products: [{ ...noField, regions: [{ id: "us", name: "US", status: "unknown" }] }],
       }),
     ).toBe("Some status data is unavailable");
     expect(label({ status: "operational", data_complete: true, products: [good] })).toBe(

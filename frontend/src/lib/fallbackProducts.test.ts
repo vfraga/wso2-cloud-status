@@ -24,11 +24,11 @@ import { config as pageConfig } from "../config";
 import { FALLBACK_PRODUCTS, PRODUCT_LEGAL, type FallbackProduct } from "./fallbackProducts";
 
 /*
- * A YAML library is not worth a dependency for three keys in a file whose
+ * A YAML library is not worth a dependency for two keys in a file whose
  * layout is fixed: products are "  - id: ..." items under a top-level
- * "products:" key, with "name" and "page_url" at four spaces. A source's own
- * page_url sits deeper and is ignored. The parser fails loudly when the
- * layout changes, rather than passing on a misread file.
+ * "products:" key, with "name" at four spaces. Deeper keys are ignored. The
+ * parser fails loudly when the layout changes, rather than passing on a
+ * misread file.
  */
 function productsFromConfig(text: string): FallbackProduct[] {
   const lines = text.split("\n");
@@ -40,19 +40,17 @@ function productsFromConfig(text: string): FallbackProduct[] {
     if (/^\S/.test(line)) break;
     const id = /^ {2}- id: (.+)$/.exec(line)?.[1];
     if (id !== undefined) {
-      products.push({ id: unquote(id), name: "", pageUrl: "" });
+      products.push({ id: unquote(id), name: "" });
       continue;
     }
-    const field = /^ {4}(name|page_url): (.+)$/.exec(line);
+    const name = /^ {4}name: (.+)$/.exec(line)?.[1];
     const current = products.at(-1);
-    if (!field || !current) continue;
-    if (field[1] === "name") current.name = unquote(field[2] ?? "");
-    else current.pageUrl = unquote(field[2] ?? "");
+    if (name !== undefined && current) current.name = unquote(name);
   }
   return products;
 }
 
-describe("fallback product links", () => {
+describe("built-in product list", () => {
   // A path, not a URL object: jsdom replaces the global URL, which node:fs rejects.
   const here = dirname(fileURLToPath(import.meta.url));
   const config = readFileSync(resolve(here, "../../../config/statusd.yaml"), "utf8");
@@ -60,10 +58,7 @@ describe("fallback product links", () => {
   it("match the products in config/statusd.yaml, in order", () => {
     const fromConfig = productsFromConfig(config);
     expect(fromConfig.length).toBeGreaterThan(0);
-    for (const p of fromConfig) {
-      expect(p.name).not.toBe("");
-      expect(p.pageUrl).toMatch(/^https:\/\//);
-    }
+    for (const p of fromConfig) expect(p.name).not.toBe("");
     expect(FALLBACK_PRODUCTS).toEqual(fromConfig);
   });
 
@@ -73,16 +68,6 @@ describe("fallback product links", () => {
       expect(legal.privacy).toMatch(/^https:\/\//);
       expect(legal.terms).toMatch(/^https:\/\//);
     }
-  });
-
-  it("match the links index.html shows without JavaScript or when the app does not load", () => {
-    const html = readFileSync(resolve(here, "../../index.html"), "utf8");
-    const root = new DOMParser().parseFromString(html, "text/html").getElementById("root");
-    const links = Array.from(root?.querySelectorAll("a") ?? []).map((a) => ({
-      name: a.textContent.replace(/ status page$/, ""),
-      pageUrl: a.getAttribute("href"),
-    }));
-    expect(links).toEqual(FALLBACK_PRODUCTS.map(({ name, pageUrl }) => ({ name, pageUrl })));
   });
 
   // The page holds two of statusd's settings as fixed numbers. Changing either in
@@ -126,25 +111,23 @@ describe("fallback product links", () => {
     }
   });
 
-  it("parser reads product fields and skips a source's page_url", () => {
+  it("parser reads product fields and skips a source's", () => {
     const text = [
       "backends: {}",
       "products:",
       "  - id: one",
-      "    name: One",
-      '    page_url: "https://one.example"',
+      '    name: "One"',
       "    sources:",
       "      - backend: b",
-      "        page_url: https://source.example",
+      "        name: deeper",
       "  - id: two",
       "    name: Two",
-      "    page_url: https://two.example",
       "other: x",
       "  - id: not-a-product",
     ].join("\n");
     expect(productsFromConfig(text)).toEqual([
-      { id: "one", name: "One", pageUrl: "https://one.example" },
-      { id: "two", name: "Two", pageUrl: "https://two.example" },
+      { id: "one", name: "One" },
+      { id: "two", name: "Two" },
     ]);
     expect(() => productsFromConfig("server: {}")).toThrow(/products/);
   });

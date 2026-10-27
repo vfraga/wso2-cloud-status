@@ -22,6 +22,8 @@ import {
   type Day,
   type Group,
   type Incident,
+  type IncidentList,
+  type IncidentListProduct,
   type Location,
   type PerKind,
   type ProductDetail,
@@ -87,21 +89,20 @@ function toGroup(r: Rec): Group {
   };
 }
 
-function toRegion(r: Rec, fallbackUrl: string): RegionSummary | null {
+function toRegion(r: Rec): RegionSummary | null {
   const id = str(r.id);
   if (id === "") return null;
   return {
     id,
     name: str(r.name, id),
     status: toStatus(r.status),
-    pageUrl: str(r.page_url, fallbackUrl),
     uptime: toUptime(r),
     ...optionalString("location", r.location),
   };
 }
 
-function toRegionDetail(r: Rec, fallbackUrl: string): RegionDetail | null {
-  const base = toRegion(r, fallbackUrl);
+function toRegionDetail(r: Rec): RegionDetail | null {
+  const base = toRegion(r);
   if (!base) return null;
   return { ...base, groups: records(r.groups).map(toGroup) };
 }
@@ -191,17 +192,13 @@ function toFreshness(r: Rec): ProductFreshness {
 function toProduct(r: Rec): ProductSummary | null {
   const id = str(r.id);
   if (id === "") return null;
-  const pageUrl = str(r.page_url);
   const sent = list(r.regions);
-  const regions = records(sent)
-    .map((x) => toRegion(x, pageUrl))
-    .filter(nonNull);
+  const regions = records(sent).map(toRegion).filter(nonNull);
   const sentLocations = list(r.locations);
   const locations = records(sentLocations).map(toLocation).filter(nonNull);
   return {
     id,
     name: str(r.name, id),
-    pageUrl,
     status: toStatus(r.status),
     // Fails closed: complete only when the API says so, sent both lists,
     // every region and location in them could be read, and no region is
@@ -289,9 +286,51 @@ export function parseProductDetail(raw: unknown): ProductDetail | null {
     freshness: allReadable(raw.incidents)
       ? product.freshness
       : incidentsNotReceived(product.freshness),
-    regionDetails: records(raw.region_details)
-      .map((x) => toRegionDetail(x, product.pageUrl))
-      .filter(nonNull),
+    regionDetails: records(raw.region_details).map(toRegionDetail).filter(nonNull),
     incidents: parseIncidents(raw.incidents),
   };
+}
+
+function toListProduct(r: Rec): IncidentListProduct | null {
+  const id = str(r.id);
+  if (id === "") return null;
+  const checkedAt = toDate(r.checked_at);
+  return {
+    id,
+    name: str(r.name, id),
+    coveredFrom: toDate(r.covered_from),
+    // Fails closed, as toFreshness does: current only when the API says so
+    // and its time could be read.
+    freshness: {
+      checkedAt: { incidents: checkedAt },
+      stale: { incidents: checkedAt === null || r.stale !== false },
+    },
+  };
+}
+
+/**
+ * The incident list. A product whose incidents cannot all be read counts as
+ * not received (no coverage, stale with no time), so the page never calls a
+ * month quiet over a record it could not read.
+ */
+export function parseIncidentList(raw: unknown): IncidentList {
+  const r = isRec(raw) ? raw : {};
+  const unreadable = new Set(
+    list(r.incidents)
+      .filter((x) => !isRec(x) || toIncident(x) === null)
+      .map((x) => (isRec(x) ? str(x.product_id) : "")),
+  );
+  const products = records(r.products)
+    .map(toListProduct)
+    .filter(nonNull)
+    .map((p) =>
+      unreadable.has("") || unreadable.has(p.id)
+        ? {
+            ...p,
+            coveredFrom: null,
+            freshness: { checkedAt: { incidents: null }, stale: { incidents: true } },
+          }
+        : p,
+    );
+  return { products, incidents: parseIncidents(r.incidents) };
 }

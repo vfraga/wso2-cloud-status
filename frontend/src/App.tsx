@@ -19,6 +19,7 @@
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { Layout } from "./components/Layout";
 import { matchRoute, usePathname } from "./lib/router";
+import { HistoryPage } from "./pages/HistoryPage";
 import { HomePage } from "./pages/HomePage";
 import { NotFoundPage } from "./pages/NotFoundPage";
 import { ProductPage } from "./pages/ProductPage";
@@ -31,6 +32,8 @@ function Routes() {
       return <HomePage />;
     case "product":
       return <ProductPage key={route.id} id={route.id} />;
+    case "history":
+      return <HistoryPage />;
     default:
       return <NotFoundPage />;
   }

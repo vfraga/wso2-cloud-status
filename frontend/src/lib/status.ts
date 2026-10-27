@@ -252,9 +252,20 @@ export function statusChanged(label: string): string {
 export function recentSpan(days: number): string {
   return `The last ${count(days, "day")}.`;
 }
-export function olderIncidents(name: string): string {
-  return `Older incidents on the ${name} status page`;
+/** The link from a product's Recent incidents to its incident history. */
+export const OLDER_INCIDENTS = "Older incidents";
+
+/** The incident history page, and the home page's link to it. */
+export const INCIDENT_HISTORY = "Incident history";
+export const PRODUCT_FILTER_LABEL = "Product";
+export const ALL_PRODUCTS_OPTION = "All products";
+/** Under the incident history's heading; `since` is a UTC date, null when not known. */
+export function historySpan(since: string | null): string {
+  return since === null
+    ? "Incidents under the month each started, in your time zone."
+    : `Incidents since ${since} UTC, under the month each started, in your time zone.`;
 }
+export const HISTORY_UNAVAILABLE = "Incident history is not available right now.";
 
 /** A product page's Recent incidents with complete data and nothing to list. */
 export const NO_INCIDENTS = "No incidents reported.";
@@ -281,8 +292,7 @@ export const LEGEND_DESCRIPTION: Record<Status, string> = {
 
 /** The page that replaces the app when rendering fails. */
 export const RENDER_FAILED = "Something went wrong showing this page";
-export const RENDER_FAILED_DETAIL =
-  "This page will try again on its own. Meanwhile, check each product's own status page:";
+export const RENDER_FAILED_DETAIL = "This page will try again on its own.";
 
 /** Legal pages in the footer: WSO2's, and on a product's page the product's own. */
 export const PRIVACY_POLICY = "Privacy policy";
@@ -310,7 +320,7 @@ export function lastCheckOver(limit: string): string {
 export const SERVICE_UNREACHABLE =
   "We cannot reach the status service right now. This page will keep trying.";
 
-/** A product page whose data could not be loaded; a link to the product's own page follows. */
+/** A product page whose data could not be loaded, or a home page without products. */
 export const PRODUCT_STATUS_UNAVAILABLE = "Product status is not available right now.";
 
 /** The page for a path that names nothing: "product" or "page". */

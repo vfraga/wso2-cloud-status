@@ -81,7 +81,7 @@ test.describe("all operational", () => {
   test("history strip is one tab stop and the tooltip follows keyboard focus", async ({ page }) => {
     const strip = await stripOf(page, "agent-platform", "Agent Platform");
     await expect(strip.getByRole("gridcell")).toHaveCount(90);
-    await page.getByRole("link", { name: "Open the Agent Platform status page" }).focus();
+    await page.getByRole("link", { name: "All products" }).focus();
     await page.keyboard.press("Tab");
     const today = strip.getByRole("gridcell").last();
     await expect(today).toBeFocused();
@@ -459,12 +459,15 @@ test.describe("all operational", () => {
     }
   });
 
-  test("links to other sites take the text colour, never a status colour", async ({ page }) => {
+  test("links to other sites take the colour of their text, never a status colour", async ({
+    page,
+  }) => {
     await readyProduct(page, "agent-platform", "Agent Platform");
-    const link = page.getByRole("link", { name: "Open the Agent Platform status page" });
+    const footer = page.locator("footer");
+    const link = footer.getByRole("link", { name: "Cookie policy" });
     const [linkColour, textColour] = await Promise.all([
       link.evaluate((el) => getComputedStyle(el).color),
-      page.locator("body").evaluate((el) => getComputedStyle(el).color),
+      footer.evaluate((el) => getComputedStyle(el).color),
     ]);
     expect(linkColour).toBe(textColour);
     expect(await link.evaluate((el) => getComputedStyle(el).textDecorationLine)).toBe("underline");
@@ -513,9 +516,10 @@ test.describe("all operational", () => {
     );
     await expect(page).toHaveTitle("API Platform - WSO2 Cloud Status");
     await expect(page.getByText(/^Uptime counts outages only/)).toBeVisible();
-    await expect(
-      page.getByRole("link", { name: "Open the API Platform status page" }),
-    ).toHaveAttribute("href", "https://status.bijira.dev");
+    await expect(page.getByRole("link", { name: "Older incidents" })).toHaveAttribute(
+      "href",
+      "/history?product=api-platform",
+    );
     await expect(page.getByRole("heading", { level: 3, name: "US" })).toBeVisible();
     await expect(
       page.getByRole("heading", { level: 4, name: "Control plane" }).first(),
@@ -553,35 +557,29 @@ test.describe("all operational", () => {
     ).toBeVisible();
   });
 
-  test("an API down from the first load still links every product's own page", async ({ page }) => {
+  test("an API down from the first load says product status is unavailable", async ({ page }) => {
     await page.route("**/api/v1/**", (route) => route.abort());
     await page.goto("/");
     await expect(page.getByRole("heading", { level: 1 })).toHaveText("Status unavailable", {
       timeout: 20_000,
     });
     const products = page.getByRole("region", { name: "Products" });
-    await expect(products.getByRole("link")).toHaveCount(PRODUCTS);
-    await expect(products.getByRole("link", { name: "API Platform status page" })).toHaveAttribute(
-      "href",
-      "https://status.bijira.dev",
-    );
+    await expect(products).toContainText("Product status is not available right now.");
+    await expect(products.getByRole("link")).toHaveCount(0);
     await expect(page.getByRole("status")).toContainText("We cannot reach the status service");
   });
 
-  test("without JavaScript, or when the app's scripts fail, every product's own page is linked", async ({
+  test("without JavaScript, or when the app's scripts fail, the page says what to do", async ({
     browser,
   }) => {
-    const statusPages = (page: Page) => page.getByRole("link", { name: / status page$/ });
+    const advice = (page: Page) => page.getByText(/^If the current status does not appear/);
     const noScript = await browser.newContext({ javaScriptEnabled: false });
     const plain = await noScript.newPage();
     await plain.goto("/");
     // Playwright's switch does not render <noscript> as a browser with scripting
     // off does, so the fallback shows here after its 3 seconds, not at once.
-    await expect(statusPages(plain)).toHaveCount(PRODUCTS, { timeout: 10_000 });
-    await expect(plain.getByRole("link", { name: "Moesif status page" })).toHaveAttribute(
-      "href",
-      "https://status.moesif.com",
-    );
+    await expect(advice(plain)).toBeVisible({ timeout: 10_000 });
+    await expect(plain.getByRole("link")).toHaveCount(0);
     await noScript.close();
 
     const broken = await browser.newContext();
@@ -589,8 +587,7 @@ test.describe("all operational", () => {
     await page.route("**/assets/*.js", (route) => route.abort());
     await page.goto("/");
     // Hidden for the first 3 seconds, while the app would normally replace it.
-    await expect(statusPages(page)).toHaveCount(PRODUCTS, { timeout: 10_000 });
-    await expect(page.getByRole("link", { name: "API Platform status page" })).toBeVisible();
+    await expect(advice(page)).toBeVisible({ timeout: 10_000 });
     await page.screenshot({ path: shotPath("e2e-bundle-failed"), animations: "disabled" });
     await broken.close();
   });

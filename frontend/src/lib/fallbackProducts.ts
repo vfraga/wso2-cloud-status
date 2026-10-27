@@ -17,28 +17,23 @@
  */
 
 /**
- * Every product's own status page, built into the page for when the status
- * API cannot be reached at all. Keep it in step with the products in
- * config/statusd.yaml, in the same order: fallbackProducts.test.ts fails when
- * an id, name or page_url differs.
+ * Every product's id and name, built into the page: a product page can name
+ * its product, and tell an unknown id from a failing API, before the status
+ * API answers. Keep it in step with the products in config/statusd.yaml, in
+ * the same order: fallbackProducts.test.ts fails when an id or name differs.
  */
 export interface FallbackProduct {
   id: string;
   name: string;
-  pageUrl: string;
 }
 
 export const FALLBACK_PRODUCTS: readonly FallbackProduct[] = [
-  { id: "agent-platform", name: "Agent Platform", pageUrl: "https://status.cloud.wso2.com" },
-  { id: "api-platform", name: "API Platform", pageUrl: "https://status.bijira.dev" },
-  {
-    id: "integration-platform",
-    name: "Integration Platform",
-    pageUrl: "https://status.devant.dev",
-  },
-  { id: "identity-platform", name: "Identity Platform", pageUrl: "https://status.asgardeo.io" },
-  { id: "developer-platform", name: "Developer Platform", pageUrl: "https://status.choreo.dev" },
-  { id: "moesif", name: "Moesif", pageUrl: "https://status.moesif.com" },
+  { id: "agent-platform", name: "Agent Platform" },
+  { id: "api-platform", name: "API Platform" },
+  { id: "integration-platform", name: "Integration Platform" },
+  { id: "identity-platform", name: "Identity Platform" },
+  { id: "developer-platform", name: "Developer Platform" },
+  { id: "moesif", name: "Moesif" },
 ];
 
 /**
@@ -79,7 +74,7 @@ const listed = new Map<string, FallbackProduct>();
 
 /** Records the products a summary listed, so a product page can recognise them later. */
 export function rememberProducts(products: readonly FallbackProduct[]): void {
-  for (const { id, name, pageUrl } of products) listed.set(id, { id, name, pageUrl });
+  for (const { id, name } of products) listed.set(id, { id, name });
 }
 
 /**

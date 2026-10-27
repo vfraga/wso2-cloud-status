@@ -16,12 +16,11 @@
  * under the License.
  */
 
-import { Box } from "@wso2/oxygen-ui";
+import { Box, Typography } from "@wso2/oxygen-ui";
 import { useEffect, useMemo } from "react";
 import type { Summary } from "../api/types";
 import { ActiveIncidents } from "../components/ActiveIncidents";
 import { Banner } from "../components/Banner";
-import { FallbackLinks } from "../components/FallbackLinks";
 import { StatusTable, StatusTableSkeleton } from "../components/StatusTable";
 import { pageTitle, useDocumentTitle } from "../hooks/useDocumentTitle";
 import { PageNowProvider, usePageNow } from "../hooks/useNow";
@@ -30,7 +29,8 @@ import { useSummary } from "../hooks/useResources";
 import { bannerFreshness } from "../lib/dataNotes";
 import { rememberProducts } from "../lib/fallbackProducts";
 import { summaryHeadline, type Headline } from "../lib/headline";
-import { BANNER_LABEL } from "../lib/status";
+import { Link } from "../lib/router";
+import { BANNER_LABEL, INCIDENT_HISTORY, PRODUCT_STATUS_UNAVAILABLE } from "../lib/status";
 import { CARD_RADIUS } from "../theme/shape";
 
 const NO_DATA: Headline = { status: "unknown", label: BANNER_LABEL.unknown };
@@ -44,8 +44,9 @@ const cardSx = {
 
 /**
  * The current status at a glance: the headline, the incidents going on now,
- * and a table of each product's status per region. History, uptime and past
- * incidents are on each product's own page.
+ * and a table of each product's status per region, then one link to the
+ * incident history. History, uptime and past incidents are on each
+ * product's page.
  */
 export function HomePage() {
   const summary = useSummary();
@@ -88,14 +89,16 @@ function HomeBody({ summary }: { summary: PolledState<Summary> }) {
         />
       )}
       <Box component="section" aria-label="Products" sx={cardSx}>
-        {/* Without products, from a failed summary or a 200 from something other
-            than the service, the links are what is left. */}
+        {/* Without products: a failed summary, or a 200 from something other than the service. */}
         {data && data.products.length > 0 ? (
           <StatusTable products={data.products} />
         ) : (
-          <FallbackLinks />
+          <Typography sx={{ p: 2.5 }}>{PRODUCT_STATUS_UNAVAILABLE}</Typography>
         )}
       </Box>
+      <Typography variant="body2" sx={{ mt: 2 }}>
+        <Link to="/history">{INCIDENT_HISTORY}</Link>
+      </Typography>
     </>
   );
 }

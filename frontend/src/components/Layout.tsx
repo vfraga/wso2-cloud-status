@@ -245,7 +245,7 @@ export function Layout({ children }: { children: ReactNode }) {
           <ProductLegalLinks />
           <LegalLinks label="Legal" links={LEGAL_LINKS} />
           <Typography variant="caption" component="p">
-            {FOOTER_TIMES} Each product keeps its full history on its own status page.
+            {FOOTER_TIMES}
           </Typography>
           <Typography variant="caption" component="p">
             Copyright {new Date().getFullYear()} WSO2 LLC.

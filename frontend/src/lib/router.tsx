@@ -25,7 +25,7 @@ import {
 } from "react";
 
 /*
- * Two routes do not justify a routing library (and the current react-router
+ * Three routes do not justify a routing library (and the current react-router
  * requires a newer React than Oxygen UI pins). This is the History API plus
  * a subscription, nothing more.
  */
@@ -41,24 +41,45 @@ function subscribe(onChange: () => void): () => void {
   };
 }
 
-const snapshot = (): string => window.location.pathname;
+const here = (): string => window.location.pathname + window.location.search;
+
+/** The path and query, "/history?product=moesif"; a string, so React compares it by value. */
+function useLocation(): string {
+  return useSyncExternalStore(subscribe, here, () => "/");
+}
 
 export function usePathname(): string {
-  return useSyncExternalStore(subscribe, snapshot, () => "/");
+  return useLocation().split("?")[0] ?? "/";
+}
+
+/** One query parameter of the current address; null when it is absent. */
+export function useSearchParam(name: string): string | null {
+  const location = useLocation();
+  const query = location.indexOf("?");
+  return query < 0 ? null : new URLSearchParams(location.slice(query)).get(name);
 }
 
 export function navigate(to: string): void {
-  if (to === window.location.pathname) return;
+  if (to === here()) return;
   window.history.pushState(null, "", to);
   window.dispatchEvent(new Event(NAVIGATE_EVENT));
   window.scrollTo(0, 0);
 }
 
-type Route = { name: "home" } | { name: "product"; id: string } | { name: "missing" };
+/** Changes the address in place, without a history entry or a scroll: a filter's choice. */
+export function replaceLocation(to: string): void {
+  if (to === here()) return;
+  window.history.replaceState(null, "", to);
+  window.dispatchEvent(new Event(NAVIGATE_EVENT));
+}
+
+type Route =
+  { name: "home" } | { name: "product"; id: string } | { name: "history" } | { name: "missing" };
 
 export function matchRoute(pathname: string): Route {
   const path = trimTrailingSlashes(pathname) || "/";
   if (path === "/") return { name: "home" };
+  if (path === "/history") return { name: "history" };
   const product = /^\/products\/([a-z0-9-]+)$/.exec(path);
   if (product?.[1]) return { name: "product", id: product[1] };
   return { name: "missing" };

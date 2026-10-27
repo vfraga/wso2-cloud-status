@@ -22,7 +22,7 @@ import { http, HttpResponse } from "msw";
 import { setupServer } from "msw/node";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "./App";
-import { FALLBACK_PRODUCTS, forgetListedProducts } from "./lib/fallbackProducts";
+import { forgetListedProducts } from "./lib/fallbackProducts";
 import { navigate } from "./lib/router";
 import { UPTIME_NOTE } from "./lib/status";
 import { formatDayHeading } from "./lib/time";
@@ -68,7 +68,6 @@ function degradedSummary() {
       {
         id: "api-platform",
         name: "API Platform",
-        page_url: "https://status.example.test/api",
         status: "degraded",
         affected_regions: 1,
         data_complete: true,
@@ -79,9 +78,8 @@ function degradedSummary() {
             id: "us",
             name: "US",
             status: "operational",
-            page_url: "https://status.example.test/api",
           },
-          { id: "eu", name: "EU", status: "degraded", page_url: "https://status.example.test/api" },
+          { id: "eu", name: "EU", status: "degraded" },
         ],
         history: [
           {
@@ -95,7 +93,6 @@ function degradedSummary() {
       {
         id: "moesif",
         name: "Moesif",
-        page_url: "https://status.example.test/moesif",
         status: "operational",
         affected_regions: 0,
         data_complete: true,
@@ -106,7 +103,6 @@ function degradedSummary() {
             id: "us",
             name: "US",
             status: "operational",
-            page_url: "https://status.example.test/moesif",
           },
         ],
         history: [],
@@ -189,14 +185,16 @@ describe("home page", () => {
       "href",
       "/products/api-platform",
     );
-    expect(
-      within(active).getByRole("link", { name: "Updates on the API Platform status page" }),
-    ).toHaveAttribute("href", "https://status.example.test/api");
+    expect(within(active).getAllByRole("link")).toHaveLength(1);
     expect(within(active).getByText(/Ongoing for 1h/)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Incident history" })).toHaveAttribute(
+      "href",
+      "/history",
+    );
     expect(await screen.findByText(/^Status checked just now$/)).toBeInTheDocument();
   });
 
-  it("links every product's own page when the API is down from the first load", async () => {
+  it("says product status is unavailable when the API is down from the first load", async () => {
     server.use(
       http.get("http://api.test/api/v1/summary", () => new HttpResponse(null, { status: 503 })),
     );
@@ -206,19 +204,14 @@ describe("home page", () => {
     ).toBeInTheDocument();
     expect(await screen.findByText(/Product status is not available/)).toBeInTheDocument();
     const products = screen.getByRole("region", { name: "Products" });
-    const links = within(products).getAllByRole("link");
-    expect(links).toHaveLength(FALLBACK_PRODUCTS.length);
-    expect(within(products).getByRole("link", { name: "Moesif status page" })).toHaveAttribute(
-      "href",
-      "https://status.moesif.com",
-    );
+    expect(within(products).queryAllByRole("link")).toHaveLength(0);
     expect(screen.getByRole("status")).toHaveTextContent(
       "We cannot reach the status service right now. This page will keep trying.",
     );
   });
 
   it.each([{}, { products: [] }, { message: "ok" }])(
-    "links every product's own page when a summary lists no products: %j",
+    "says product status is unavailable when a summary lists no products: %j",
     async (body) => {
       serve(body);
       render(<App />);
@@ -226,7 +219,7 @@ describe("home page", () => {
         await screen.findByRole("heading", { level: 1, name: "Status unavailable" }),
       ).toBeInTheDocument();
       const products = screen.getByRole("region", { name: "Products" });
-      expect(within(products).getAllByRole("link")).toHaveLength(FALLBACK_PRODUCTS.length);
+      expect(within(products).getByText(/Product status is not available/)).toBeInTheDocument();
       // Nothing to date, and no quiet day vouched for.
       const banner = screen.getByRole("region", { name: "Overall status" });
       expect(within(banner).queryByText(/^Status checked/)).toBeNull();
@@ -244,7 +237,6 @@ describe("home page", () => {
           {
             id: "moesif",
             name: "Moesif",
-            page_url: "https://status.example.test/moesif",
             status: "unknown",
             affected_regions: 0,
             data_complete: false,
@@ -255,7 +247,6 @@ describe("home page", () => {
                 id: "us",
                 name: "US",
                 status: "unknown",
-                page_url: "https://status.example.test/moesif",
               },
             ],
             history: [{ date: "2026-10-20", status: "unknown" }],
@@ -491,23 +482,19 @@ describe("product page", () => {
     id: "api-platform",
     name: "API Platform",
     description: "Bijira",
-    page_url: "https://status.example.test/api",
     status: "degraded",
     affected_regions: 1,
     data_complete: true,
     generated_at: apiTime().toISOString(),
     ...incidentsStopped(),
     locations: [],
-    regions: [
-      { id: "eu", name: "EU", status: "degraded", page_url: "https://status.example.test/api" },
-    ],
+    regions: [{ id: "eu", name: "EU", status: "degraded" }],
     history: [{ date: "2026-10-20", status: "operational" }],
     region_details: [
       {
         id: "eu",
         name: "EU",
         status: "degraded",
-        page_url: "https://status.example.test/api",
         uptime: [
           { window: "7d", percent: 99.9 },
           { window: "12mo", percent: 99.994 },
@@ -536,15 +523,13 @@ describe("product page", () => {
     ],
   });
 
-  it("shows regions, components, uptime, incidents and a prominent link to the product's page", async () => {
+  it("shows regions, components, uptime and incidents", async () => {
     window.history.pushState(null, "", "/products/api-platform");
     server.use(
       http.get("http://api.test/api/v1/products/api-platform", () => HttpResponse.json(detail())),
     );
     render(<App />);
-    expect(
-      await screen.findByRole("link", { name: "Open the API Platform status page" }),
-    ).toHaveAttribute("href", "https://status.example.test/api");
+    expect(await screen.findByText("API Proxy Invocation")).toBeInTheDocument();
     // The h1 names the product, visibly; no second heading repeats it.
     expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(
       "API Platform (Bijira): Degraded performance",
@@ -647,9 +632,10 @@ describe("product page", () => {
     // The page names the product; its incidents do not repeat it.
     expect(within(recent).queryByText("API Platform")).toBeNull();
     expect(within(recent).getByText(/^The last 3 days\./)).toBeInTheDocument();
-    expect(
-      within(recent).getByRole("link", { name: "Older incidents on the API Platform status page" }),
-    ).toHaveAttribute("href", "https://status.example.test/api");
+    expect(within(recent).getByRole("link", { name: "Older incidents" })).toHaveAttribute(
+      "href",
+      "/history?product=api-platform",
+    );
     expect(screen.getByText(UPTIME_NOTE)).toBeInTheDocument();
   });
 
@@ -782,9 +768,8 @@ describe("product page", () => {
           id: "us",
           name: "US",
           status: "operational",
-          page_url: "https://status.example.test/api",
         },
-        { id: "eu", name: "EU", status: "unknown", page_url: "https://status.example.test/api" },
+        { id: "eu", name: "EU", status: "unknown" },
       ],
       history: [{ date: "2026-10-20", status: "unknown" }],
       region_details: [],
@@ -831,7 +816,7 @@ describe("product page", () => {
     ).toBeInTheDocument();
   });
 
-  it("links the product's own page when the API cannot be reached", async () => {
+  it("says so when the API cannot be reached", async () => {
     window.history.pushState(null, "", "/products/moesif");
     server.use(
       http.get(
@@ -841,8 +826,8 @@ describe("product page", () => {
     );
     render(<App />);
     expect(
-      await screen.findByRole("link", { name: "Open the Moesif status page" }),
-    ).toHaveAttribute("href", "https://status.moesif.com");
+      await screen.findByText(/Product status is not available right now/),
+    ).toBeInTheDocument();
     await expectTitle("Moesif - WSO2 Cloud Status");
   });
 
@@ -870,9 +855,8 @@ describe("product page", () => {
     );
     render(<App />);
     expect(
-      await screen.findByRole("link", { name: "Open the API Platform status page" }),
-    ).toHaveAttribute("href", "https://status.bijira.dev");
-    expect(screen.getByText(/Product status is not available right now/)).toBeInTheDocument();
+      await screen.findByText(/Product status is not available right now/),
+    ).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "We could not find that product" })).toBeNull();
     expect(screen.getByRole("heading", { level: 1 })).toHaveAccessibleName(
       "API Platform: Status unavailable",
@@ -888,7 +872,6 @@ describe("product page", () => {
             ...(summaryBody().products as Record<string, unknown>[])[0],
             id: "new-product",
             name: "New Product",
-            page_url: "https://status.example.test/new",
           },
         ],
       }),
@@ -902,8 +885,11 @@ describe("product page", () => {
     render(<App />);
     await user.click(await screen.findByRole("link", { name: "New Product" }));
     expect(
-      await screen.findByRole("link", { name: "Open the New Product status page" }),
-    ).toHaveAttribute("href", "https://status.example.test/new");
+      await screen.findByText(/Product status is not available right now/),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 1 })).toHaveAccessibleName(
+      "New Product: Status unavailable",
+    );
     expect(screen.queryByRole("heading", { name: "We could not find that product" })).toBeNull();
   });
 
@@ -916,7 +902,7 @@ describe("product page", () => {
     expect(
       await screen.findByRole("heading", { level: 1, name: "Moesif: Status unavailable" }),
     ).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Open the Moesif status page" })).toBeInTheDocument();
+    expect(screen.getByText(/Product status is not available right now/)).toBeInTheDocument();
   });
 
   it("navigates from the home page to a product and back", async () => {
@@ -928,9 +914,7 @@ describe("product page", () => {
     render(<App />);
     const products = await screen.findByRole("region", { name: "Products" });
     await user.click(await within(products).findByRole("link", { name: "API Platform" }));
-    expect(
-      await screen.findByRole("link", { name: "Open the API Platform status page" }),
-    ).toBeInTheDocument();
+    expect(await screen.findByText("API Proxy Invocation")).toBeInTheDocument();
     // The new view is announced: its h1 has focus and the tab has its own title.
     await expectHeadingFocused("API Platform (Bijira): Degraded performance");
     await expectTitle("API Platform - WSO2 Cloud Status");

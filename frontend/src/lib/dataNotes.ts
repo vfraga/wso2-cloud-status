@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import type { Incident, ProductSummary } from "../api/types";
+import type { Incident, IncidentFeed, ProductSummary } from "../api/types";
 import {
   componentFreshness,
   incidentCoverage,
@@ -81,7 +81,7 @@ export function componentNotes(late: readonly LateProduct[], now: Date): string[
 }
 
 /** Some of the product's incidents are at hand: another of its sources answered. */
-function someIncidentsKnown(product: ProductSummary, known: readonly Incident[]): boolean {
+function someIncidentsKnown(product: IncidentFeed, known: readonly Incident[]): boolean {
   return known.some((i) => i.productId === product.id);
 }
 
@@ -126,7 +126,7 @@ export function incidentFeedsLine(
  */
 export function lastKnownAt(
   incident: Incident,
-  product: ProductSummary | undefined,
+  product: IncidentFeed | undefined,
   knownUntil: Date | null = null,
 ): Date | null {
   if (incident.resolvedAt !== null) return null;
@@ -228,7 +228,7 @@ export function bannerFreshness(
 
 /** A product whose incident data is not complete, and how. */
 export interface MissingIncidents {
-  product: ProductSummary;
+  product: IncidentFeed;
   coverage: Exclude<IncidentCoverage, { state: "current" }>;
   /** Some of its incidents are known: another of its sources answered. */
   partly: boolean;
@@ -240,7 +240,7 @@ export interface MissingIncidents {
  * whether another of a product's sources answered.
  */
 export function missingIncidents(
-  products: readonly ProductSummary[],
+  products: readonly IncidentFeed[],
   known: readonly Incident[],
 ): MissingIncidents[] {
   return products.flatMap((product) => {
@@ -251,7 +251,7 @@ export function missingIncidents(
 }
 
 /** The last successful fetch of a product's incidents that stopped answering, else null. */
-export function completeUntil(product: ProductSummary): Date | null {
+export function completeUntil(product: IncidentFeed): Date | null {
   const coverage = incidentCoverage(product);
   return coverage.state === "until" ? coverage.at : null;
 }

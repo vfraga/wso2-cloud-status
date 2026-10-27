@@ -11,11 +11,10 @@
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <title>WSO2 Cloud Status</title>
     <!--
-      #root holds every product's own status page for a reader without
-      JavaScript or when the app does not load. The app replaces it, so it
-      stays hidden for 3 seconds. fallbackProducts.test.ts checks the links.
-      Its space is padding, not margin: a margin would collapse into the
-      body's, and the whole page would move when the app replaces it.
+      #root holds a short message for a reader without JavaScript or when
+      the app does not load. The app replaces it, so it stays hidden for 3
+      seconds. Its space is padding, not margin: a margin would collapse into
+      the body's, and the whole page would move when the app replaces it.
     -->
     <style>
       body {
@@ -27,9 +26,6 @@
         padding: 15vh 16px 16px;
         font-family: sans-serif;
         animation: cs-boot-show 0s 3s both;
-      }
-      .cs-boot li {
-        margin: 0.75em 0;
       }
       @keyframes cs-boot-show {
         from {
@@ -53,15 +49,7 @@
       <main class="cs-boot">
         <h1>WSO2 Cloud Status</h1>
         <noscript><p>This page needs JavaScript to show the current status.</p></noscript>
-        <p>If the current status does not appear, check each product's own status page:</p>
-        <ul>
-          <li><a href="https://status.cloud.wso2.com">Agent Platform status page</a></li>
-          <li><a href="https://status.bijira.dev">API Platform status page</a></li>
-          <li><a href="https://status.devant.dev">Integration Platform status page</a></li>
-          <li><a href="https://status.asgardeo.io">Identity Platform status page</a></li>
-          <li><a href="https://status.choreo.dev">Developer Platform status page</a></li>
-          <li><a href="https://status.moesif.com">Moesif status page</a></li>
-        </ul>
+        <p>If the current status does not appear, reload the page in a moment.</p>
       </main>
     </div>
     <script type="module" src="/src/main.tsx"></script>

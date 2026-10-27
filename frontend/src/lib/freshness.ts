@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import type { ProductSummary } from "../api/types";
+import type { IncidentFeed, ProductSummary } from "../api/types";
 import { config } from "../config";
 
 export interface Freshness {
@@ -140,7 +140,7 @@ export type IncidentCoverage =
   /** Stopped after answering: complete until `at` (server clock), the last successful fetch. */
   | { state: "until"; at: Date };
 
-export function incidentCoverage(product: ProductSummary): IncidentCoverage {
+export function incidentCoverage(product: IncidentFeed): IncidentCoverage {
   const { stale, checkedAt } = product.freshness;
   if (!stale.incidents) return { state: "current" };
   return checkedAt.incidents === null

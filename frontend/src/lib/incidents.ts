@@ -18,7 +18,7 @@
 
 import type { Incident, Status } from "../api/types";
 import { STATUS_RANK } from "./status";
-import { formatDayHeading, localDayKey } from "./time";
+import { formatDayHeading, localDayKey, localMonthKey } from "./time";
 
 export interface DayGroup {
   /** The local day, "2026-10-20". */
@@ -46,6 +46,20 @@ export function byStartDay(incidents: readonly Incident[]): DayGroup[] {
     groups.set(key, group);
   }
   return [...groups.values()];
+}
+
+/**
+ * Incidents by the reader's local month they started, keyed "2026-10", each
+ * month's latest start first.
+ */
+export function byStartMonth(incidents: readonly Incident[]): Map<string, Incident[]> {
+  const months = new Map<string, Incident[]>();
+  const latestFirst = [...incidents].sort((a, b) => b.startedAt.getTime() - a.startedAt.getTime());
+  for (const incident of latestFirst) {
+    const key = localMonthKey(incident.startedAt);
+    months.set(key, [...(months.get(key) ?? []), incident]);
+  }
+  return months;
 }
 
 export function isOngoing(incident: Incident): boolean {

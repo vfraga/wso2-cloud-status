@@ -76,7 +76,6 @@ function productBody(
   return {
     id,
     name,
-    page_url: `https://status.example.test/${id}`,
     status: "operational",
     affected_regions: 0,
     data_complete: true,
@@ -93,7 +92,6 @@ function productBody(
         id: "us",
         name: "US",
         status: "operational",
-        page_url: `https://status.example.test/${id}`,
       },
     ],
     history: [
@@ -107,9 +105,7 @@ function productBody(
 const unknownRegion = {
   status: "unknown",
   data_complete: false,
-  regions: [
-    { id: "us", name: "US", status: "unknown", page_url: "https://status.example.test/moesif" },
-  ],
+  regions: [{ id: "us", name: "US", status: "unknown" }],
 };
 
 function serve(
