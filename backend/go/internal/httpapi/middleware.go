@@ -194,9 +194,10 @@ func originLock(required map[string]string) middleware {
 // safe behind Front Door, which terminates TLS and passes the header on:
 // browsers ignore it over plain HTTP (RFC 6797 section 8.1), so a direct
 // http:// request to the origin or a local run is unaffected.
-// includeSubDomains and preload would bind other hosts of the domain and are
-// left to the domain's owners.
-const hsts = "max-age=31536000"
+// includeSubDomains covers only this host's own subdomains (RFC 6797 section
+// 6.1.2). preload is left out: the preload list takes only a registrable
+// domain, which belongs to its owners.
+const hsts = "max-age=31536000; includeSubDomains"
 
 // securityHeaders sets the security headers on every response of the public
 // port, errors and refusals included.
@@ -205,7 +206,7 @@ func securityHeaders(next http.Handler) http.Handler {
 		h := w.Header()
 		h.Set("Strict-Transport-Security", hsts)
 		h.Set("X-Content-Type-Options", "nosniff")
-		h.Set("Content-Security-Policy", "default-src 'none'; frame-ancestors 'none'")
+		h.Set("Content-Security-Policy", "default-src 'none'; frame-ancestors 'none'; upgrade-insecure-requests")
 		h.Set("Referrer-Policy", "no-referrer")
 		h.Set("Cross-Origin-Resource-Policy", "cross-origin")
 		next.ServeHTTP(w, r)

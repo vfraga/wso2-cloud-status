@@ -404,7 +404,8 @@ func TestSecurityHeadersOnEveryResponse(t *testing.T) {
 		"403":       do(locked, http.MethodGet, "/api/v1/summary", nil),
 	} {
 		for header, want := range map[string]string{
-			"Strict-Transport-Security": "max-age=31536000",
+			"Strict-Transport-Security": "max-age=31536000; includeSubDomains",
+			"Content-Security-Policy":   "default-src 'none'; frame-ancestors 'none'; upgrade-insecure-requests",
 			"X-Content-Type-Options":    "nosniff",
 			"Referrer-Policy":           "no-referrer",
 		} {
