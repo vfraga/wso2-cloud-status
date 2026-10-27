@@ -5,7 +5,7 @@ the web frontend and their images. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and releases follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html). A release is a
 tag `v<version>` on `main`; the release workflow refuses a tag without a
-section here. The public API has its own version, in `api/openapi.yaml`.
+section here, or while the Unreleased section still holds entries. The public API has its own version, in `api/openapi.yaml`.
 
 ## [Unreleased]
 
@@ -102,6 +102,14 @@ section here. The public API has its own version, in `api/openapi.yaml`.
 
 ### Fixed
 
+- A product's page words a location as the home table does: "Partial
+  outage" in amber when some of its planes are out, "Major outage" when all
+  are, where it showed CSM's "Service outage" in red.
+- An incident list answered without its list of incidents counts as not
+  received for every product, where the incident history read "No incidents
+  reported." for every month.
+- The external check also loads the incident history page (`/history`), as
+  it loads a product's page.
 - Today's history bar no longer reads quiet in the first minute after
   midnight UTC while an incident is open.
 - statusd rejects an upstream answer that holds far more regions, groups,
@@ -182,6 +190,23 @@ section here. The public API has its own version, in `api/openapi.yaml`.
 
 ### Security
 
+- The page's container has statusd's origin lock: with `FRONT_DOOR_ID` set
+  it answers 403, from its error page, to every request but its health
+  probe that lacks the Front Door profile's ID, and it does not start
+  without it unless `ORIGIN_LOCK=off` (local runs and the demo).
+  `INDEXING=off` adds `X-Robots-Tag: noindex` (staging and the demo). Its
+  runtime user can no longer change nginx's configuration.
+- The release workflow builds and scans both images in a job without
+  registry credentials or an OIDC token; a second job checks that it holds
+  the exact images scanned, then pushes, signs and attests them.
+- What readers download carries none of the source's comments: the build
+  minifies the HTML shell and the error page, the page's own stylesheet
+  string holds no comments, `security.txt` ships without its comment lines,
+  and the build fails if a comment or a source map would ship. The frontend
+  image no longer holds the base image's `50x.html`, which named nginx, and
+  answers 411, 412, 501 and 505 with its own error page too. Byte ranges are
+  off: a range past a file's end answered 416 with the file's year-long
+  Cache-Control.
 - The page and the API send the headers WSO2's application deployment
   security checklist asks for: `upgrade-insecure-requests` in the Content
   Security Policy, `includeSubDomains` in Strict-Transport-Security, and on

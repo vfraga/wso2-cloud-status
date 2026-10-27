@@ -30,8 +30,14 @@
 #                         build compressed; 304 on revalidation, still
 #                         immutable
 #   error pages           our own page, naming no server software, for a
-#                         missing asset and an oversized header; /error.html
-#                         itself is not served directly
+#                         missing asset, an oversized header, a failing
+#                         If-Match and an unknown Transfer-Encoding; /error.html
+#                         itself is not served directly, and the base image's
+#                         50x.html is gone (/50x.html is the HTML shell)
+#   no comments           the HTML shell and the error page carry no HTML
+#                         comment, security.txt no comment line
+#   a byte range          ignored: the whole file, 200 and immutable, even
+#                         for a range past its end
 #   a missing asset       404 with no-store: a cached 404 for a bundle a deploy
 #                         has not reached yet leaves the page blank
 #   an asset with an oversized header, or an oversized URI
@@ -52,8 +58,15 @@
 #   and security.txt; no nginx version in Server
 #   the page, assets and deep-link lines of scripts/ops/synthetic-check.sh
 #   pass against it
-#   the image runs as user 10001, carries the OCI version, revision and source
-#   labels, and its HEALTHCHECK reports healthy
+#   the origin lock       with FRONT_DOOR_ID set, a request without that ID in
+#                         X-Azure-FDID, or with another, gets 403 from the error
+#                         page, the health probe excepted; the image does not
+#                         start without FRONT_DOOR_ID, or with a malformed one,
+#                         unless ORIGIN_LOCK=off; ORIGIN_LOCK=off answers
+#                         without it and INDEXING=off adds X-Robots-Tag: noindex
+#   the image runs as user 10001, which cannot change nginx's configuration,
+#   carries the OCI version, revision and source labels, and its HEALTHCHECK
+#   reports healthy
 # Stops the containers it started. Needs docker and curl. Ports
 # FRONTEND_SELFTEST_PORT and the next one, default 18790 and 18791.
 set -euo pipefail
@@ -103,12 +116,15 @@ verdict() {
 }
 
 # get NAME PATH [curl options]: fetches PATH into $work/NAME.{body,headers}
-# and sets code.
+# and sets code. It sends the Front Door ID, as Front Door does, unless
+# NO_FDID is set.
+fdid=00000000-0000-4000-8000-000000000000
 get() {
-  local id="$1" path="$2"
+  local id="$1" path="$2" lock=(-H "X-Azure-FDID: $fdid")
   shift 2
-  code=$(curl -sS --max-time 10 -o "$work/$id.body" -D "$work/$id.headers" -w '%{http_code}' "$@" \
-    "http://127.0.0.1:${port}${path}")
+  [[ -n "${NO_FDID:-}" ]] && lock=()
+  code=$(curl -sS --max-time 10 -o "$work/$id.body" -D "$work/$id.headers" -w '%{http_code}' \
+    ${lock[@]+"${lock[@]}"} "$@" "http://127.0.0.1:${get_port:-$port}${path}")
 }
 
 # hdr NAME FIELD prints response header FIELD of fetch NAME.
@@ -158,7 +174,8 @@ security() {
 
 echo "Starting $image on 127.0.0.1:$port"
 # A short health interval so Docker runs the image's HEALTHCHECK command soon.
-docker run -d --name "$name" -p "127.0.0.1:${port}:8080" --health-interval 2s "$image" >/dev/null
+docker run -d --name "$name" -p "127.0.0.1:${port}:8080" --health-interval 2s -e "FRONT_DOOR_ID=$fdid" \
+  "$image" >/dev/null
 up=false
 for _ in $(seq 1 100); do
   curl -fsS -o /dev/null "http://127.0.0.1:${port}/healthz" 2>/dev/null && up=true && break
@@ -170,8 +187,8 @@ if [[ "$up" != true ]]; then
   exit 1
 fi
 
-get healthz /healthz
-expect healthz "/healthz" 200 "no-store"
+NO_FDID=1 get healthz /healthz
+expect healthz "/healthz without the Front Door ID" 200 "no-store"
 verdict "/healthz says ok" "/healthz body is not ok" [ "$(cat "$work/healthz.body")" = ok ]
 
 get page /
@@ -273,6 +290,36 @@ expect biguri "a 9000-character URI" 414 "no-store"
 get errorpage /error.html
 expect errorpage "/error.html, the error page itself" 404 "no-store"
 
+# Errors nginx writes for odd requests come from the same page.
+get precondition "${assets[0]:-/}" -H 'If-Match: "selftest"'
+expect precondition "${assets[0]:-/} with a failing If-Match" 412 "no-store"
+names_server precondition "the 412 for a failing If-Match"
+get unimplemented / -H 'Transfer-Encoding: selftest'
+expect unimplemented "/ with an unknown Transfer-Encoding" 501 "no-store"
+names_server unimplemented "the 501 for an unknown Transfer-Encoding"
+
+# Byte ranges are off: a range past the end gets the whole file, never a 416
+# carrying the file's year-long Cache-Control.
+get range "${assets[0]:-/}" -H 'Range: bytes=999999999-'
+expect range "${assets[0]:-/} with a range past its end" 200 "$immutable"
+
+# The base image's own error page names nginx: the image does not hold it, so
+# /50x.html falls back to the HTML shell like any unknown path.
+get stock /50x.html
+stock_page=false
+grep -q 'id="root"' "$work/stock.body" && stock_page=true
+verdict "/50x.html is the HTML shell, not the base image's error page" \
+  "/50x.html is not the HTML shell" [ "$stock_page" = true ]
+names_server stock "/50x.html"
+
+# What readers download carries none of the source's comments.
+for body in page missing; do
+  commented=false
+  grep -q '<!--' "$work/$body.body" && commented=true
+  verdict "the $body response carries no HTML comment" "the $body response carries an HTML comment" \
+    [ "$commented" = false ]
+done
+
 # A client that sends half a request head is cut off as statusd cuts it.
 # read returns as soon as nginx closes the connection, and after 15 s if it
 # does not.
@@ -312,16 +359,58 @@ left="$(jq -nr --arg t "$expires" '($t | fromdateiso8601) - now | floor' 2>/dev/
 if [[ ! "$left" =~ ^[0-9]+$ || "$left" -gt $((366 * 86400)) ]]; then
   missing_fields+=("Expires in the coming year (got \"$expires\")")
 fi
+grep -q '^#' "$work/securitytxt.body" && missing_fields+=("no comment lines")
 if [[ ${#missing_fields[@]} -eq 0 ]]; then
   ok "/.well-known/security.txt has Contact, Policy and Expires ($expires)"
 else
   bad "/.well-known/security.txt lacks: $(printf '%s; ' "${missing_fields[@]}")"
 fi
 
+# The origin lock: only requests carrying this Front Door profile's ID.
+for path in / "${assets[0]:-/}" /.well-known/security.txt /api/x; do
+  NO_FDID=1 get refused "$path"
+  expect refused "$path without the Front Door ID" 403 "no-store"
+  names_server refused "the 403 for $path"
+done
+NO_FDID=1 get wrongid / -H "X-Azure-FDID: 11111111-1111-4111-8111-111111111111"
+expect wrongid "/ with another Front Door profile's ID" 403 "no-store"
+security refused "the origin lock's 403"
+verdict "production sends no X-Robots-Tag" "production sends X-Robots-Tag: $(hdr page X-Robots-Tag)" \
+  [ -z "$(hdr page X-Robots-Tag)" ]
+for env in "" "FRONT_DOOR_ID=has space" "ORIGIN_LOCK=maybe"; do
+  started=true
+  docker run --rm ${env:+-e "$env"} "$image" nginx -t >/dev/null 2>&1 || started=false
+  verdict "the image refuses to start with ${env:-no FRONT_DOOR_ID}" \
+    "the image started with ${env:-no FRONT_DOOR_ID}" [ "$started" = false ]
+done
+written=true
+docker exec "$name" sh -c 'touch /etc/nginx/api.conf' 2>/dev/null || written=false
+verdict "the runtime user cannot change nginx's configuration" \
+  "the runtime user can write /etc/nginx/api.conf" [ "$written" = false ]
+
+# A deployment with nothing in front of the page (local runs, the Choreo demo)
+# turns the lock off and, outside production, indexing too; one that also
+# has nothing to route /api replaces /etc/nginx/api.conf. The file is copied
+# in rather than mounted, so this runs the same under act.
+mkdir "$work/api"
+printf 'location /api/ {\n    return 200 "replaced\\n";\n}\n' >"$work/api/api.conf"
+docker create --name "$name-api" -p "127.0.0.1:$((port + 1)):8080" -e ORIGIN_LOCK=off -e INDEXING=off \
+  "$image" >/dev/null
+tar --no-xattrs -cf - -C "$work/api" api.conf | docker cp - "$name-api:/etc/nginx/"
+docker start "$name-api" >/dev/null
+for _ in $(seq 1 50); do
+  curl -fsS -o /dev/null --max-time 2 "http://127.0.0.1:$((port + 1))/healthz" 2>/dev/null && break
+  sleep 0.2
+done
+NO_FDID=1 get_port=$((port + 1)) get unlocked /
+expect unlocked "/ with ORIGIN_LOCK=off and no Front Door ID" 200 "no-cache"
+verdict "INDEXING=off sends X-Robots-Tag: noindex" \
+  "INDEXING=off sends X-Robots-Tag \"$(hdr unlocked X-Robots-Tag)\"" [ "$(hdr unlocked X-Robots-Tag)" = noindex ]
+
 # The external check's page, asset and deep-link lines against the real
-# build. Its API checks fail here (nginx does not serve /api), so only those
-# three lines count.
-STATUS_BASE_URL="http://127.0.0.1:${port}" PRODUCT_ID=moesif sh "$root/scripts/ops/synthetic-check.sh" \
+# build, unlocked as the check sends no Front Door ID. Its API checks fail
+# here (the replaced api.conf is no API), so only those three lines count.
+STATUS_BASE_URL="http://127.0.0.1:$((port + 1))" PRODUCT_ID=moesif sh "$root/scripts/ops/synthetic-check.sh" \
   >"$work/synthetic.out" 2>&1 || true
 for check in page assets deep-link; do
   if grep -Eq "^PASS $check " "$work/synthetic.out"; then
@@ -350,14 +439,6 @@ for _ in $(seq 1 30); do
 done
 verdict "Docker HEALTHCHECK reports healthy" "Docker HEALTHCHECK reports \"$health\", want healthy" [ "$health" = healthy ]
 
-# A deployment with nothing in front of the page to route /api (the Choreo
-# demo) replaces /etc/nginx/api.conf. The file is copied in rather than
-# mounted, so this runs the same under act.
-mkdir "$work/api"
-printf 'location /api/ {\n    return 200 "replaced\\n";\n}\n' >"$work/api/api.conf"
-docker create --name "$name-api" -p "127.0.0.1:$((port + 1)):8080" "$image" >/dev/null
-tar --no-xattrs -cf - -C "$work/api" api.conf | docker cp - "$name-api:/etc/nginx/"
-docker start "$name-api" >/dev/null
 replaced=""
 for _ in $(seq 1 50); do
   replaced="$(curl -fsS --max-time 2 "http://127.0.0.1:$((port + 1))/api/x" 2>/dev/null)" && break

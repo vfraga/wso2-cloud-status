@@ -33,7 +33,7 @@ export default defineConfig({
     testTimeout: 20_000,
     hookTimeout: 20_000,
     setupFiles: ["./src/test/setup.ts"],
-    include: ["src/**/*.test.{ts,tsx}"],
+    include: ["src/**/*.test.{ts,tsx}", "build/**/*.test.ts"],
     env: { VITE_API_BASE_URL: "http://api.test" },
     css: { include: [] },
     server: { deps: { inline: [/@wso2\/oxygen-ui/] } },

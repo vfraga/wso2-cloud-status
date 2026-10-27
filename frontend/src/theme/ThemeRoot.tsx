@@ -20,6 +20,12 @@ import { GlobalStyles, OxygenUIThemeProvider, WSO2Theme } from "@wso2/oxygen-ui"
 import type { ReactNode } from "react";
 import { tokenCss } from "./tokens";
 
+// Upstream text (a URL in an incident title, a long component name) wraps
+// rather than scroll the page sideways. ButtonBase sets outline: 0 and shows
+// focus as a faint ripple (2:1), so buttons get the same ring as links.
+// Headings take focus only after an in-page navigation, as a starting point;
+// they are not controls. The string itself holds no comments: no minifier
+// removes them from a string, and every reader would download them.
 const globalCss = `
 ${tokenCss()}
 html { color-scheme: light dark; }
@@ -31,15 +37,12 @@ body, html[data-color-scheme] body {
   color: var(--cs-text);
   margin: 0;
   font-variant-numeric: tabular-nums;
-  /* Upstream text (a URL in an incident title, a long component name) wraps rather than scroll the page sideways. */
   overflow-wrap: anywhere;
 }
 a { color: inherit; }
 :focus-visible { outline: 2px solid var(--cs-focus); outline-offset: 2px; }
-/* ButtonBase sets outline: 0 and shows focus as a faint ripple (2:1). Buttons get the same ring as links. */
 .MuiButtonBase-root.Mui-focusVisible { outline: 2px solid var(--cs-focus); outline-offset: 2px; }
 .MuiTouchRipple-ripplePulsate { display: none; }
-/* Headings take focus only after an in-page navigation, as a starting point; they are not controls. */
 h1[tabindex="-1"]:focus { outline: none; }
 .cs-visually-hidden {
   position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0;
