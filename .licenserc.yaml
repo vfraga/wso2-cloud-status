@@ -44,7 +44,12 @@ header:
     - "**/*.js"
     - "**/*.mjs"
   paths-ignore:
+    # Generated and git-ignored (frontend/.gitignore): a local test run
+    # leaves them behind, and they are never committed.
     - "**/node_modules/**"
     - "**/dist/**"
+    - "**/coverage/**"
+    - "**/playwright-report/**"
+    - "**/test-results/**"
     - "testdata/**"
   comment: on-failure
