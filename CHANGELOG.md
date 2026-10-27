@@ -176,6 +176,13 @@ section here. The public API has its own version, in `api/openapi.yaml`.
 
 ### Security
 
+- The page and the API send the headers WSO2's application deployment
+  security checklist asks for: `upgrade-insecure-requests` in the Content
+  Security Policy, `includeSubDomains` in Strict-Transport-Security, and on
+  the page `X-Permitted-Cross-Domain-Policies: none` and the checklist's
+  Permissions-Policy list (less two features Chromium does not recognise).
+- The frontend image answers its errors with a page of its own instead of
+  nginx's, which named the server software.
 - The statusd image starts with the origin-locked production configuration
   by default and does not start without `FRONT_DOOR_ID`. Local runs and the
   demo select `/etc/statusd/statusd.yaml` with `STATUSD_CONFIG`.

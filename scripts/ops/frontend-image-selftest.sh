@@ -29,6 +29,9 @@
 #                         (immutable), gzip on request from the file the
 #                         build compressed; 304 on revalidation, still
 #                         immutable
+#   error pages           our own page, naming no server software, for a
+#                         missing asset and an oversized header; /error.html
+#                         itself is not served directly
 #   a missing asset       404 with no-store: a cached 404 for a bundle a deploy
 #                         has not reached yet leaves the page blank
 #   an asset with an oversized header, or an oversized URI
@@ -44,7 +47,8 @@
 #                         200 text/plain; charset=utf-8 (RFC 9116) with
 #                         Contact, Policy and an Expires in the coming year
 #   the security headers (CSP, nosniff, Referrer-Policy, X-Frame-Options, COOP,
-#   Permissions-Policy, Strict-Transport-Security) on every page, asset, 404
+#   X-Permitted-Cross-Domain-Policies, Permissions-Policy,
+#   Strict-Transport-Security) on every page, asset, 404
 #   and security.txt; no nginx version in Server
 #   the page, assets and deep-link lines of scripts/ops/synthetic-check.sh
 #   pass against it
@@ -133,16 +137,17 @@ expect() {
 security() {
   local id="$1" what="$2" absent=() csp
   csp="$(hdr "$id" Content-Security-Policy)"
-  for directive in "default-src 'none'" "script-src 'self'" "connect-src 'self'" "frame-ancestors 'none'"; do
+  for directive in "default-src 'none'" "script-src 'self'" "connect-src 'self'" "frame-ancestors 'none'" "upgrade-insecure-requests"; do
     [[ "$csp" == *"$directive"* ]] || absent+=("CSP $directive")
   done
   [[ "$(hdr "$id" X-Content-Type-Options)" == nosniff ]] || absent+=("X-Content-Type-Options nosniff")
   [[ "$(hdr "$id" Referrer-Policy)" == no-referrer ]] || absent+=("Referrer-Policy no-referrer")
   [[ "$(hdr "$id" X-Frame-Options)" == DENY ]] || absent+=("X-Frame-Options DENY")
   [[ "$(hdr "$id" Cross-Origin-Opener-Policy)" == same-origin ]] || absent+=("Cross-Origin-Opener-Policy same-origin")
-  [[ -n "$(hdr "$id" Permissions-Policy)" ]] || absent+=("Permissions-Policy")
-  [[ "$(hdr "$id" Strict-Transport-Security)" == "max-age=31536000" ]] ||
-    absent+=("Strict-Transport-Security max-age=31536000")
+  [[ "$(hdr "$id" X-Permitted-Cross-Domain-Policies)" == none ]] || absent+=("X-Permitted-Cross-Domain-Policies none")
+  [[ "$(hdr "$id" Permissions-Policy)" == *"camera=()"* ]] || absent+=("Permissions-Policy")
+  [[ "$(hdr "$id" Strict-Transport-Security)" == "max-age=31536000; includeSubDomains" ]] ||
+    absent+=("Strict-Transport-Security max-age=31536000; includeSubDomains")
   [[ "$(hdr "$id" Server)" != *[0-9]* ]] || absent+=("Server without a version")
   if [[ ${#absent[@]} -eq 0 ]]; then
     ok "$what carries the security headers"
@@ -249,12 +254,24 @@ get missing "$missing"
 expect missing "missing asset $missing" 404 "no-store"
 security missing "missing asset"
 
+# names_server NAME WHAT: an error page must not name the server software.
+names_server() {
+  local named=false
+  grep -qi nginx "$work/$1.body" && named=true
+  verdict "$2 names no server software" "$2 names nginx in its body" [ "$named" = false ]
+}
+names_server missing "the missing asset's 404"
+
 # Past nginx's 8 KB header buffers: errors written before any location.
 long="$(printf '%9000s' '' | tr ' ' a)"
 get bigheader "${assets[0]:-/}" -H "X-Selftest: $long"
 expect bigheader "${assets[0]:-/} with a 9000-byte header" 400 "no-store"
+names_server bigheader "the 400 for an oversized header"
 get biguri "/assets/$long.js"
 expect biguri "a 9000-character URI" 414 "no-store"
+
+get errorpage /error.html
+expect errorpage "/error.html, the error page itself" 404 "no-store"
 
 # A client that sends half a request head is cut off as statusd cuts it.
 # read returns as soon as nginx closes the connection, and after 15 s if it
