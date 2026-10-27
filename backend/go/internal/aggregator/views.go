@@ -43,7 +43,6 @@ type ProductSummary struct {
 	ID          string        `json:"id"`
 	Name        string        `json:"name"`
 	Description string        `json:"description,omitempty"`
-	PageURL     string        `json:"page_url"`
 	Status      domain.Status `json:"status"`
 	// AffectedRegions counts regions that are not operational.
 	AffectedRegions int `json:"affected_regions"`
@@ -98,7 +97,6 @@ type RegionSummary struct {
 	Name     string          `json:"name"`
 	Status   domain.Status   `json:"status"`
 	Uptime   []domain.Uptime `json:"uptime"`
-	PageURL  string          `json:"page_url"`
 }
 
 // ProductDetail is the body of GET /api/v1/products/{id}.
@@ -115,12 +113,30 @@ type RegionDetail struct {
 	domain.Region
 	// Location is RegionSummary.Location.
 	Location string `json:"location,omitempty"`
-	PageURL  string `json:"page_url"`
 }
 
-// Incidents is the body of GET /api/v1/incidents.
+// Incidents is the body of GET /api/v1/incidents: every incident the
+// sources keep, not only the history's days.
 type Incidents struct {
 	// GeneratedAt is Summary.GeneratedAt of the same snapshot.
-	GeneratedAt time.Time         `json:"generated_at"`
-	Incidents   []domain.Incident `json:"incidents"`
+	GeneratedAt time.Time `json:"generated_at"`
+	// Products say, in configuration order, how far each product's list
+	// reaches and whether it is current.
+	Products  []IncidentCoverage `json:"products"`
+	Incidents []domain.Incident  `json:"incidents"`
+}
+
+// IncidentCoverage is how much of one product's incident history the list
+// holds.
+type IncidentCoverage struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+	// CoveredFrom is the instant from which the product's list is complete:
+	// the latest of its sources' coverage starts. Nil while any of them has
+	// never answered for incidents.
+	CoveredFrom *time.Time `json:"covered_from"`
+	// CheckedAt and Stale are the product's checked_at.incidents and
+	// stale.incidents: after CheckedAt, a stale list is incomplete.
+	CheckedAt *time.Time `json:"checked_at"`
+	Stale     bool       `json:"stale"`
 }

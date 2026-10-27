@@ -259,9 +259,6 @@ func (c *Config) validateProducts(e *errs) {
 		if p.Name == "" {
 			e.addf("products[%d] (%s): name is required", i, p.ID)
 		}
-		if !isHTTPURL(p.PageURL) {
-			e.addf("products[%d] (%s): page_url must be an absolute http(s) URL, got %q", i, p.ID, p.PageURL)
-		}
 		c.validateSources(e, p)
 	}
 }
@@ -284,9 +281,6 @@ func (c *Config) validateSources(e *errs, p Product) {
 			e.addf("product %s sources[%d]: %s is listed twice", p.ID, j, key)
 		} else {
 			seen[key] = true
-		}
-		if s.PageURL != "" && !isHTTPURL(s.PageURL) {
-			e.addf("product %s sources[%d]: page_url must be an absolute http(s) URL, got %q", p.ID, j, s.PageURL)
 		}
 		// Without regions, every upstream key would show under a derived id
 		// that the API says may change.

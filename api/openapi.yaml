@@ -135,7 +135,7 @@ paths:
     get:
       operationId: getProduct
       summary: One product with region, component group and uptime detail.
-      description: Everything the product's own status page shows, from the same data the summary uses.
+      description: A product's regions, components, uptime and the incidents of its history's days, from the same data the summary uses.
       tags: [status]
       parameters:
         - name: id
@@ -165,9 +165,10 @@ paths:
       operationId: listIncidents
       summary: Incidents across all products, newest first.
       description: >-
-        Every active incident plus every incident that overlaps the history
-        window (it started in the window, or ended after the window began),
-        so every id a product's history lists is here.
+        Every incident the sources keep (today the current month and the five
+        before it), so every id a product's history or a product's own list
+        names is here, and per product from when its list is complete and
+        whether it is current.
       tags: [incidents]
       parameters:
         - $ref: "#/components/parameters/IfNoneMatch"
@@ -364,7 +365,7 @@ components:
     RegionSummary:
       type: object
       additionalProperties: false
-      required: [id, name, status, uptime, page_url]
+      required: [id, name, status, uptime]
       properties:
         id: { $ref: "#/components/schemas/RegionId" }
         location: { $ref: "#/components/schemas/LocationId" }
@@ -374,12 +375,11 @@ components:
           type: array
           description: The same figures as the region's entry in "region_details".
           items: { $ref: "#/components/schemas/Uptime" }
-        page_url: { type: string, format: uri }
 
     RegionDetail:
       type: object
       additionalProperties: false
-      required: [id, name, status, uptime, groups, page_url]
+      required: [id, name, status, uptime, groups]
       properties:
         id: { $ref: "#/components/schemas/RegionId" }
         location: { $ref: "#/components/schemas/LocationId" }
@@ -391,7 +391,6 @@ components:
         groups:
           type: array
           items: { $ref: "#/components/schemas/Group" }
-        page_url: { type: string, format: uri }
 
     Day:
       type: object
@@ -465,12 +464,11 @@ components:
 
     ProductSummary:
       type: object
-      required: [id, name, page_url, status, affected_regions, data_complete, outdated, checked_at, stale, locations, regions, history]
+      required: [id, name, status, affected_regions, data_complete, outdated, checked_at, stale, locations, regions, history]
       properties:
         id: { $ref: "#/components/schemas/Slug" }
         name: { type: string }
         description: { type: string }
-        page_url: { type: string, format: uri }
         status:
           $ref: "#/components/schemas/Status"
           description: >-
@@ -521,10 +519,11 @@ components:
             incidents:
               type: array
               description: >-
-                The product's incidents, newest first, chosen as for
-                /api/v1/incidents: every active incident plus every incident
-                that overlaps the history window, so every id its history
-                lists is here and nothing older is.
+                The product's incidents, newest first: every active incident
+                plus every incident that overlaps the history window (it
+                started in the window, or ended after the window began), so
+                every id its history lists is here and nothing older is.
+                /api/v1/incidents keeps the older ones.
               items: { $ref: "#/components/schemas/Incident" }
       unevaluatedProperties: false
 
@@ -559,12 +558,40 @@ components:
     IncidentList:
       type: object
       additionalProperties: false
-      required: [generated_at, incidents]
+      required: [generated_at, products, incidents]
       properties:
         generated_at: { $ref: "#/components/schemas/GeneratedAt" }
+        products:
+          type: array
+          description: Every product, in the order the summary lists them.
+          items: { $ref: "#/components/schemas/IncidentCoverage" }
         incidents:
           type: array
           items: { $ref: "#/components/schemas/Incident" }
+
+    IncidentCoverage:
+      type: object
+      additionalProperties: false
+      required: [id, name, covered_from, checked_at, stale]
+      description: How much of one product's incident history the list holds.
+      properties:
+        id: { $ref: "#/components/schemas/Slug" }
+        name: { type: string }
+        covered_from:
+          type: [string, "null"]
+          format: date-time
+          description: >-
+            From this instant the product's incidents are all listed: the
+            latest of its sources' coverage starts. Null while any of its
+            sources has never returned its incidents.
+        checked_at:
+          $ref: "#/components/schemas/CheckTime"
+          description: The product's "checked_at.incidents".
+        stale:
+          type: boolean
+          description: >-
+            The product's "stale.incidents". While true, incidents after
+            "checked_at" may be missing.
 
     GeneratedAt:
       type: string

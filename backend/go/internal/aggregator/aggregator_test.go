@@ -297,7 +297,7 @@ func TestApplyAddsAndRemovesWithoutTouchingUnchangedSources(t *testing.T) {
 	next := slowConfig()
 	next.Products = []config.Product{
 		next.Products[0],
-		{ID: "three", Name: "Three", PageURL: "https://three.test", Sources: []config.SourceRef{
+		{ID: "three", Name: "Three", Sources: []config.SourceRef{
 			{Backend: "b", Cloud: "s4", Regions: []config.RegionRef{{Key: "ap", ID: "ap", Name: "AP"}}},
 		}},
 	}
@@ -526,7 +526,7 @@ func TestSourceObserverFollowsBindings(t *testing.T) {
 
 	now = t0.Add(time.Minute)
 	next := slowConfig()
-	next.Products = []config.Product{next.Products[0], {ID: "three", Name: "Three", PageURL: "https://three.test", Sources: []config.SourceRef{
+	next.Products = []config.Product{next.Products[0], {ID: "three", Name: "Three", Sources: []config.SourceRef{
 		{Backend: "b", Cloud: "s2", Regions: []config.RegionRef{{Key: "cp", ID: "cp", Name: "CP"}}},
 		{Backend: "b", Cloud: "s4", Regions: []config.RegionRef{{Key: "ap", ID: "ap", Name: "AP"}}},
 	}}}

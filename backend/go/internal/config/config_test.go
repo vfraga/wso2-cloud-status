@@ -94,7 +94,6 @@ backends:
 products:
   - id: p
     name: P
-    page_url: https://p.example.test
     sources:
       - backend: b
         cloud: c
@@ -294,15 +293,12 @@ backends:
   b: { base_url: "ftp://x", timezone: "Mars/Olympus" }
 products:
   - id: Bad_ID
-    page_url: nope
     sources:
       - backend: missing
-        page_url: "::"
         regions: [{ key: "", id: "Not Slug", name: "" }, { key: k, id: dup, name: n }, { key: k2, id: dup, name: n2 }]
       - backend: missing
   - id: Bad_ID
     name: Second
-    page_url: https://ok.test
 `
 	_, err := Parse([]byte(bad))
 	if err == nil {
@@ -324,7 +320,6 @@ products:
 		"must be a lowercase slug",
 		"is duplicated",
 		"name is required",
-		"page_url must be an absolute",
 		"unknown backend",
 		"cloud is required",
 		"is listed twice",
@@ -416,11 +411,9 @@ backends:
 products:
   - id: p1
     name: P1
-    page_url: https://p1.test
     sources: [{ backend: "a/x", cloud: y, regions: [{ key: us, id: us, name: US }] }]
   - id: p2
     name: P2
-    page_url: https://p2.test
     sources: [{ backend: a, cloud: "x/y", regions: [{ key: us, id: us, name: US }] }]
 `))
 	if err == nil || !strings.Contains(err.Error(), `backends: name "a/x" must be a lowercase slug`) {
@@ -446,7 +439,6 @@ backends:
 		{"copied line in one source", `
   - id: p
     name: P
-    page_url: https://p.test
     sources:
       - backend: b
         cloud: c
@@ -455,7 +447,6 @@ backends:
 		{"same cloud through two backends", `
   - id: p
     name: P
-    page_url: https://p.test
     sources:
       - { backend: b, cloud: c, regions: [{ key: us, id: us, name: US }] }
       - { backend: alias, cloud: c, regions: [{ key: us, id: us-2, name: US 2 }] }
@@ -463,14 +454,12 @@ backends:
 		{"different clouds and products", `
   - id: p
     name: P
-    page_url: https://p.test
     sources:
       - { backend: b, cloud: c, regions: [{ key: us, id: us, name: US }] }
       - { backend: b, cloud: d, regions: [{ key: us, id: us-d, name: US D }] }
       - { backend: other, cloud: c, regions: [{ key: us, id: us-o, name: US O }] }
   - id: q
     name: Q
-    page_url: https://q.test
     sources:
       - { backend: b, cloud: c, regions: [{ key: us, id: us, name: US }] }
 `, ""},
@@ -510,7 +499,6 @@ backends:
 products:
   - id: p
     name: P
-    page_url: https://p.test
     sources:
       - backend: b
         cloud: c

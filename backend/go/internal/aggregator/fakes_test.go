@@ -110,12 +110,12 @@ func testConfig() *config.Config {
 		},
 		History: config.History{Days: 7},
 		Products: []config.Product{
-			{ID: "one", Name: "One", PageURL: "https://one.test", Sources: []config.SourceRef{
+			{ID: "one", Name: "One", Sources: []config.SourceRef{
 				{Backend: "b", Cloud: "s1", Regions: []config.RegionRef{{Key: "us", ID: "us", Name: "US"}, {Key: "eu", ID: "eu", Name: "EU"}}},
 			}},
-			{ID: "two", Name: "Two", PageURL: "https://two.test", Sources: []config.SourceRef{
+			{ID: "two", Name: "Two", Sources: []config.SourceRef{
 				{Backend: "b", Cloud: "s2", Regions: []config.RegionRef{{Key: "cp", ID: "us-cp", Name: "US CP"}}},
-				{Backend: "b", Cloud: "s3", PageURL: "https://eu.two.test", Regions: []config.RegionRef{{Key: "cp", ID: "eu-cp", Name: "EU CP"}}},
+				{Backend: "b", Cloud: "s3", Regions: []config.RegionRef{{Key: "cp", ID: "eu-cp", Name: "EU CP"}}},
 			}},
 		},
 	}

@@ -733,7 +733,7 @@ func TestBodyChangesOncePerMinute(t *testing.T) {
 			RequestTimeout: time.Second, StaleAfter: 5 * time.Minute,
 		},
 		History: config.History{Days: 3},
-		Products: []config.Product{{ID: "p", Name: "P", PageURL: "https://p.test", Sources: []config.SourceRef{
+		Products: []config.Product{{ID: "p", Name: "P", Sources: []config.SourceRef{
 			{Backend: "b", Cloud: "c", Regions: []config.RegionRef{{Key: "us", ID: "us", Name: "US"}}},
 		}}},
 	}

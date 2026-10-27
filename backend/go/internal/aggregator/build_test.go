@@ -401,9 +401,6 @@ func TestOneStaleSourceLeavesTheOtherVisible(t *testing.T) {
 	if two.Status != domain.StatusOperational || two.DataComplete {
 		t.Fatalf("two = %v complete=%v, want operational and incomplete", two.Status, two.DataComplete)
 	}
-	if two.Regions[1].PageURL != "https://eu.two.test" || two.Regions[0].PageURL != "https://two.test" {
-		t.Fatalf("page urls = %s, %s", two.Regions[0].PageURL, two.Regions[1].PageURL)
-	}
 }
 
 func TestUnconfiguredRegionIsShown(t *testing.T) {
@@ -457,10 +454,10 @@ func TestUnmatchedRegionIDsAreUniqueAndOrderFree(t *testing.T) {
 func TestSharedSourceShowsEachProductItsOwnRegions(t *testing.T) {
 	t.Parallel()
 	products := []config.Product{
-		{ID: "a", Name: "A", PageURL: "https://a.test", Sources: []config.SourceRef{
+		{ID: "a", Name: "A", Sources: []config.SourceRef{
 			{Backend: "b", Cloud: "x", Regions: []config.RegionRef{{Key: "us", ID: "us", Name: "US"}}},
 		}},
-		{ID: "b", Name: "B", PageURL: "https://b.test", Sources: []config.SourceRef{
+		{ID: "b", Name: "B", Sources: []config.SourceRef{
 			{Backend: "b", Cloud: "x", Regions: []config.RegionRef{{Key: "eu", ID: "eu", Name: "EU"}}},
 		}},
 	}
@@ -556,7 +553,8 @@ func resolved(at time.Time) *time.Time { return &at }
 
 // TestIncidents: a product lists its active incidents and those of its
 // history window, from all its sources, each once; one that ended before the
-// window ("old", 30 days back with 7 history days) is left out.
+// window ("old", 30 days back with 7 history days) is left out of it, and
+// kept in the incident list.
 func TestIncidents(t *testing.T) {
 	t.Parallel()
 	st := freshState()
@@ -576,19 +574,19 @@ func TestIncidents(t *testing.T) {
 	if two.Status != domain.StatusOutage || two.AffectedRegions != 0 {
 		t.Fatalf("an active incident must raise the product status: %v affected=%d", two.Status, two.AffectedRegions)
 	}
-	if len(b.Summary.ActiveIncidents) != 1 || len(b.Incidents.Incidents) != 2 {
-		t.Fatalf("active = %d, window = %d", len(b.Summary.ActiveIncidents), len(b.Incidents.Incidents))
+	if len(b.Summary.ActiveIncidents) != 1 || len(b.Incidents.Incidents) != 3 {
+		t.Fatalf("active = %d, listed = %d; want 1 and every incident the sources keep (3)", len(b.Summary.ActiveIncidents), len(b.Incidents.Incidents))
 	}
 	if today := two.History[len(two.History)-1]; today.Status != domain.StatusOutage {
 		t.Fatalf("today = %+v", today)
 	}
 }
 
-// TestIncidentListHoldsEveryHistoryIncident: the incident list, and each
-// product's own list, keep every incident that overlaps the history window,
-// so every id a history day lists is in them: one that started before the
-// window and ended inside it too. One that ended before the window, or
-// exactly when it began, is left out of both.
+// TestIncidentListHoldsEveryHistoryIncident: a product's own list keeps
+// every incident that overlaps the history window, so every id a history day
+// lists is in it: one that started before the window and ended inside it
+// too. One that ended before the window, or exactly when it began, is left
+// out of it. The incident list keeps every incident the sources hold.
 func TestIncidentListHoldsEveryHistoryIncident(t *testing.T) {
 	t.Parallel()
 	windowStart := t0.Truncate(24*time.Hour).AddDate(0, 0, -6)
@@ -606,26 +604,55 @@ func TestIncidentListHoldsEveryHistoryIncident(t *testing.T) {
 	for _, inc := range b.Incidents.Incidents {
 		listed[inc.ID] = true
 	}
-	for id, p := range b.Products {
-		for _, inc := range p.Incidents {
-			if !listed[inc.ID] {
-				t.Errorf("product %s lists %s, which the incident list lacks", id, inc.ID)
-			}
-		}
+	own := map[string]bool{}
+	for _, inc := range b.Products["two"].Incidents {
+		own[inc.ID] = true
 	}
 	referenced := map[string]bool{}
 	for _, p := range b.Summary.Products {
 		for _, d := range p.History {
 			for _, id := range d.IncidentIDs {
 				referenced[id] = true
-				if !listed[id] {
-					t.Errorf("%s history %s lists %s, which the incident list lacks", p.ID, d.Date, id)
+				if !own[id] || !listed[id] {
+					t.Errorf("%s history %s lists %s, which its own list or the incident list lacks", p.ID, d.Date, id)
 				}
 			}
 		}
 	}
-	if !referenced["across"] || !referenced["instant"] || listed["before"] || listed["until-start"] {
-		t.Fatalf("referenced %v, listed %v; want across and instant in both, before and until-start in neither", referenced, listed)
+	if !referenced["across"] || !referenced["instant"] || own["before"] || own["until-start"] {
+		t.Fatalf("referenced %v, own %v; want across and instant in both, before and until-start in neither", referenced, own)
+	}
+	if len(listed) != 4 {
+		t.Fatalf("listed %v, want all four", listed)
+	}
+}
+
+// TestIncidentListSaysHowFarEachProductReaches: each product's coverage is
+// its sources' latest coverage start, null while one has never answered for
+// incidents, with the product's own incidents checked_at and stale.
+func TestIncidentListSaysHowFarEachProductReaches(t *testing.T) {
+	t.Parallel()
+	st := freshState()
+	s3 := st["b/s3"]
+	s3.incidents.data.CoverageStart = t0.AddDate(0, -5, 0)
+	st["b/s3"] = s3
+	s1 := st["b/s1"]
+	s1.incidents = fetched[source.Incidents]{}
+	st["b/s1"] = s1
+	b := build(params(st, t0))
+	if len(b.Incidents.Products) != 2 {
+		t.Fatalf("products = %+v", b.Incidents.Products)
+	}
+	one, two := b.Incidents.Products[0], b.Incidents.Products[1]
+	if one.ID != "one" || one.CoveredFrom != nil || one.CheckedAt != nil || !one.Stale {
+		t.Fatalf("one = %+v, want no coverage, never checked, stale", one)
+	}
+	want := t0.AddDate(0, -5, 0)
+	if two.ID != "two" || two.Name != "Two" || two.CoveredFrom == nil || !two.CoveredFrom.Equal(want) || two.Stale {
+		t.Fatalf("two = %+v, want covered from %s and current", two, want)
+	}
+	if two.CheckedAt == nil || !two.CheckedAt.Equal(*b.Products["two"].CheckedAt.Incidents) {
+		t.Fatalf("two checked_at = %v, want the product's own", two.CheckedAt)
 	}
 }
 
@@ -1033,7 +1060,7 @@ func TestAnsweredSourcesIncidentsShowWhileAnotherHasNone(t *testing.T) {
 
 // TestEmptyStateIsNotReadyAndHasNoNulls: before any source answers, the
 // only nulls in a body are checked_at values, where null means "never
-// checked".
+// checked", and the incident list's covered_from, "never answered".
 func TestEmptyStateIsNotReadyAndHasNoNulls(t *testing.T) {
 	t.Parallel()
 	b := build(params(map[string]sourceState{"b/s1": {}, "b/s2": {}, "b/s3": {}}, t0))
@@ -1050,7 +1077,7 @@ func TestEmptyStateIsNotReadyAndHasNoNulls(t *testing.T) {
 			t.Fatal(err)
 		}
 		for _, path := range nullPaths("$", decoded) {
-			if !strings.Contains(path, ".checked_at.") {
+			if !strings.Contains(path, ".checked_at") && !strings.HasSuffix(path, ".covered_from") {
 				t.Fatalf("JSON has null at %s: %s", path, raw)
 			}
 		}
@@ -1083,13 +1110,13 @@ func nullPaths(path string, v any) []string {
 // listed out of order, as Developer Platform's are: the US-managed EU data
 // plane is read from the US cloud.
 func locatedProduct() config.Product {
-	return config.Product{ID: "three", Name: "Three", PageURL: "https://three.test", Sources: []config.SourceRef{
+	return config.Product{ID: "three", Name: "Three", Sources: []config.SourceRef{
 		{Backend: "b", Cloud: "s4", Regions: []config.RegionRef{
 			{Key: "dp", ID: "us-dp", Name: "US data plane", Location: "US"},
 			{Key: "cp", ID: "us-cp", Name: "US control plane", Location: "US"},
 			{Key: "eu-dp", ID: "eu-dp-us", Name: "EU data plane (US-managed)", Location: "EU"},
 		}},
-		{Backend: "b", Cloud: "s5", PageURL: "https://eu.three.test", Regions: []config.RegionRef{
+		{Backend: "b", Cloud: "s5", Regions: []config.RegionRef{
 			{Key: "cp", ID: "eu-cp", Name: "EU control plane", Location: "EU"},
 			{Key: "dp", ID: "eu-dp", Name: "EU data plane", Location: "EU"},
 		}},

@@ -160,7 +160,8 @@ func build(p buildParams) Built {
 	statuses := make([]domain.Status, 0, len(p.products))
 	configured := configuredKeys(p.products)
 	for _, prod := range p.products {
-		detail := buildProduct(p, prod, configured)
+		pb := buildProduct(p, prod, configured)
+		detail := pb.detail
 		detail.GeneratedAt = generated
 		held := hold(p.held[prod.ID], heldCheck{
 			minute: generated, stale: detail.Stale, nulls: nullKinds(detail.CheckedAt),
@@ -169,8 +170,12 @@ func build(p buildParams) Built {
 		detail.CheckedAt, b.held[prod.ID] = held.value, held
 		b.Products[prod.ID] = detail
 		b.Summary.Products = append(b.Summary.Products, detail.ProductSummary)
+		b.Incidents.Products = append(b.Incidents.Products, IncidentCoverage{
+			ID: prod.ID, Name: prod.Name, CoveredFrom: pb.coveredFrom,
+			CheckedAt: detail.CheckedAt.Incidents, Stale: detail.Stale.Incidents,
+		})
 		statuses = append(statuses, detail.Status)
-		all = append(all, detail.Incidents...)
+		all = append(all, pb.allIncidents...)
 	}
 	domain.SortIncidents(all)
 	b.Summary.DataComplete = allComplete(b.Summary.Products)
@@ -184,9 +189,9 @@ func build(p buildParams) Built {
 
 // overlaps reports whether the incident is active or touches the history
 // window that starts at cutoff, as domain.DailyHistory counts it: it started
-// in the window, or ended after the window began. A product lists only these,
-// so every incident a history day lists is in its list and in the incident
-// list, and nothing older is.
+// in the window, or ended after the window began. A product's own route lists
+// only these, so every incident a history day lists is in its list, and
+// nothing older is; the incident list keeps every incident.
 func overlaps(i domain.Incident, cutoff time.Time) bool {
 	return i.Active() || !i.StartedAt.Before(cutoff) || i.ResolvedAt.After(cutoff)
 }
@@ -273,9 +278,18 @@ func allComplete(products []ProductSummary) bool {
 	return len(products) > 0
 }
 
+// productBuild is one product's views and what the incident list needs
+// from it: every incident its sources keep, and from when that list is
+// complete (nil while a source has never answered for incidents).
+type productBuild struct {
+	detail       ProductDetail
+	allIncidents []domain.Incident
+	coveredFrom  *time.Time
+}
+
 // buildProduct derives one product's views. configured is configuredKeys of
 // the whole configuration.
-func buildProduct(p buildParams, prod config.Product, configured map[string]map[string]bool) ProductDetail {
+func buildProduct(p buildParams, prod config.Product, configured map[string]map[string]bool) productBuild {
 	count := 0
 	for _, ref := range prod.Sources {
 		count += len(ref.Regions)
@@ -283,17 +297,17 @@ func buildProduct(p buildParams, prod config.Product, configured map[string]map[
 	regions := make([]RegionDetail, 0, count)
 	unmatched := unmatchedRegions(p, prod, configured)
 	for i, ref := range prod.Sources {
-		regions = append(regions, buildRegions(p, prod, ref, unmatched[i])...)
+		regions = append(regions, buildRegions(p, ref, unmatched[i])...)
 	}
 	locations := locationsOf(prod, regions)
 	regions = byLocation(regions, locations)
 	comp := feedOf(p.state, prod.Sources, p.now, p.stale.components, func(st sourceState) time.Time { return st.components.at })
 	inc := feedOf(p.state, prod.Sources, p.now, p.stale.incidents, func(st sourceState) time.Time { return st.incidents.at })
-	incidents, coverage := productIncidents(p, prod, inc)
-	history := domain.DailyHistory(incidents, p.days, coverage, p.now)
+	allIncidents, coverage := productIncidents(p, prod, inc)
+	history := domain.DailyHistory(allIncidents, p.days, coverage, p.now)
 	domain.RaiseToday(history, worstRegion(regions))
 	cutoff := p.now.UTC().Truncate(24*time.Hour).AddDate(0, 0, 1-p.days)
-	incidents = filter(incidents, func(i domain.Incident) bool { return overlaps(i, cutoff) })
+	incidents := filter(allIncidents, func(i domain.Incident) bool { return overlaps(i, cutoff) })
 	up := feedOf(p.state, prod.Sources, p.now, p.stale.uptime, func(st sourceState) time.Time { return st.uptime.at })
 	statuses := make([]domain.Status, 0, len(regions)+len(incidents))
 	summaries := make([]RegionSummary, 0, len(regions))
@@ -301,7 +315,7 @@ func buildProduct(p buildParams, prod config.Product, configured map[string]map[
 	for _, r := range regions {
 		statuses = append(statuses, r.Status)
 		summaries = append(summaries, RegionSummary{
-			ID: r.ID, Location: r.Location, Name: r.Name, Status: r.Status, Uptime: r.Uptime, PageURL: r.PageURL,
+			ID: r.ID, Location: r.Location, Name: r.Name, Status: r.Status, Uptime: r.Uptime,
 		})
 		if r.Status > domain.StatusOperational {
 			affected++
@@ -313,9 +327,9 @@ func buildProduct(p buildParams, prod config.Product, configured map[string]map[
 			statuses = append(statuses, inc.EffectiveImpact())
 		}
 	}
-	return ProductDetail{
+	detail := ProductDetail{
 		ProductSummary: ProductSummary{
-			ID: prod.ID, Name: prod.Name, Description: prod.Description, PageURL: prod.PageURL,
+			ID: prod.ID, Name: prod.Name, Description: prod.Description,
 			Status:          domain.Worst(statuses...),
 			AffectedRegions: affected,
 			DataComplete:    complete,
@@ -329,6 +343,17 @@ func buildProduct(p buildParams, prod config.Product, configured map[string]map[
 		RegionDetails: regions,
 		Incidents:     incidents,
 	}
+	return productBuild{detail: detail, allIncidents: allIncidents, coveredFrom: coveredFrom(coverage, p.now)}
+}
+
+// coveredFrom is the coverage start the incident list publishes: nil when it
+// is unknown, or in the future because a source has never answered.
+func coveredFrom(coverage domain.Coverage, now time.Time) *time.Time {
+	if coverage.From.IsZero() || coverage.From.After(now) {
+		return nil
+	}
+	from := coverage.From.UTC()
+	return &from
 }
 
 // worstRegion is the most severe known status among the regions, unknown
@@ -459,19 +484,15 @@ func boolRank(b bool) int {
 // buildRegions returns the configured regions in order, then the regions the
 // upstream reports that the configuration does not name (unmatched), so a
 // new region is never hidden.
-func buildRegions(p buildParams, prod config.Product, ref config.SourceRef, unmatched []config.RegionRef) []RegionDetail {
+func buildRegions(p buildParams, ref config.SourceRef, unmatched []config.RegionRef) []RegionDetail {
 	st := p.state[SourceKey(ref)]
 	fresh := st.components.ok() && p.now.Sub(st.components.at) <= p.stale.components
-	page := ref.PageURL
-	if page == "" {
-		page = prod.PageURL
-	}
 	out := make([]RegionDetail, 0, len(ref.Regions)+len(unmatched))
 	for _, rr := range ref.Regions {
-		out = append(out, buildRegion(st, rr, fresh, page))
+		out = append(out, buildRegion(st, rr, fresh))
 	}
 	for _, rr := range unmatched {
-		out = append(out, buildRegion(st, rr, fresh, page))
+		out = append(out, buildRegion(st, rr, fresh))
 	}
 	return out
 }
@@ -539,7 +560,7 @@ func firstFree(id string, taken map[string]bool) string {
 	return candidate
 }
 
-func buildRegion(st sourceState, rr config.RegionRef, fresh bool, page string) RegionDetail {
+func buildRegion(st sourceState, rr config.RegionRef, fresh bool) RegionDetail {
 	groups := st.components.data[rr.Key]
 	if !fresh {
 		groups = unknownGroups(groups)
@@ -560,7 +581,6 @@ func buildRegion(st sourceState, rr config.RegionRef, fresh bool, page string) R
 			Groups: groups,
 		},
 		Location: rr.LocationID(),
-		PageURL:  page,
 	}
 }
 

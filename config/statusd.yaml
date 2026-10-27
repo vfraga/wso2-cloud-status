@@ -1,8 +1,8 @@
 # statusd configuration for local runs and tests. Production runs
 # config/statusd.production.yaml, which differs only in the origin lock (a
 # test fails otherwise): change both. A new product also goes in
-# frontend/src/lib/fallbackProducts.ts, frontend/index.html and
-# testdata/upstream; tests fail until they agree. Check a file with:
+# frontend/src/lib/fallbackProducts.ts and testdata/upstream; tests fail
+# until they agree. Check a file with:
 # statusd -check-config <file>
 #
 # Products appear on the page in the order listed. Region keys are the
@@ -68,10 +68,7 @@ products:
   - id: agent-platform
     name: Agent Platform
     description: Agent Manager
-    # The Agent Manager page lives on status.cloud.wso2.com today; it moves
-    # when this page takes over that host. AI Gateway and Agent ID have no
-    # status source yet.
-    page_url: https://status.cloud.wso2.com
+    # AI Gateway and Agent ID have no status source yet.
     sources:
       - backend: cloudservices
         cloud: agent-manager
@@ -82,7 +79,6 @@ products:
   - id: api-platform
     name: API Platform
     description: Bijira
-    page_url: https://status.bijira.dev
     sources:
       - backend: cloudservices
         cloud: bijira
@@ -95,7 +91,6 @@ products:
   - id: integration-platform
     name: Integration Platform
     description: Devant
-    page_url: https://status.devant.dev
     sources:
       - backend: cloudservices
         cloud: devant
@@ -108,7 +103,6 @@ products:
   - id: identity-platform
     name: Identity Platform
     description: Asgardeo
-    page_url: https://status.asgardeo.io
     sources:
       - backend: asgardeo
         cloud: asgardeo
@@ -119,7 +113,6 @@ products:
   - id: developer-platform
     name: Developer Platform
     description: Choreo
-    page_url: https://status.choreo.dev
     sources:
       - backend: cloudservices
         cloud: choreo
@@ -129,14 +122,12 @@ products:
           - { key: "eu - dp", id: eu-data-plane-us-managed, name: EU data plane (US-managed), location: EU }
       - backend: cloudservices
         cloud: choreo-eu
-        page_url: https://status.eu.choreo.dev
         regions:
           - { key: "eu - cp", id: eu-control-plane, name: EU control plane, location: EU }
           - { key: "eu - dp - eu", id: eu-data-plane, name: EU data plane, location: EU }
 
   - id: moesif
     name: Moesif
-    page_url: https://status.moesif.com
     sources:
       - backend: cloudservices
         cloud: moesif

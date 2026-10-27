@@ -110,16 +110,13 @@ type Product struct {
 	ID          string      `yaml:"id"`
 	Name        string      `yaml:"name"`
 	Description string      `yaml:"description"`
-	PageURL     string      `yaml:"page_url"`
 	Sources     []SourceRef `yaml:"sources"`
 }
 
 // SourceRef binds a product to one cloud on one backend.
 type SourceRef struct {
-	Backend string `yaml:"backend"`
-	Cloud   string `yaml:"cloud"`
-	// PageURL overrides the product page for this source's regions.
-	PageURL string      `yaml:"page_url"`
+	Backend string      `yaml:"backend"`
+	Cloud   string      `yaml:"cloud"`
 	Regions []RegionRef `yaml:"regions"`
 }
 

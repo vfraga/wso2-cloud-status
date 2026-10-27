@@ -439,7 +439,7 @@ func TestReloadDuringShutdown(t *testing.T) {
 	// A new product on a backend that never answers holds the reload in
 	// its first poll until shutdown cancels it.
 	withSlow := strings.Replace(text, "backends:\n", "backends:\n  slow:\n    base_url: "+slow.URL+"\n", 1) +
-		"  - id: slow\n    name: Slow\n    page_url: https://slow.test\n    sources:\n      - backend: slow\n        cloud: slow\n" +
+		"  - id: slow\n    name: Slow\n    sources:\n      - backend: slow\n        cloud: slow\n" +
 		"        regions: [{ key: us, id: us, name: US }]\n"
 	if err := os.WriteFile(path, []byte(withSlow), 0o600); err != nil {
 		t.Fatal(err)

@@ -55,7 +55,6 @@ const (
 products:
   - id: p
     name: P
-    page_url: https://p.example.test
     sources: [{ backend: b, cloud: c, regions: [{ key: us, id: us, name: US }] }]
 `
 )
@@ -148,7 +147,6 @@ backends:
 products:
   - id: p
     name: P
-    page_url: https://p.example.test
     sources:
       - { backend: a, cloud: c, regions: [{ key: us, id: us, name: US }] }
       - { backend: b, cloud: c, regions: [{ key: eu, id: eu, name: EU }] }
@@ -281,7 +279,6 @@ backends:
 products:
   - id: p
     name: %s
-    page_url: https://p.example.test
     sources: [{ backend: b, cloud: c, regions: [{ key: us, id: us, name: US }] }]
 `, upstream.URL, name)
 	}
