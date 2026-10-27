@@ -48,8 +48,9 @@
 #                 product as JSON.
 #   incidents     GET <api>/api/v1/incidents answers 200 with a JSON object
 #                 whose generated_at is no older than MAX_AGE_SECONDS.
-#   deep-link     GET <base>/products/<id> answers 200 with HTML that holds
-#                 the app root: a link to a product's page.
+#   deep-link     GET <base>/products/<id> and <base>/history answer 200
+#                 with HTML that holds the app root: links to a product's
+#                 page and to the incident history.
 # Prints one PASS, FAIL or SKIP line per check (SKIP when a failed check
 # leaves nothing to check), INFO lines for what the page currently shows
 # (each product that is unknown, incomplete or stale, with the age of its
@@ -428,22 +429,24 @@ check_incidents() {
   fi
 }
 
-# check_deep_link fetches the page of the product check_product fetched.
+# check_deep_link fetches the page of the product check_product fetched and
+# the incident history page, the links the page's shell must answer.
 check_deep_link() {
-  if [ -z "$id" ]; then
-    skip deep-link "PRODUCT_ID is unset and there is no summary to take a product from"
-    return
-  fi
-  url="$base/products/$id"
-  if ! fetch deeplink "$url"; then
-    fail deep-link "$url $fetch_error"
-  elif [ "$code" != 200 ]; then
-    fail deep-link "$url answered HTTP $code, want 200$(why deeplink)"
-  elif ! grep -q 'id="root"' "$work/deeplink.body"; then
-    fail deep-link "$url answered 200 but the HTML has no app root (id=\"root\")"
-  else
-    pass deep-link "$url answered 200 with the app root"
-  fi
+  urls="$base/history"
+  [ -n "$id" ] && urls="$base/products/$id $urls"
+  for url in $urls; do
+    if ! fetch deeplink "$url"; then
+      fail deep-link "$url $fetch_error"
+      return
+    elif [ "$code" != 200 ]; then
+      fail deep-link "$url answered HTTP $code, want 200$(why deeplink)"
+      return
+    elif ! grep -q 'id="root"' "$work/deeplink.body"; then
+      fail deep-link "$url answered 200 but the HTML has no app root (id=\"root\")"
+      return
+    fi
+  done
+  pass deep-link "$(echo "$urls" | sed 's/ / and /') answered 200 with the app root"
 }
 
 echo "synthetic check of $base (API $api), request ids $rid-*"

@@ -240,12 +240,13 @@ for _ in $(seq 1 150); do
   sleep 0.2
 done
 
-# Deep links: the shell under /products/<id> for every product, as the
-# frontend image serves it.
+# Deep links: the shell under /products/<id> for every product and under
+# /history, as the frontend image serves it.
 mkdir -p "$work/site/products"
 for id in $(curl -fsS "http://127.0.0.1:${api_port}/api/v1/summary" | jq -r '.products[].id'); do
   cp "$work/site/index.html" "$work/site/products/$id"
 done
+cp "$work/site/index.html" "$work/site/history"
 
 total="$(curl -fsS "http://127.0.0.1:${api_port}/api/v1/summary" | jq '.products | length')"
 expect "everything up" 0 '^synthetic check: all 9 passed$'
