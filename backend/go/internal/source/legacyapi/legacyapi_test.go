@@ -578,6 +578,15 @@ func TestNewClientValidation(t *testing.T) {
 	if _, err := NewClient("ftp://x", hc, nil, ""); err == nil {
 		t.Fatal("expected an error for a non-http scheme")
 	}
+	// Plain http only to a loopback host, as for every backend type.
+	if _, err := NewClient("http://api.status.example.com", hc, nil, ""); err == nil || !strings.Contains(err.Error(), "http only on a loopback host") {
+		t.Fatalf("plain http to a remote host: err = %v", err)
+	}
+	for _, local := range []string{"http://127.0.0.1:18090", "http://localhost:18090", "http://[::1]:18090"} {
+		if _, err := NewClient(local, hc, nil, ""); err != nil {
+			t.Fatalf("%s: %v", local, err)
+		}
+	}
 	if _, err := NewClient("://bad", hc, nil, ""); err == nil {
 		t.Fatal("expected a parse error")
 	}
@@ -614,6 +623,7 @@ func TestProvider(t *testing.T) {
 		"options":  {BaseURL: "https://x.test", Timezone: "UTC", Options: map[string]string{"token": "x"}},
 		"timezone": {BaseURL: "https://x.test", Timezone: "Nowhere/Nope"},
 		"base url": {BaseURL: "ftp://x.test", Timezone: "UTC"},
+		"http":     {BaseURL: "http://x.test", Timezone: "UTC"},
 	} {
 		if _, err := NewProvider("b", b, env); err == nil {
 			t.Errorf("%s: expected an error", name)

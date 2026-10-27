@@ -88,7 +88,7 @@ func (a *App) watchConfig(ctx context.Context) {
 func (a *App) checkFile(ctx context.Context, readErr error, wasValid bool) bool {
 	err := readErr
 	if err == nil {
-		_, _, err = load(a.configPath, a.getenv, a.registry, a.env)
+		_, err = load(a.configPath, a.getenv, a.registry, a.env, a.providers)
 	}
 	valid := err == nil
 	a.reloadObs.ConfigFileValid(valid)
@@ -117,7 +117,7 @@ func (a *App) reloadAndReport(ctx context.Context, trigger string) bool {
 	}
 	a.reloadObs.ConfigReloaded(reloadApplied)
 	a.log.InfoContext(ctx, "configuration reloaded", slog.String("trigger", trigger),
-		slog.Int("products", len(a.cfg.Products)))
+		slog.Int("products", len(a.cfg.Products)), slog.String("sha256", a.configSum))
 	return true
 }
 
@@ -129,15 +129,16 @@ var errNeedsRestart = errors.New("app: the file needs a restart")
 // reload settings need a restart; changes to them are reported and the
 // running values kept. A file whose other settings are invalid with those
 // running values is rejected whole. The environment overrides (PORT) apply
-// as they did at startup.
+// as they did at startup. Unchanged backends keep their providers.
 func (a *App) Reload(ctx context.Context) error {
 	if a.configPath == "" {
 		return errors.New("app: reload is not enabled")
 	}
-	next, bindings, err := load(a.configPath, a.getenv, a.registry, a.env)
+	l, err := load(a.configPath, a.getenv, a.registry, a.env, a.providers)
 	if err != nil {
 		return err
 	}
+	next := l.cfg
 	if changed := a.cfg.RestartRequired(next); len(changed) > 0 {
 		a.log.WarnContext(ctx, "these settings take effect on restart only; keeping the running values",
 			slog.Any("sections", changed))
@@ -147,10 +148,10 @@ func (a *App) Reload(ctx context.Context) error {
 				errNeedsRestart, changed, err)
 		}
 	}
-	if err := a.agg.Apply(ctx, next, bindings); err != nil {
+	if err := a.agg.Apply(ctx, next, l.bindings); err != nil {
 		return fmt.Errorf("app: apply: %w", err)
 	}
-	a.cfg = next
+	a.cfg, a.providers, a.configSum = next, l.providers, l.sum
 	return nil
 }
 

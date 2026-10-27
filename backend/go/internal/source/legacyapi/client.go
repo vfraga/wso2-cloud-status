@@ -48,15 +48,13 @@ type Client struct {
 	userAgent string
 }
 
-// NewClient returns a client for the backend at baseURL. Timestamps in
-// incident responses carry no zone; they are read in loc.
+// NewClient returns a client for the backend at baseURL, which is https, or
+// http on a loopback host (config.SecureURL). Timestamps in incident
+// responses carry no zone; they are read in loc.
 func NewClient(baseURL string, httpClient *http.Client, loc *time.Location, userAgent string) (*Client, error) {
-	base, err := url.Parse(baseURL)
+	base, err := secureURL("base_url", baseURL)
 	if err != nil {
-		return nil, fmt.Errorf("legacyapi: parse base URL: %w", err)
-	}
-	if base.Scheme != "https" && base.Scheme != "http" {
-		return nil, fmt.Errorf("legacyapi: base URL %q must be http or https", baseURL)
+		return nil, err
 	}
 	if httpClient == nil {
 		return nil, errors.New("legacyapi: nil http client")

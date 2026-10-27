@@ -17,6 +17,7 @@
 package config
 
 import (
+	"fmt"
 	"maps"
 	"net"
 	"net/url"
@@ -166,7 +167,7 @@ func cacheSeconds(e *errs, key, value string) map[string]int {
 
 func validateRequiredHeaders(e *errs, headers map[string]string) {
 	for _, name := range slices.Sorted(maps.Keys(headers)) {
-		if !headerName.MatchString(name) || !validHeaderValue(headers[name]) {
+		if !headerName.MatchString(name) || !ValidHeaderValue(headers[name]) {
 			e.addf("server.required_headers: %q needs a valid header name and a value without surrounding spaces or control characters", name)
 		}
 	}
@@ -174,11 +175,13 @@ func validateRequiredHeaders(e *errs, headers map[string]string) {
 
 var headerName = regexp.MustCompile(`^[A-Za-z0-9-]+$`)
 
-// validHeaderValue reports whether a received header can ever equal v. HTTP
-// trims the spaces around a field value and a value cannot hold a newline,
-// so a value with either (a secret read from a file with a trailing newline,
-// for example) would refuse every request while the lock reads as on.
-func validHeaderValue(v string) bool {
+// ValidHeaderValue reports whether v is a non-empty value without
+// surrounding spaces or control characters. HTTP trims the spaces around a
+// field value and a value cannot hold a newline, so a required header with
+// either (a secret read from a file with a trailing newline, for example)
+// would refuse every request while the lock reads as on; a credential with
+// either is almost certainly not the one issued.
+func ValidHeaderValue(v string) bool {
 	return v != "" && strings.TrimSpace(v) == v && !strings.ContainsFunc(v, unicode.IsControl)
 }
 
@@ -234,8 +237,8 @@ func (c *Config) validateBackends(e *errs) {
 		if !slug.MatchString(name) {
 			e.addf("backends: name %q must be a lowercase slug", name)
 		}
-		if !isHTTPURL(b.BaseURL) {
-			e.addf("backends.%s.base_url must be an absolute http(s) URL, got %q", name, b.BaseURL)
+		if _, err := SecureURL(b.BaseURL); err != nil {
+			e.addf("backends.%s.base_url: %w", name, err)
 		}
 		if _, err := b.Location(); err != nil {
 			e.addf("backends.%s: %w", name, err)
@@ -370,7 +373,25 @@ func (c *Config) readsOf(s SourceRef) string {
 	return b.Type + "\x00" + b.BaseURL + "\x00" + s.Cloud
 }
 
-func isHTTPURL(raw string) bool {
+// SecureURL parses raw as an absolute https URL, or a plain http one on a
+// loopback host (a local fake upstream), so statuses and credentials never
+// cross a network in clear. Validation and every backend type's adapter
+// check their URLs with it.
+func SecureURL(raw string) (*url.URL, error) {
 	u, err := url.Parse(raw)
-	return err == nil && (u.Scheme == "https" || u.Scheme == "http") && u.Host != ""
+	if err != nil {
+		return nil, err
+	}
+	if u.Host != "" && (u.Scheme == "https" || (u.Scheme == "http" && loopback(u.Hostname()))) {
+		return u, nil
+	}
+	return nil, fmt.Errorf("%q must be an absolute https URL (http only on a loopback host)", raw)
+}
+
+func loopback(host string) bool {
+	if host == "localhost" {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
 }

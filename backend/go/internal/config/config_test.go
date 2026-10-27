@@ -18,6 +18,7 @@ package config
 
 import (
 	"bytes"
+	"fmt"
 	"maps"
 	"os"
 	"path/filepath"
@@ -175,6 +176,61 @@ func TestEnvironmentReferences(t *testing.T) {
 	}
 	if _, err := Parse([]byte("products: [\n")); err == nil {
 		t.Fatal("malformed YAML must fail")
+	}
+}
+
+// TestEnvOptionsRecordWholeReferences: a backend option counts as read from
+// the environment only when its value in the file is one ${NAME} reference
+// and nothing else, quoted or not.
+func TestEnvOptionsRecordWholeReferences(t *testing.T) {
+	t.Setenv("STATUSD_TEST_SECRET", "s3cret")
+	body := strings.Replace(minimal, `b: { base_url: "https://example.test" }`, `b:
+    base_url: "https://example.test"
+    options:
+      quoted: "${STATUSD_TEST_SECRET}"
+      plain: ${STATUSD_TEST_SECRET}
+      prefixed: "x${STATUSD_TEST_SECRET}"
+      two: "${STATUSD_TEST_SECRET}${STATUSD_TEST_SECRET}"
+      literal: s3cret`, 1)
+	cfg, err := Parse([]byte(body))
+	if err != nil {
+		t.Fatal(err)
+	}
+	b := cfg.Backends["b"]
+	if want := map[string]bool{"quoted": true, "plain": true}; !maps.Equal(b.EnvOptions, want) {
+		t.Fatalf("EnvOptions = %v, want %v", b.EnvOptions, want)
+	}
+	if b.Options["quoted"] != "s3cret" || b.Options["plain"] != "s3cret" || b.Options["literal"] != "s3cret" {
+		t.Fatalf("options = %v, want each expanded", b.Options)
+	}
+}
+
+// TestBackendURLsAreHTTPS: a base_url is https, or plain http only on a
+// loopback host (a local fake upstream), whatever the backend type.
+func TestBackendURLsAreHTTPS(t *testing.T) {
+	t.Parallel()
+	for url, want := range map[string]string{
+		"https://example.test":         "",
+		"http://127.0.0.1:18090":       "",
+		"http://localhost:18090":       "",
+		"http://[::1]:18090":           "",
+		"http://example.test":          `backends.b.base_url: "http://example.test" must be an absolute https URL (http only on a loopback host)`,
+		"http://10.0.0.1":              "must be an absolute https URL",
+		"http://localhost.example.com": "must be an absolute https URL",
+		"https:///no-host":             "must be an absolute https URL",
+		"ftp://example.test":           "must be an absolute https URL",
+	} {
+		for _, typ := range []string{"legacy-status-api", "csm-cloud-status"} {
+			body := strings.Replace(minimal, `b: { base_url: "https://example.test" }`,
+				fmt.Sprintf("b: { type: %s, base_url: %q }", typ, url), 1)
+			_, err := Parse([]byte(body))
+			if want == "" && err != nil {
+				t.Errorf("%s %s: err = %v, want none", typ, url, err)
+			}
+			if want != "" && (err == nil || !strings.Contains(err.Error(), want)) {
+				t.Errorf("%s %s: err = %v, want it to contain %q", typ, url, err, want)
+			}
+		}
 	}
 }
 

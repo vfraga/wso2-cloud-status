@@ -44,12 +44,17 @@ type App struct {
 	// server is the configuration the listeners started with. Server
 	// settings need a restart, and Run reads them while a reload may be
 	// replacing cfg.
-	server    config.Server
-	getenv    func(string) string
-	log       *slog.Logger
-	agg       *aggregator.Aggregator
-	registry  *source.Registry
-	env       source.Env
+	server   config.Server
+	getenv   func(string) string
+	log      *slog.Logger
+	agg      *aggregator.Aggregator
+	registry *source.Registry
+	env      source.Env
+	// providers are the running backends' providers, kept across reloads
+	// while their backend is unchanged (buildBindings).
+	providers map[string]built
+	// configSum is the SHA-256 of the file the last reload applied.
+	configSum string
 	reloadObs ReloadObserver
 	public    *http.Server
 	admin     *http.Server
@@ -61,27 +66,40 @@ type App struct {
 }
 
 // Load reads the configuration file at path with the default adapters, as
-// a start, -check-config and every reload do (load).
-func Load(path string, getenv func(string) string) (*config.Config, error) {
-	cfg, _, err := load(path, getenv, DefaultRegistry(), source.Env{HTTPClient: upstreamClient()})
-	return cfg, err
+// a start, -check-config and every reload do (load), and returns it with
+// the file's SHA-256 in hex.
+func Load(path string, getenv func(string) string) (*config.Config, string, error) {
+	l, err := load(path, getenv, DefaultRegistry(), source.Env{HTTPClient: upstreamClient()}, nil)
+	if err != nil {
+		return nil, "", err
+	}
+	return l.cfg, l.sum, nil
+}
+
+// loaded is a configuration file read, checked and bound to its sources.
+type loaded struct {
+	cfg       *config.Config
+	sum       string // the file's SHA-256, hex
+	bindings  map[string]aggregator.Binding
+	providers map[string]built
 }
 
 // load reads the configuration file at path and expands ${NAME}, applies
 // the environment overrides (PORT), builds every source through its
-// backend's adapter and validates the result, reporting every problem at
+// backend's adapter, reusing prev's providers for unchanged backends
+// (buildBindings), and validates the result, reporting every problem at
 // once. It performs no I/O besides reading the file.
-func load(path string, getenv func(string) string, reg *source.Registry, env source.Env) (*config.Config, map[string]aggregator.Binding, error) {
-	cfg, err := config.Read(path)
+func load(path string, getenv func(string) string, reg *source.Registry, env source.Env, prev map[string]built) (loaded, error) {
+	cfg, sum, err := config.Read(path)
 	if err != nil {
-		return nil, nil, err
+		return loaded{}, err
 	}
 	cfg.ApplyEnvOverrides(getenv)
-	bindings, adapterErr := buildBindings(cfg, reg, env)
+	bindings, providers, adapterErr := buildBindings(cfg, reg, env, prev)
 	if err := errors.Join(cfg.Validate(), adapterErr); err != nil {
-		return nil, nil, err
+		return loaded{}, err
 	}
-	return cfg, bindings, nil
+	return loaded{cfg: cfg, sum: sum, bindings: bindings, providers: providers}, nil
 }
 
 // New assembles the service with the default adapters. It performs no I/O.
@@ -94,7 +112,7 @@ func NewWithRegistry(cfg *config.Config, log *slog.Logger, version string, reg *
 	metrics := telemetry.New(version)
 	metrics.OriginLock(len(cfg.Server.RequiredHeaders) > 0)
 	env := source.Env{HTTPClient: upstreamClient(), UserAgent: "wso2-cloud-statusd/" + version}
-	bindings, err := buildBindings(cfg, reg, env)
+	bindings, providers, err := buildBindings(cfg, reg, env, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -126,6 +144,7 @@ func NewWithRegistry(cfg *config.Config, log *slog.Logger, version string, reg *
 		agg:       agg,
 		registry:  reg,
 		env:       env,
+		providers: providers,
 		reloadObs: metrics,
 		public:    newServer(public, log),
 		admin:     newServer(httpapi.NewAdminHandler(store, metrics.Handler()), log),

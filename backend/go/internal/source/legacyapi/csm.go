@@ -24,7 +24,6 @@ import (
 	"fmt"
 	"io"
 	"maps"
-	"net"
 	"net/http"
 	"net/url"
 	"slices"
@@ -52,16 +51,22 @@ var (
 	ErrThrottled = errors.New("legacyapi: CSM throttled the backend")
 )
 
-// The options a CSM backend takes. The client secret is a reference to the
-// environment ("${CSM_CLIENT_SECRET}"), never a value in the file.
+// The options a CSM backend takes. The client secret must be one reference
+// to the environment ("${CSM_CLIENT_SECRET}"), never a value in the file.
 var csmOptions = []string{"client_id", "client_secret", "token_url"}
 
-// Retry-After bounds: a 429 without a usable value waits the default, and
-// no answer stops a backend for longer than the cap.
+// MaxRetryAfter caps how long a 429 stops a backend. It stays below the
+// shipped polling.stale_after (a test holds it there), so a throttled
+// backend's data is fetched again before the page marks it stale. A 429
+// without a usable Retry-After waits defaultRetryAfter.
 const (
+	MaxRetryAfter     = 4 * time.Minute
 	defaultRetryAfter = time.Minute
-	maxRetryAfter     = 10 * time.Minute
 )
+
+// csmSlots is how many requests one CSM backend has in flight at most, so
+// the first round of polls does not reach CSM all at once.
+const csmSlots = 2
 
 type csmProvider struct {
 	client   *csmClient
@@ -73,21 +78,11 @@ func (p csmProvider) Source(cloud string) source.Source {
 }
 
 // NewCSMProvider is the source.Factory for CSM's cloud-status API. Every
-// cloud of the backend shares one token and one throttling circuit.
+// cloud of the backend shares one token, one throttling circuit and its
+// request slots.
 func NewCSMProvider(_ string, b config.Backend, env source.Env) (source.Provider, error) {
-	var unknown []string
-	for _, k := range slices.Sorted(maps.Keys(b.Options)) {
-		if !slices.Contains(csmOptions, k) {
-			unknown = append(unknown, k)
-		}
-	}
-	if len(unknown) > 0 {
-		return nil, fmt.Errorf("legacyapi: unknown CSM options %v (known: %v)", unknown, csmOptions)
-	}
-	for _, k := range csmOptions {
-		if b.Options[k] == "" {
-			return nil, fmt.Errorf("legacyapi: CSM option %s is required", k)
-		}
+	if err := checkCSMOptions(b); err != nil {
+		return nil, err
 	}
 	if env.HTTPClient == nil {
 		return nil, errors.New("legacyapi: nil http client")
@@ -110,32 +105,48 @@ func NewCSMProvider(_ string, b config.Backend, env source.Env) (source.Provider
 		userAgent: env.UserAgent,
 		tokens:    newTokenSource(tokenURL, b.Options["client_id"], b.Options["client_secret"], env.HTTPClient),
 		throttle:  &circuit{now: time.Now},
+		slots:     make(chan struct{}, csmSlots),
 	}
 	return csmProvider{client: client, location: loc}, nil
 }
 
-// secureURL accepts https, and plain http only on a loopback host (a local
-// fake upstream): the token and the statuses never cross a network in clear.
-func secureURL(name, raw string) (*url.URL, error) {
-	u, err := url.Parse(raw)
-	if err != nil {
-		return nil, fmt.Errorf("legacyapi: parse %s: %w", name, err)
+// checkCSMOptions rejects unknown or missing options, a client secret
+// written in the file rather than read from the environment, and
+// credentials with surrounding spaces or control characters (a secret read
+// from a file with a trailing newline, for example).
+func checkCSMOptions(b config.Backend) error {
+	var unknown []string
+	for _, k := range slices.Sorted(maps.Keys(b.Options)) {
+		if !slices.Contains(csmOptions, k) {
+			unknown = append(unknown, k)
+		}
 	}
-	if u.Scheme == "https" && u.Host != "" {
-		return u, nil
+	if len(unknown) > 0 {
+		return fmt.Errorf("legacyapi: unknown CSM options %v (known: %v)", unknown, csmOptions)
 	}
-	if u.Scheme == "http" && loopback(u.Hostname()) {
-		return u, nil
+	for _, k := range csmOptions {
+		if b.Options[k] == "" {
+			return fmt.Errorf("legacyapi: CSM option %s is required", k)
+		}
 	}
-	return nil, fmt.Errorf("legacyapi: %s %q must be https (http only on a loopback host)", name, raw)
+	if !b.EnvOptions["client_secret"] {
+		return errors.New("legacyapi: CSM option client_secret must be one ${NAME} reference to the environment, not a value in the file")
+	}
+	for _, k := range []string{"client_id", "client_secret"} {
+		if !config.ValidHeaderValue(b.Options[k]) {
+			return fmt.Errorf("legacyapi: CSM option %s has surrounding spaces or a control character", k)
+		}
+	}
+	return nil
 }
 
-func loopback(host string) bool {
-	if host == "localhost" {
-		return true
+// secureURL checks one of the backend's URLs with config.SecureURL.
+func secureURL(name, raw string) (*url.URL, error) {
+	u, err := config.SecureURL(raw)
+	if err != nil {
+		return nil, fmt.Errorf("legacyapi: %s: %w", name, err)
 	}
-	ip := net.ParseIP(host)
-	return ip != nil && ip.IsLoopback()
+	return u, nil
 }
 
 // csmClient reads CSM's cloud-status API for every cloud of one backend.
@@ -145,6 +156,7 @@ type csmClient struct {
 	userAgent string
 	tokens    *tokenSource
 	throttle  *circuit
+	slots     chan struct{} // one value per request in flight
 }
 
 // envelope is the wrapper CSM keeps from ServiceNow; the data inside is the
@@ -174,9 +186,21 @@ func (r *result) problem(cloud string) string {
 	return ""
 }
 
+// fetch waits for a request slot, then reads one kind for one cloud. The
+// circuit is checked before and again after the wait, so a 429 that
+// arrives meanwhile holds the reads still waiting.
 func (c *csmClient) fetch(ctx context.Context, kind, cloud string, out any) error {
-	if wait := c.throttle.remaining(); wait > 0 {
-		return fmt.Errorf("%w: next try in %s", ErrThrottled, wait.Round(time.Second))
+	if err := c.held(); err != nil {
+		return err
+	}
+	select {
+	case c.slots <- struct{}{}:
+	case <-ctx.Done():
+		return fmt.Errorf("legacyapi: waiting to read cloud-status/%s?cloud=%s: %w", kind, cloud, ctx.Err())
+	}
+	defer func() { <-c.slots }()
+	if err := c.held(); err != nil {
+		return err
 	}
 	token, err := c.tokens.token(ctx)
 	if err != nil {
@@ -204,11 +228,21 @@ func (c *csmClient) fetch(ctx context.Context, kind, cloud string, out any) erro
 	return unwrap(body, kind, cloud, out)
 }
 
+// held reports ErrThrottled while CSM asks the backend to wait.
+func (c *csmClient) held() error {
+	if wait := c.throttle.remaining(); wait > 0 {
+		return fmt.Errorf("%w: next try in %s", ErrThrottled, wait.Round(time.Second))
+	}
+	return nil
+}
+
 // check turns a status other than 200 into an error: a 429 holds the whole
-// backend for its Retry-After, and a 401 drops the token, so the next poll
-// asks for a new one instead of resending it until it expires.
+// backend for its Retry-After, and a 401 drops the token and holds new
+// token requests for a while (tokenSource.refused). A 200 tells the token
+// source its token works.
 func (c *csmClient) check(resp *http.Response, body io.Reader, token string) error {
 	if resp.StatusCode == http.StatusOK {
+		c.tokens.accepted()
 		return nil
 	}
 	_, _ = io.Copy(io.Discard, body)
@@ -218,7 +252,7 @@ func (c *csmClient) check(resp *http.Response, body io.Reader, token string) err
 		c.throttle.open(wait)
 		return fmt.Errorf("%w: returned 429; waiting %s", ErrThrottled, wait)
 	case http.StatusUnauthorized:
-		c.tokens.forget(token)
+		c.tokens.refused(token)
 	}
 	return fmt.Errorf("%w: returned %d", ErrUnexpectedStatus, resp.StatusCode)
 }
@@ -251,15 +285,26 @@ func codeOf(code *int) string {
 }
 
 // retryAfter reads a Retry-After header (seconds or an HTTP date) as a wait
-// within (0, maxRetryAfter]; anything else waits defaultRetryAfter.
+// within (0, MaxRetryAfter]; anything else waits defaultRetryAfter.
 func retryAfter(header string, now time.Time) time.Duration {
-	wait := defaultRetryAfter
-	if s, err := strconv.Atoi(header); err == nil && s > 0 {
-		wait = time.Duration(s) * time.Second
-	} else if at, err := http.ParseTime(header); err == nil && at.After(now) {
-		wait = at.Sub(now)
+	if wait, ok := seconds(header, MaxRetryAfter); ok {
+		return wait
 	}
-	return min(wait, maxRetryAfter)
+	if at, err := http.ParseTime(header); err == nil && at.After(now) {
+		return min(at.Sub(now), MaxRetryAfter)
+	}
+	return defaultRetryAfter
+}
+
+// seconds reads text as a whole number of seconds above zero, capped at
+// limit before it becomes a Duration, so no value overflows (one beyond
+// int64 counts as above the limit). ok is false for anything else.
+func seconds(text string, limit time.Duration) (time.Duration, bool) {
+	n, err := strconv.ParseInt(text, 10, 64)
+	if (err != nil && !errors.Is(err, strconv.ErrRange)) || n <= 0 {
+		return 0, false
+	}
+	return time.Duration(min(n, int64(limit/time.Second))) * time.Second, true
 }
 
 // circuit holds every poll of one backend while CSM asks it to wait. All

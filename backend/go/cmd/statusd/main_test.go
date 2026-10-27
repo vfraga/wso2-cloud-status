@@ -19,6 +19,8 @@ package main
 import (
 	"bufio"
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"net"
@@ -134,6 +136,37 @@ func TestCheckConfigRejects(t *testing.T) {
 	t.Setenv("PORT", "9090")
 	if code, _, stderr := check(t, "-check-config", writeConfig(t, backend+product)); code != 1 || !strings.Contains(stderr, "must differ") {
 		t.Errorf("PORT on the admin port: exit %d, stderr %q; want 1 and the collision named", code, stderr)
+	}
+}
+
+// TestCheckConfigCSMSecret: a CSM client secret must be one ${NAME}
+// reference, read from the environment without surrounding spaces or
+// control characters; the check never prints it.
+func TestCheckConfigCSMSecret(t *testing.T) {
+	t.Setenv("PORT", "")
+	t.Setenv("STATUSD_TEST_SECRET", "s3cret")
+	t.Setenv("STATUSD_TEST_SECRET_NEWLINE", "s3cret\n")
+	csm := func(secret string) string {
+		return "backends:\n  b:\n    type: csm-cloud-status\n    base_url: https://csm.example.test\n" +
+			"    options: { token_url: \"https://sts.example.test/token\", client_id: statusd, client_secret: " + secret + " }\n" + product
+	}
+	for secret, want := range map[string]string{
+		`"${STATUSD_TEST_SECRET}"`:         "",
+		`s3cret`:                           "CSM option client_secret must be one ${NAME} reference to the environment, not a value in the file",
+		`"x-${STATUSD_TEST_SECRET}"`:       "CSM option client_secret must be one ${NAME} reference",
+		`"${STATUSD_TEST_SECRET_NEWLINE}"`: "CSM option client_secret has surrounding spaces or a control character",
+	} {
+		path := writeConfig(t, csm(secret))
+		code, stdout, stderr := check(t, "-check-config", path)
+		switch {
+		case want == "" && (code != 0 || !strings.HasSuffix(stdout, "is valid: 1 products, origin lock off\n")):
+			t.Errorf("%s: exit %d, stdout %q, stderr %q; want it valid", secret, code, stdout, stderr)
+		case want != "" && (code != 1 || !strings.Contains(stderr, path+" is invalid: ") || !strings.Contains(stderr, want)):
+			t.Errorf("%s: exit %d, stderr %q; want 1 and %q", secret, code, stderr, want)
+		}
+		if strings.Contains(stdout+stderr, "s3cret") {
+			t.Errorf("%s: the output carries the secret: %q %q", secret, stdout, stderr)
+		}
 	}
 }
 
@@ -255,11 +288,12 @@ func all(line string, parts []string) bool {
 	return true
 }
 
-// TestServeLifecycle runs statusd as a process: SIGHUP reloads the
-// configuration file and statusd keeps serving, SIGTERM shuts it down with
-// exit 0, and a configuration rejected at startup, whether by validation or
-// by a backend's adapter, exits 2 and logs "configuration rejected" with
-// every problem. Operators read the exit code and that message.
+// TestServeLifecycle runs statusd as a process: it logs the configuration
+// file's SHA-256 at start, SIGHUP reloads the file and logs the new one's,
+// and statusd keeps serving, SIGTERM shuts it down with exit 0, and a
+// configuration rejected at startup, whether by validation or by a
+// backend's adapter, exits 2 and logs "configuration rejected" with every
+// problem. Operators read the exit code and those messages.
 func TestServeLifecycle(t *testing.T) {
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		bodies := map[string]string{
@@ -282,8 +316,13 @@ products:
     sources: [{ backend: b, cloud: c, regions: [{ key: us, id: us, name: US }] }]
 `, upstream.URL, name)
 	}
+	digest := func(body string) string {
+		sum := sha256.Sum256([]byte(body))
+		return `"sha256":"` + hex.EncodeToString(sum[:]) + `"`
+	}
 	path := writeConfig(t, config("Before"))
 	cmd, lines := statusd(t, "-config", path)
+	await(t, lines, `"msg":"configuration loaded"`, digest(config("Before")))
 	await(t, lines, `"msg":"serving"`)
 
 	if err := os.WriteFile(path, []byte(config("After")), 0o600); err != nil {
@@ -292,7 +331,7 @@ products:
 	if err := cmd.Process.Signal(syscall.SIGHUP); err != nil {
 		t.Fatal(err)
 	}
-	await(t, lines, `"msg":"configuration reloaded"`, `"trigger":"signal"`)
+	await(t, lines, `"msg":"configuration reloaded"`, `"trigger":"signal"`, digest(config("After")))
 
 	if err := cmd.Process.Signal(syscall.SIGTERM); err != nil {
 		t.Fatal(err)

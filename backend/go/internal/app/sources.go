@@ -41,12 +41,23 @@ func DefaultRegistry() *source.Registry {
 	return r
 }
 
+// built is a backend's provider and the definition it was built from.
+type built struct {
+	definition string
+	provider   source.Provider
+}
+
 // buildBindings creates one source per product source reference, through
-// the backend's adapter, and reports every backend its adapter refuses. A
-// reference to a backend that does not exist gets no source; validation
-// reports it.
-func buildBindings(cfg *config.Config, reg *source.Registry, env source.Env) (map[string]aggregator.Binding, error) {
-	providers := make(map[string]source.Provider, len(cfg.Backends))
+// its backend's provider, and reports every backend its adapter refuses.
+// A backend whose definition is unchanged from prev keeps its provider, so
+// the clouds a reload adds share the token, throttling circuit and request
+// slots of the clouds already bound; a new or changed backend gets a new
+// one. Every backend goes through its adapter either way, so a reload
+// checks the file as a start does. It returns the providers the bindings
+// use. A reference to a backend that does not exist gets no source;
+// validation reports it.
+func buildBindings(cfg *config.Config, reg *source.Registry, env source.Env, prev map[string]built) (map[string]aggregator.Binding, map[string]built, error) {
+	providers := make(map[string]built, len(cfg.Backends))
 	var errs []error
 	for _, name := range slices.Sorted(maps.Keys(cfg.Backends)) {
 		p, err := reg.Provider(name, cfg.Backends[name], env)
@@ -54,36 +65,49 @@ func buildBindings(cfg *config.Config, reg *source.Registry, env source.Env) (ma
 			errs = append(errs, err)
 			continue
 		}
-		providers[name] = p
+		def := definition(cfg.Backends[name])
+		if kept, ok := prev[name]; ok && kept.definition == def {
+			providers[name] = kept
+			continue
+		}
+		providers[name] = built{definition: def, provider: p}
 	}
 	if len(errs) > 0 {
-		return nil, errors.Join(errs...)
+		return nil, nil, errors.Join(errs...)
 	}
 	bindings := map[string]aggregator.Binding{}
 	for _, p := range cfg.Products {
 		for _, ref := range p.Sources {
-			provider, ok := providers[ref.Backend]
+			b, ok := providers[ref.Backend]
 			if !ok {
 				continue
 			}
 			bindings[aggregator.SourceKey(ref)] = aggregator.Binding{
-				Source:      provider.Source(ref.Cloud),
+				Source:      b.provider.Source(ref.Cloud),
 				Fingerprint: fingerprint(cfg.Backends[ref.Backend], ref.Cloud),
 			}
 		}
 	}
-	return bindings, nil
+	return bindings, providers, nil
 }
 
-// fingerprint identifies everything that determines a source's data. It is
-// hashed because options may hold secrets.
-func fingerprint(b config.Backend, cloud string) string {
+// definition identifies everything that defines a backend: its type, base
+// URL, time zone and options. It is hashed because options may hold
+// secrets.
+func definition(b config.Backend) string {
 	var sb strings.Builder
-	fmt.Fprintf(&sb, "%s\x00%s\x00%s\x00%s", b.Type, b.BaseURL, b.Timezone, cloud)
+	fmt.Fprintf(&sb, "%s\x00%s\x00%s", b.Type, b.BaseURL, b.Timezone)
 	for _, k := range slices.Sorted(maps.Keys(b.Options)) {
 		fmt.Fprintf(&sb, "\x00%s=%s", k, b.Options[k])
 	}
 	sum := sha256.Sum256([]byte(sb.String()))
+	return hex.EncodeToString(sum[:])
+}
+
+// fingerprint identifies everything that determines a source's data: its
+// backend's definition and its cloud.
+func fingerprint(b config.Backend, cloud string) string {
+	sum := sha256.Sum256([]byte(definition(b) + "\x00" + cloud))
 	return hex.EncodeToString(sum[:])
 }
 

@@ -20,6 +20,8 @@ package config
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"net"
@@ -103,6 +105,10 @@ type Backend struct {
 	// Options are adapter-specific settings; each adapter rejects keys it
 	// does not know. Secrets belong in the environment: "${NAME}".
 	Options map[string]string `yaml:"options"`
+	// EnvOptions names the options whose value in the file is one ${NAME}
+	// reference and nothing else, so an adapter can require a secret to
+	// come from the environment. It is set when the file is read.
+	EnvOptions map[string]bool `yaml:"-"`
 }
 
 // Product is one row on the status page.
@@ -145,7 +151,7 @@ func Slugify(s string) string {
 
 // Load reads, defaults and validates the configuration at path.
 func Load(path string) (*Config, error) {
-	cfg, err := Read(path)
+	cfg, _, err := Read(path)
 	if err != nil {
 		return nil, err
 	}
@@ -156,17 +162,28 @@ func Load(path string) (*Config, error) {
 }
 
 // Read reads and defaults the configuration at path without validating it,
-// for a caller that changes it (ApplyEnvOverrides) before validating.
-func Read(path string) (*Config, error) {
+// for a caller that changes it (ApplyEnvOverrides) before validating. It
+// also returns the SHA-256 of the bytes it read, in hex, which names the
+// file in logs.
+func Read(path string) (cfg *Config, sha256Hex string, err error) {
 	raw, err := os.ReadFile(path) //nolint:gosec // The path comes from the operator, not from a request.
 	if err != nil {
-		return nil, fmt.Errorf("config: read %s: %w", path, err)
+		return nil, "", fmt.Errorf("config: read %s: %w", path, err)
 	}
-	return decode(raw)
+	sum := sha256.Sum256(raw)
+	cfg, err = decode(raw)
+	if err != nil {
+		return nil, "", err
+	}
+	return cfg, hex.EncodeToString(sum[:]), nil
 }
 
-// envRef matches ${NAME}; a bare $ is left alone.
-var envRef = regexp.MustCompile(`\$\{([A-Za-z_][A-Za-z0-9_]*)\}`)
+// envRef matches ${NAME}; a bare $ is left alone. wholeRef matches a value
+// that is one reference and nothing else.
+var (
+	envRef   = regexp.MustCompile(`\$\{([A-Za-z_][A-Za-z0-9_]*)\}`)
+	wholeRef = regexp.MustCompile(`^` + envRef.String() + `$`)
+)
 
 // expandEnv replaces ${NAME} in YAML values (never in comments or keys) with
 // the environment value. An unset variable is an error, so a missing secret
@@ -243,20 +260,53 @@ func Parse(raw []byte) (*Config, error) {
 }
 
 // decode expands ${NAME} references, decodes YAML strictly (unknown keys are
-// errors) and applies defaults.
+// errors), records which backend options were one reference (EnvOptions)
+// and applies defaults.
 func decode(raw []byte) (*Config, error) {
-	raw, err := expandEnv(raw)
+	expanded, err := expandEnv(raw)
 	if err != nil {
 		return nil, err
 	}
 	var cfg Config
-	dec := yaml.NewDecoder(bytes.NewReader(raw))
+	dec := yaml.NewDecoder(bytes.NewReader(expanded))
 	dec.KnownFields(true)
 	if err := dec.Decode(&cfg); err != nil {
 		return nil, fmt.Errorf("config: decode: %w", err)
 	}
+	if err := cfg.recordEnvOptions(raw); err != nil {
+		return nil, err
+	}
 	cfg.applyDefaults()
 	return &cfg, nil
+}
+
+// recordEnvOptions sets each backend's EnvOptions from the file as written,
+// before expansion.
+func (c *Config) recordEnvOptions(raw []byte) error {
+	var written struct {
+		Backends map[string]struct {
+			Options map[string]string `yaml:"options"`
+		} `yaml:"backends"`
+	}
+	if err := yaml.Unmarshal(raw, &written); err != nil {
+		return fmt.Errorf("config: decode: %w", err)
+	}
+	for name, w := range written.Backends {
+		b, ok := c.Backends[name]
+		if !ok {
+			continue
+		}
+		for k, v := range w.Options {
+			if wholeRef.MatchString(v) {
+				if b.EnvOptions == nil {
+					b.EnvOptions = map[string]bool{}
+				}
+				b.EnvOptions[k] = true
+			}
+		}
+		c.Backends[name] = b
+	}
+	return nil
 }
 
 func (c *Config) applyDefaults() {
