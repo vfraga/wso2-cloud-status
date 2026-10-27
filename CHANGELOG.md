@@ -37,6 +37,9 @@ section here, or while the Unreleased section still holds entries. The public AP
 
 ### Changed
 
+- statusd logs the configuration file's SHA-256 when it starts
+  (`configuration loaded`) and with every reload it applies, so the running
+  file can be matched to its commit.
 - The headline words a problem by how much it affects: "Partial outage:
   API Platform" in amber when part of WSO2 Cloud is out, naming up to two
   products and then counting them, and "Major outage" in red only when
@@ -102,6 +105,18 @@ section here, or while the Unreleased section still holds entries. The public AP
 
 ### Fixed
 
+- A live reload no longer gives a CSM backend a second token and throttling
+  circuit: every cloud of the backend, added by a reload or not, shares
+  them.
+- A 429 holds a CSM backend for at most 4 minutes, below the 5 minutes
+  after which its data goes stale, so a throttled backend keeps its last
+  good data current; a huge Retry-After or token lifetime no longer
+  overflows and skips the hold or the token cache.
+- A token the gateway refuses holds new token requests for 10 seconds,
+  doubling to 2 minutes while refusals continue, instead of asking on every
+  poll; a token request no longer fails with the poll that started it; a
+  CSM backend has at most 2 requests in flight, and a 429 holds the ones
+  still waiting.
 - A product's page words a location as the home table does: "Partial
   outage" in amber when some of its planes are out, "Major outage" when all
   are, where it showed CSM's "Service outage" in red.
@@ -190,6 +205,10 @@ section here, or while the Unreleased section still holds entries. The public AP
 
 ### Security
 
+- statusd refuses a CSM `client_secret` written in the configuration file
+  (it must be one `${NAME}` reference) and CSM credentials with surrounding
+  spaces or control characters; every backend type takes https, or http
+  only on a loopback host.
 - The page's container has statusd's origin lock: with `FRONT_DOOR_ID` set
   it answers 403, from its error page, to every request but its health
   probe that lacks the Front Door profile's ID, and it does not start
