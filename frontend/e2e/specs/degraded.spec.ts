@@ -38,7 +38,10 @@ const apiCell = (page: Page, n: number) =>
 test.describe("outage, degraded and maintenance components in one place, and an active incident", () => {
   test("banner, and the affected place with its parts in the table", async ({ page }) => {
     await ready(page);
-    await expect(page.getByRole("heading", { level: 1 })).toHaveText("Service outage");
+    // One region of one product out: a partial outage naming it, not WSO2 Cloud down.
+    await expect(page.getByRole("heading", { level: 1 })).toHaveText(
+      "Partial outage: API Platform",
+    );
     // The banner names the affected product and regions, grouped by status.
     const banner = page.getByRole("region", { name: "Overall status" });
     await expect(banner).toContainText("Service outage: API Platform (EU data plane).");
@@ -229,7 +232,7 @@ test.describe("outage, degraded and maintenance components in one place, and an 
     await readyProduct(page, "api-platform", "API Platform");
     const banner = page.getByRole("region", { name: "Overall status" });
     await expect(banner.getByRole("heading", { level: 1 })).toHaveAccessibleName(
-      "API Platform (Bijira): Service outage",
+      "API Platform (Bijira): Partial outage",
     );
     await expect(banner).toContainText("Service outage: EU data plane.");
     await expect(banner).toContainText("Under maintenance: EU control plane.");

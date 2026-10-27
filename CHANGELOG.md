@@ -32,6 +32,12 @@ section here. The public API has its own version, in `api/openapi.yaml`.
 
 ### Changed
 
+- The headline words a problem by how much it affects: "Partial outage:
+  API Platform" in amber when part of WSO2 Cloud is out, naming up to two
+  products and then counting them, and "Major outage" in red only when
+  everything is out; a product's page heads the same way over its regions.
+  The summary and each product carry an `extent` ("all" or "some") for it.
+  The lines under the headline name each status and where.
 - The home page shows the current status at a glance: the banner, the
   active incidents while there are any, and a table with a row per product
   and a column per location (US, EU). Each cell is the location's status as

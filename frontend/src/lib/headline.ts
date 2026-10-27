@@ -16,15 +16,18 @@
  * under the License.
  */
 
-import type { ProductSummary, Status, Summary } from "../api/types";
+import type { Extent, ProductSummary, Status, Summary } from "../api/types";
 import { componentFreshness } from "./freshness";
 import { productRows, rowStatus } from "./regions";
 import {
   BANNER_LABEL,
   COMPONENTS_UNAVAILABLE,
+  MAJOR_OUTAGE,
   PARTIAL_HEADLINE,
+  PARTIAL_OUTAGE,
   STATUS_LABEL,
   capitalise,
+  headlineFor,
   isProblem,
   listNames,
   othersOperational,
@@ -41,6 +44,7 @@ export interface DetailLine {
 
 /** What the banner says: the h1, its colour and icon, and an optional line under it. */
 export interface Headline {
+  /** Sets the banner's colour and icon: amber for a partial outage. */
   status: Status;
   label: string;
   /** The line under the headline, as one paragraph. */
@@ -57,9 +61,10 @@ export interface Headline {
  * The status is the API's: statusd computes it once and fails closed, so it
  * is unknown when data is missing and no problem is known. The
  * page renders it and never computes its own. What the headline adds is
- * words: a problem keeps its status as the headline, and the line under it
- * names what is affected, grouped by status when there is more than one,
- * then what is missing.
+ * words: a problem leads the headline, worded by how much it affects (a
+ * partial outage, naming the products, or a major one when everything is
+ * out), and the lines under it name each status and where, then what is
+ * missing.
  */
 
 /** Up to this many unknown products are named in the headline. */
@@ -108,19 +113,35 @@ function addProduct(affected: Affected, product: ProductSummary): void {
 }
 
 /**
- * "Affected: A and B." when everything shares the headline's status, which
- * already names it. Otherwise grouped by status, worst first, so maintenance
- * never reads as an outage: "Service outage: A (EU). Under maintenance: B (US)."
+ * What is affected, grouped by status, worst first, so maintenance never
+ * reads as an outage: "Service outage: A (EU). Under maintenance: B (US)."
  */
-function affectedSentences(headline: Status, affected: Affected): DetailLine[] {
-  const present = PROBLEMS.filter((s) => affected.has(s));
-  if (present.length === 1 && present[0] === headline) {
-    return [line(headline, `Affected: ${listNames(affected.get(headline) ?? [])}.`)];
-  }
-  return present.map((s) => line(s, `${STATUS_LABEL[s]}: ${listNames(affected.get(s) ?? [])}.`));
+function affectedSentences(affected: Affected): DetailLine[] {
+  return PROBLEMS.filter((s) => affected.has(s)).map((s) =>
+    line(s, `${STATUS_LABEL[s]}: ${listNames(affected.get(s) ?? [])}.`),
+  );
 }
 
-function summaryLabel(status: Status, unknown: readonly ProductSummary[]): Headline {
+/**
+ * A problem's headline: an outage of everything is a major outage, of part
+ * a partial one in amber; `names` are what carries the status, named up to
+ * two ("Partial outage: API Platform").
+ */
+function problemHeadline(status: Status, extent: Extent, names: readonly string[]): Headline {
+  if (status === "outage") {
+    return extent === "all"
+      ? { status, label: MAJOR_OUTAGE }
+      : { status: "degraded", label: headlineFor(PARTIAL_OUTAGE, names) };
+  }
+  return { status, label: headlineFor(BANNER_LABEL[status], names) };
+}
+
+function summaryLabel(summary: Summary, unknown: readonly ProductSummary[]): Headline {
+  const { status, extent, products } = summary;
+  if (isProblem(status)) {
+    const names = products.filter((p) => p.status === status).map((p) => p.name);
+    return problemHeadline(status, extent, names);
+  }
   if (status !== "unknown") return { status, label: BANNER_LABEL[status] };
   if (unknown.length === 0) return { status, label: PARTIAL_HEADLINE };
   const label =
@@ -141,7 +162,7 @@ export function summaryHeadline(summary: Summary): Headline {
   for (const p of products) if (isProblem(p.status)) addProduct(affected, p);
   const partial = products.filter((p) => p.status !== "unknown" && !p.dataComplete);
   const fine = products.filter((p) => p.status === "operational" && p.dataComplete).length;
-  const headline = summaryLabel(status, unknown);
+  const headline = summaryLabel(summary, unknown);
   // Each unknown product is named once: in the headline, or with its last
   // check in the banner's notice (componentNotes), or else in this line.
   const inNotice = new Set(componentFreshness(products).late.map((p) => p.name));
@@ -149,7 +170,7 @@ export function summaryHeadline(summary: Summary): Headline {
   const unnamed = named ? [] : unknown.filter((p) => !inNotice.has(p.name));
 
   const lines = [
-    ...affectedSentences(status, affected),
+    ...affectedSentences(affected),
     ...(unnamed.length > 0
       ? [line("unknown", `${unavailableFor(unnamed.map((p) => p.name))}.`)]
       : []),
@@ -168,12 +189,11 @@ export function productHeadline(product: ProductSummary): Headline {
     for (const r of product.regions) if (r.status === s) add(affected, s, r.name);
   }
   const lines = [
-    ...(isProblem(status) ? affectedSentences(status, affected) : []),
+    ...(isProblem(status) ? affectedSentences(affected) : []),
     ...(dataComplete ? [] : [line("unknown", `${capitalise(missingDataText(product))}.`)]),
   ];
-  const headline: Headline =
-    isProblem(status) || dataComplete
-      ? { status, label: BANNER_LABEL[status] }
-      : { status: "unknown", label: PARTIAL_HEADLINE };
+  let headline: Headline = { status, label: BANNER_LABEL[status] };
+  if (isProblem(status)) headline = problemHeadline(status, product.extent, []);
+  else if (!dataComplete) headline = { status: "unknown", label: PARTIAL_HEADLINE };
   return withDetail(headline, lines);
 }

@@ -21,6 +21,9 @@
 export const STATUSES = ["unknown", "operational", "maintenance", "degraded", "outage"] as const;
 export type Status = (typeof STATUSES)[number];
 
+/** How much of a roll-up carries its status: every part of it, or only some. */
+export type Extent = "all" | "some";
+
 export interface Uptime {
   window: string;
   percent: number;
@@ -101,6 +104,8 @@ export interface ProductSummary {
   name: string;
   description?: string;
   status: Status;
+  /** Whether every region of the product has its status. */
+  extent: Extent;
   /** False when any region or component status is unknown. */
   dataComplete: boolean;
   /** How current each kind of its data is; every kind is stale when the API does not say. */
@@ -140,6 +145,8 @@ export interface IncidentList {
 
 export interface Summary {
   status: Status;
+  /** Whether every region of every product has the status. */
+  extent: Extent;
   /** False when any product has incomplete data or an unknown status. */
   dataComplete: boolean;
   products: ProductSummary[];

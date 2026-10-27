@@ -51,6 +51,23 @@ export const BANNER_LABEL: Record<Status, string> = {
 };
 
 /**
+ * A roll-up's outage, by how much of it is out: everything ("Major
+ * outage"), or some of it ("Partial outage"), as status pages word it.
+ */
+export const MAJOR_OUTAGE = "Major outage";
+export const PARTIAL_OUTAGE = "Partial outage";
+
+/** Up to this many products are named in a headline; more are counted. */
+export const HEADLINE_NAMES = 2;
+
+/** "Partial outage: API Platform", "...: A and B", "...: 3 products". */
+export function headlineFor(label: string, names: readonly string[]): string {
+  if (names.length === 0) return label;
+  const what = names.length > HEADLINE_NAMES ? count(names.length, "product") : listNames(names);
+  return `${label}: ${what}`;
+}
+
+/**
  * Label for a day cell in the history strip and its legend: what happened
  * that day, so maintenance is the event, not the present-tense state.
  */

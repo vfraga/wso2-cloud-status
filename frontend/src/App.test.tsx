@@ -155,10 +155,15 @@ describe("home page", () => {
     serve(degradedSummary());
     render(<App />);
     expect(
-      await screen.findByRole("heading", { level: 1, name: "Degraded performance" }),
+      await screen.findByRole("heading", {
+        level: 1,
+        name: "Degraded performance: API Platform",
+      }),
     ).toBeInTheDocument();
     expect(
-      screen.getByText("Affected: API Platform (EU). The other product is operational."),
+      screen.getByText(
+        "Degraded performance: API Platform (EU). The other product is operational.",
+      ),
     ).toBeInTheDocument();
     // The tab names the site only; the status is the h1.
     await expectTitle("WSO2 Cloud Status");
@@ -375,13 +380,13 @@ describe("home page", () => {
     render(<App />);
     const heading = await screen.findByRole("heading", {
       level: 1,
-      name: "Degraded performance",
+      name: "Degraded performance: API Platform",
     });
     up = false;
     await act(async () => {
       await vi.advanceTimersByTimeAsync(4 * 60_000);
     });
-    expect(heading).toHaveTextContent("Degraded performance");
+    expect(heading).toHaveTextContent("Degraded performance: API Platform");
     expect(screen.getByRole("status")).toHaveTextContent("We could not refresh it just now");
     await act(async () => {
       await vi.advanceTimersByTimeAsync(2 * 60_000);
@@ -441,7 +446,7 @@ describe("home page", () => {
     render(<App />);
     const heading = await screen.findByRole("heading", {
       level: 1,
-      name: "Degraded performance",
+      name: "Degraded performance: API Platform",
     });
     const seen = new Set<string>();
     const observer = new MutationObserver(() => {
@@ -460,7 +465,7 @@ describe("home page", () => {
       await waitFor(() => {
         expect(screen.getByText(/^Status checked just now$/)).toBeInTheDocument();
       });
-      expect(heading).toHaveTextContent("Degraded performance");
+      expect(heading).toHaveTextContent("Degraded performance: API Platform");
       expect(seen).not.toContain("Status unavailable");
     } finally {
       observer.disconnect();
@@ -919,7 +924,7 @@ describe("product page", () => {
     await expectHeadingFocused("API Platform (Bijira): Degraded performance");
     await expectTitle("API Platform - WSO2 Cloud Status");
     await user.click(screen.getByRole("link", { name: "All products" }));
-    await expectHeadingFocused("Degraded performance");
+    await expectHeadingFocused("Degraded performance: API Platform");
     await expectTitle("WSO2 Cloud Status");
     await act(async () => {
       await Promise.resolve();

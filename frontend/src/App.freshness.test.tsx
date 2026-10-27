@@ -233,7 +233,7 @@ describe("an incident feed that stopped after answering", () => {
       active: [open],
     });
     render(<App />);
-    await screen.findByRole("heading", { level: 1, name: "Degraded performance" });
+    await screen.findByRole("heading", { level: 1, name: "Degraded performance: Moesif" });
     // Banner: the headline stays; one secondary line.
     expect(
       within(banner()).getByText(

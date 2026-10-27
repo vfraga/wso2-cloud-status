@@ -19,6 +19,7 @@
 import {
   STATUSES,
   type Component,
+  type Extent,
   type Day,
   type Group,
   type Incident,
@@ -50,6 +51,14 @@ const records = (v: unknown): Rec[] => list(v).filter(isRec);
 
 export function toStatus(v: unknown): Status {
   return STATUSES.find((s) => s === v) ?? "unknown";
+}
+
+/**
+ * "some" only when the API says so: a missing or unknown extent reads as
+ * "all", so an outage is never worded as partial without the API's word.
+ */
+function toExtent(v: unknown): Extent {
+  return v === "some" ? "some" : "all";
 }
 
 export function toDate(v: unknown): Date | null {
@@ -200,6 +209,7 @@ function toProduct(r: Rec): ProductSummary | null {
     id,
     name: str(r.name, id),
     status: toStatus(r.status),
+    extent: toExtent(r.extent),
     // Fails closed: complete only when the API says so, sent both lists,
     // every region and location in them could be read, and no region is
     // unknown.
@@ -266,6 +276,7 @@ export function parseSummary(raw: unknown): Summary {
     // The API's status, except that "operational" over data the page cannot
     // read in full reads unknown. A problem status is never made healthier.
     status: status === "operational" && !dataComplete ? "unknown" : status,
+    extent: toExtent(r.extent),
     dataComplete,
     products,
     activeIncidents: parseIncidents(r.active_incidents),

@@ -18,6 +18,7 @@
 
 import type {
   Day,
+  Extent,
   Incident,
   ProductFreshness,
   ProductSummary,
@@ -60,8 +61,13 @@ export function days(count: number, overrides: Record<number, Partial<Day>> = {}
   }));
 }
 
+/** "all" when every status is the rolled-up one, as statusd computes a product's extent. */
+export function extentOf(rolled: Status, statuses: readonly Status[]): Extent {
+  return statuses.length > 0 && statuses.every((s) => s === rolled) ? "all" : "some";
+}
+
 export function product(overrides: Partial<ProductSummary> = {}): ProductSummary {
-  return {
+  const made: Omit<ProductSummary, "extent"> = {
     id: "api-platform",
     name: "API Platform",
     status: "operational",
@@ -84,6 +90,15 @@ export function product(overrides: Partial<ProductSummary> = {}): ProductSummary
     ],
     history: days(90),
     ...overrides,
+  };
+  return {
+    ...made,
+    extent:
+      overrides.extent ??
+      extentOf(
+        made.status,
+        made.regions.map((r) => r.status),
+      ),
   };
 }
 

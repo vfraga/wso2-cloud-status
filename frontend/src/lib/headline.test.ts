@@ -19,7 +19,7 @@
 import { describe, expect, it } from "vitest";
 import type { ProductSummary, RegionSummary, Status, Summary } from "../api/types";
 import { parseSummary } from "../api/parse";
-import { product } from "../test/factories";
+import { extentOf, product } from "../test/factories";
 import { productHeadline, summaryHeadline } from "./headline";
 import {
   capitalise,
@@ -66,8 +66,13 @@ function p(name: string, ...regions: [string, Status][]): ProductSummary {
 function summary(...products: ProductSummary[]): Summary {
   const dataComplete = products.every((x) => x.dataComplete && x.status !== "unknown");
   const known = worst(products.map((x) => x.status));
+  const status = !dataComplete && RANK[known] <= RANK.operational ? "unknown" : known;
   return {
-    status: !dataComplete && RANK[known] <= RANK.operational ? "unknown" : known,
+    status,
+    extent: extentOf(
+      status,
+      products.flatMap((x) => x.regions.map((r) => r.status)),
+    ),
     dataComplete,
     products,
     activeIncidents: [],
@@ -127,7 +132,7 @@ describe("summaryHeadline", () => {
     // A known problem leads; the late product is still left to the notice.
     const api = p("API Platform", ["US", "degraded"]);
     expect(summaryHeadline(summary(api, late("Moesif"))).detail).toBe(
-      "Affected: API Platform (US).",
+      "Degraded performance: API Platform (US).",
     );
   });
 
@@ -153,14 +158,15 @@ describe("summaryHeadline", () => {
     const moesif = p("Moesif", ["US", "unknown"]);
     expect(summaryHeadline(summary(api, ok("A"), moesif))).toMatchObject({
       status: "degraded",
-      label: "Degraded performance",
+      label: "Degraded performance: API Platform",
       detail:
-        "Affected: API Platform (EU data plane). Status unavailable for Moesif. The other product is operational.",
+        "Degraded performance: API Platform (EU data plane). Status unavailable for Moesif. The other product is operational.",
     });
     // Mixed statuses are grouped, worst first, so a degraded region never reads as an outage.
+    // An outage in part of WSO2 Cloud is a partial one, in amber, naming its products.
     expect(summaryHeadline(summary(api, idp))).toMatchObject({
-      status: "outage",
-      label: "Service outage",
+      status: "degraded",
+      label: "Partial outage: Identity Platform",
       detail:
         "Service outage: Identity Platform (US). Degraded performance: API Platform (EU data plane) and Identity Platform (EU).",
     });
@@ -173,8 +179,8 @@ describe("summaryHeadline", () => {
     expect(
       summaryHeadline(summary(api, integration, moesif, ok("A"), ok("B"), ok("C"))),
     ).toMatchObject({
-      status: "outage",
-      label: "Service outage",
+      status: "degraded",
+      label: "Partial outage: Integration Platform",
       detail:
         "Service outage: Integration Platform (EU control plane). Under maintenance: API Platform (EU control plane). Status unavailable for Moesif. The other 3 products are operational.",
     });
@@ -202,8 +208,8 @@ describe("summaryHeadline", () => {
     const incidentOnly = product({ name: "API Platform", status: "maintenance" });
     expect(summaryHeadline(summary(incidentOnly, ok("A")))).toEqual({
       status: "maintenance",
-      label: "Under maintenance",
-      detail: "Affected: API Platform. The other product is operational.",
+      label: "Under maintenance: API Platform",
+      detail: "Under maintenance: API Platform. The other product is operational.",
     });
   });
 
@@ -213,7 +219,13 @@ describe("summaryHeadline", () => {
       label: "Status unavailable",
     });
     expect(
-      summaryHeadline({ status: "unknown", dataComplete: true, products: [], activeIncidents: [] }),
+      summaryHeadline({
+        status: "unknown",
+        extent: "all",
+        dataComplete: true,
+        products: [],
+        activeIncidents: [],
+      }),
     ).toEqual({ status: "unknown", label: "Status unavailable" });
   });
 
@@ -221,7 +233,11 @@ describe("summaryHeadline", () => {
     // The API's status wins over what the products alone would give.
     expect(summaryHeadline({ ...summary(ok("A")), status: "outage" })).toEqual({
       status: "outage",
-      label: "Service outage",
+      label: "Major outage",
+    });
+    expect(summaryHeadline({ ...summary(ok("A")), status: "outage", extent: "some" })).toEqual({
+      status: "degraded",
+      label: "Partial outage",
     });
     // Unknown with every product known: missing data that no product names.
     expect(summaryHeadline({ ...summary(ok("A")), status: "unknown" })).toEqual({
@@ -252,7 +268,8 @@ describe("summaryHeadline", () => {
         data_complete: false,
         products: [good, { name: "B", status: "outage" }],
       }),
-    ).toBe("Service outage");
+      // Without the API's extent an outage reads as everything out, never as partial.
+    ).toBe("Major outage");
     const noField = Object.fromEntries(
       Object.entries(good).filter(([key]) => key !== "data_complete"),
     );
@@ -288,7 +305,7 @@ describe("detail lines", () => {
     const api = p("API Platform", ["US", "operational"], ["EU data plane", "degraded"]);
     const headline = summaryHeadline(summary(api, ok("A")));
     expect(headline.detail).toBe(
-      "Affected: API Platform (EU data plane). The other product is operational.",
+      "Degraded performance: API Platform (EU data plane). The other product is operational.",
     );
     expect(headline).not.toHaveProperty("lines");
   });
@@ -312,16 +329,17 @@ describe("productHeadline", () => {
     expect(productHeadline(p("A", ["US", "degraded"], ["EU", "unknown"]))).toMatchObject({
       status: "degraded",
       label: "Degraded performance",
-      detail: "Affected: US. 1 of 2 regions unavailable.",
+      detail: "Degraded performance: US. 1 of 2 regions unavailable.",
     });
     expect(productHeadline(product({ dataComplete: false }))).toMatchObject({
       status: "unknown",
       label: "Some status data is unavailable",
       detail: "Some component data is unavailable.",
     });
+    // An outage no region shows is partial; every region out is a major one.
     expect(productHeadline(product({ status: "outage" }))).toMatchObject({
-      status: "outage",
-      label: "Service outage",
+      status: "degraded",
+      label: "Partial outage",
     });
   });
 
@@ -329,22 +347,41 @@ describe("productHeadline", () => {
     expect(
       productHeadline(p("A", ["US", "degraded"], ["EU", "outage"], ["IN", "maintenance"])),
     ).toMatchObject({
-      status: "outage",
-      label: "Service outage",
+      status: "degraded",
+      label: "Partial outage",
       detail: "Service outage: EU. Degraded performance: US. Under maintenance: IN.",
     });
     expect(productHeadline(p("A", ["US", "outage"], ["EU", "outage"]))).toMatchObject({
       status: "outage",
-      label: "Service outage",
-      detail: "Affected: US and EU.",
+      label: "Major outage",
+      detail: "Service outage: US and EU.",
     });
     // An outage from an incident over a degraded region: the region keeps its own status.
     expect(
       productHeadline(product({ status: "outage", regions: [region("EU", "degraded")] })),
     ).toMatchObject({
-      status: "outage",
-      label: "Service outage",
+      status: "degraded",
+      label: "Partial outage",
       detail: "Degraded performance: EU.",
+    });
+  });
+});
+
+describe("problem headlines", () => {
+  it("name up to two products, then count them", () => {
+    const outage = (name: string) => p(name, ["US", "outage"], ["EU", "operational"]);
+    const label = (...products: ProductSummary[]) =>
+      summaryHeadline(summary(...products, ok("Z"))).label;
+    expect(label(outage("A"))).toBe("Partial outage: A");
+    expect(label(outage("A"), outage("B"))).toBe("Partial outage: A and B");
+    expect(label(outage("A"), outage("B"), outage("C"))).toBe("Partial outage: 3 products");
+  });
+
+  it("call everything out a major outage, in red", () => {
+    const down = (name: string) => p(name, ["US", "outage"], ["EU", "outage"]);
+    expect(summaryHeadline(summary(down("A"), down("B")))).toMatchObject({
+      status: "outage",
+      label: "Major outage",
     });
   });
 });

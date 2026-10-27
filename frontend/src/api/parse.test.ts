@@ -44,6 +44,7 @@ describe("parseSummary", () => {
   it("survives garbage", () => {
     expect(parseSummary(null)).toEqual({
       status: "unknown",
+      extent: "all",
       dataComplete: false,
       products: [],
       activeIncidents: [],
