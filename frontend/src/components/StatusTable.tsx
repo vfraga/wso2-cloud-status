@@ -21,7 +21,7 @@ import { ChevronRight } from "@wso2/oxygen-ui-icons-react";
 import { memo, useId, type MouseEvent } from "react";
 import type { ProductSummary, Status } from "../api/types";
 import { FALLBACK_PRODUCTS } from "../lib/fallbackProducts";
-import { placeNames, placeStatus, productRows } from "../lib/regions";
+import { type PlaceStatus, placeNames, placeStatus, productRows } from "../lib/regions";
 import { Link, navigate } from "../lib/router";
 import {
   PRODUCT_COLUMN,
@@ -31,11 +31,11 @@ import {
   STATUS_TABLE_CAPTION,
   isProblem,
   noRegionIn,
-  partNote,
   partStatus,
   regionNotStated,
+  rolledUp,
 } from "../lib/status";
-import { StatusLabel } from "./StatusIcon";
+import { StatusIcon, StatusLabel } from "./StatusIcon";
 
 /*
  * A table from sm up. On a phone each row wraps instead: the product's name
@@ -77,36 +77,42 @@ const headSx = {
 const nameSx = { fontSize: "1.0625rem", fontWeight: 600, lineHeight: 1.4 } as const;
 /** Fits "Degraded performance", the longest status label, with its icon. */
 const PLACE_COLUMN = "13rem";
-/** Lines a part's name up with the status text, after the label's 16 px icon and its gap. */
-const AFTER_ICON = "22px";
+/** The width of the label's icon; a part's smaller icon is centred in it, so names line up with the status text. */
+const ICON_BOX = "16px";
 
 /**
- * A part under its place's status. A part in the place's own state shows its
- * name alone, the eye taking its status from the line above; a screen reader
- * hears the status with it.
+ * A part under its place's status: its own status as an icon, then its name.
+ * The banner above gives each status in words; a screen reader hears it here.
  */
-function PartLine({ name, status, place }: { name: string; status: Status; place: Status }) {
-  const shown = partNote(name, status, place);
-  const spoken = partStatus(name, status);
+function PartLine({ name, status }: { name: string; status: Status }) {
   return (
     <Typography
       variant="caption"
-      sx={{ display: "block", color: "var(--cs-muted)", pl: AFTER_ICON }}
+      sx={{ display: "flex", alignItems: "flex-start", gap: 0.75, color: "var(--cs-muted)" }}
     >
-      {shown === spoken ? (
-        shown
-      ) : (
-        <>
-          <span aria-hidden="true">{shown}</span>
-          <span className="cs-visually-hidden">{spoken}</span>
-        </>
-      )}
+      {/* Centred on the caption's first line, as long names wrap. */}
+      <Box
+        component="span"
+        sx={{ display: "inline-flex", justifyContent: "center", width: ICON_BOX, mt: "3px" }}
+      >
+        <StatusIcon status={status} size={14} />
+      </Box>
+      <span aria-hidden="true">{name}</span>
+      <span className="cs-visually-hidden">{partStatus(name, status)}</span>
     </Typography>
   );
 }
 
+/** A location rolls up its planes; a region that is a place itself keeps its own words. */
+function placeLabel(at: PlaceStatus): { status: Status; label: string } {
+  return at.extent === undefined
+    ? { status: at.status, label: STATUS_LABEL[at.status] }
+    : rolledUp(at.status, at.extent);
+}
+
 function StatusCell({ product, place }: { product: ProductSummary; place: string }) {
   const at = placeStatus(product, place);
+  const shown = at === undefined ? undefined : { ...at, ...placeLabel(at) };
   return (
     <Box
       component="td"
@@ -136,7 +142,7 @@ function StatusCell({ product, place }: { product: ProductSummary; place: string
         >
           {place}
         </Typography>
-        {at === undefined ? (
+        {shown === undefined ? (
           <>
             <Typography
               component="span"
@@ -150,9 +156,9 @@ function StatusCell({ product, place }: { product: ProductSummary; place: string
           </>
         ) : (
           <Box sx={{ minWidth: 0 }}>
-            <StatusLabel status={at.status}>{STATUS_LABEL[at.status]}</StatusLabel>
-            {at.parts.map((part) => (
-              <PartLine key={part.name} name={part.name} status={part.status} place={at.status} />
+            <StatusLabel status={shown.status}>{shown.label}</StatusLabel>
+            {shown.parts.map((part) => (
+              <PartLine key={part.name} name={part.name} status={part.status} />
             ))}
           </Box>
         )}

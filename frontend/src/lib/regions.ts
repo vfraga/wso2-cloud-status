@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import type { Location, ProductSummary, RegionSummary, Status } from "../api/types";
+import type { Extent, Location, ProductSummary, RegionSummary, Status } from "../api/types";
 import { STATUS_RANK, capitalise } from "./status";
 
 /** One line of a product's region list: a location with its parts, or a region on its own. */
@@ -81,6 +81,8 @@ export interface PartStatus {
 /** A product's status in one place, and the parts of the place that are not operational. */
 export interface PlaceStatus {
   status: Status;
+  /** How many of a location's parts carry its status; none for a region that is a place itself. */
+  extent?: Extent;
   /** Listed only when the parts differ: the data plane alone when only it is degraded. */
   parts: PartStatus[];
 }
@@ -102,7 +104,7 @@ export function placeStatus(product: ProductSummary, name: string): PlaceStatus 
         .map((r) => ({ name: shortName(r, location), status: r.status }))
         .sort((a, b) => rank(b.status, location.status) - rank(a.status, location.status))
     : [];
-  return { status: location.status, parts };
+  return { status: location.status, extent: differ ? "some" : "all", parts };
 }
 
 /**

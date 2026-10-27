@@ -886,7 +886,7 @@ describe("StatusTable", () => {
     );
   });
 
-  it("names the parts of a place that are not operational, with their own status when it differs", () => {
+  it("says how much of a place is out, then names each part that is not operational", () => {
     const degraded = locatedProduct({
       locations: [us, { ...eu, status: "outage" }],
       regions: [
@@ -898,13 +898,37 @@ describe("StatusTable", () => {
     });
     wrap(<StatusTable products={[degraded]} />);
     const cells = screen.getAllByRole("cell");
-    expect(within(cells[1]!).getByText("Service outage")).toBeInTheDocument();
-    expect(within(cells[1]!).getByText("Data plane")).toBeInTheDocument();
-    expect(within(cells[1]!).getByText("Control plane: under maintenance")).toBeInTheDocument();
-    // A screen reader hears the bare part's status too.
-    expect(cells[1]).toHaveTextContent(/Data plane: service outage/);
-    expect(within(cells[1]!).getByText("Data plane")).toHaveAttribute("aria-hidden", "true");
+    expect(within(cells[1]!).getByText("Partial outage")).toBeInTheDocument();
+    expect(within(cells[1]!).queryByText("Service outage")).toBeNull();
+    // Each part shows its icon and name; a screen reader hears its status.
+    for (const [name, spoken] of [
+      ["Data plane", "Data plane: service outage"],
+      ["Control plane", "Control plane: under maintenance"],
+    ] as const) {
+      expect(within(cells[1]!).getByText(name)).toHaveAttribute("aria-hidden", "true");
+      expect(within(cells[1]!).getByText(spoken)).toHaveClass("cs-visually-hidden");
+    }
     expect(within(cells[0]!).queryByText(/plane/)).not.toBeInTheDocument();
+  });
+
+  it("says major outage where every part of a place is out, and keeps a lone region's words", () => {
+    const down = locatedProduct({
+      locations: [us, { ...eu, status: "outage" }],
+      regions: [
+        part("US control plane"),
+        part("US data plane"),
+        part("EU control plane", "outage"),
+        part("EU data plane", "outage"),
+      ],
+    });
+    // A region that is a place itself is one part, not a roll-up.
+    const lone = product({ regions: [{ ...product().regions[0]!, status: "outage" }] });
+    wrap(<StatusTable products={[down, lone]} />);
+    const rows = screen.getAllByRole("row").slice(1);
+    const euCell = within(rows[0]!).getAllByRole("cell")[1]!;
+    expect(within(euCell).getByText("Major outage")).toBeInTheDocument();
+    expect(within(euCell).queryByText(/plane/)).toBeNull();
+    expect(within(rows[1]!).getByText("Service outage")).toBeInTheDocument();
   });
 
   it("shows the status of a product without regions across the columns, never 'no region'", () => {

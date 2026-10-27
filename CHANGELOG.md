@@ -41,8 +41,9 @@ section here. The public API has its own version, in `api/openapi.yaml`.
 - The home page shows the current status at a glance: the banner, the
   active incidents while there are any, and a table with a row per product
   and a column per location (US, EU). Each cell is the location's status as
-  icon and word, naming the planes that are not operational, and the whole
-  row opens the product's page. On a phone each row puts its locations side
+  icon and word ("Partial outage" where some of its planes are out, "Major
+  outage" where all are), then each plane that is not operational as its
+  own icon and name, and the whole row opens the product's page. On a phone each row puts its locations side
   by side under the product's name. History, uptime and incidents are on
   each product's page; the home page no longer fetches the incident list.
 - Control and data planes are the regions of a location: each product's

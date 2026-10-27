@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import type { Status } from "../api/types";
+import type { Extent, Status } from "../api/types";
 
 /*
  * Every word the page uses for a status, in one place and in sentence case,
@@ -56,6 +56,18 @@ export const BANNER_LABEL: Record<Status, string> = {
  */
 export const MAJOR_OUTAGE = "Major outage";
 export const PARTIAL_OUTAGE = "Partial outage";
+
+/**
+ * What a roll-up (WSO2 Cloud, a product, a location) shows for its status:
+ * an outage says how much is out, a partial one in amber; other statuses
+ * keep their words. A single part keeps CSM's words, and is not rolled up.
+ */
+export function rolledUp(status: Status, extent: Extent): { status: Status; label: string } {
+  if (status !== "outage") return { status, label: STATUS_LABEL[status] };
+  return extent === "all"
+    ? { status, label: MAJOR_OUTAGE }
+    : { status: "degraded", label: PARTIAL_OUTAGE };
+}
 
 /** Up to this many products are named in a headline; more are counted. */
 export const HEADLINE_NAMES = 2;
@@ -98,11 +110,6 @@ export const STATUS_COLUMN = "Status";
 export function noRegionIn(place: string): string {
   return `No ${place} region`;
 }
-/** A part under a place's status: its name, and its own status when it differs ("Control plane: under maintenance"). */
-export function partNote(name: string, status: Status, place: Status): string {
-  return status === place ? name : partStatus(name, status);
-}
-
 /** A part with its status, "Data plane: service outage": what a screen reader hears in a cell. */
 export function partStatus(name: string, status: Status): string {
   return `${name}: ${STATUS_LABEL[status].toLowerCase()}`;

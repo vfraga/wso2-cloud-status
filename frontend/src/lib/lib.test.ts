@@ -40,6 +40,7 @@ import {
 } from "./time";
 import { days, incident, locatedProduct, part, product } from "../test/factories";
 import { placeNames, placeStatus, productRows, regionRows, rowStatus, shortName } from "./regions";
+import { rolledUp } from "./status";
 
 describe("formatDuration", () => {
   it.each([
@@ -401,9 +402,14 @@ describe("region rows", () => {
         part("EU data plane", "degraded"),
       ],
     });
-    expect(placeStatus(degraded, "US")).toEqual({ status: "operational", parts: [] });
+    expect(placeStatus(degraded, "US")).toEqual({
+      status: "operational",
+      extent: "all",
+      parts: [],
+    });
     expect(placeStatus(degraded, "EU")).toEqual({
       status: "degraded",
+      extent: "some",
       parts: [{ name: "Data plane", status: "degraded" }],
     });
     expect(placeStatus(degraded, "AP")).toBeUndefined();
@@ -412,7 +418,7 @@ describe("region rows", () => {
       locations: [{ id: "us", name: "US", status: "outage" }],
       regions: [part("US control plane", "outage"), part("US data plane", "outage")],
     });
-    expect(placeStatus(down, "US")).toEqual({ status: "outage", parts: [] });
+    expect(placeStatus(down, "US")).toEqual({ status: "outage", extent: "all", parts: [] });
     // A part without data makes the place unknown, and is named.
     const silent = locatedProduct({
       locations: [{ id: "us", name: "US", status: "unknown" }],
@@ -420,6 +426,7 @@ describe("region rows", () => {
     });
     expect(placeStatus(silent, "US")).toEqual({
       status: "unknown",
+      extent: "some",
       parts: [{ name: "Data plane", status: "unknown" }],
     });
     // Every part that is not operational is named, with its own status.
@@ -433,6 +440,22 @@ describe("region rows", () => {
     ]);
     // A region that is a place itself.
     expect(placeStatus(product(), "US")).toEqual({ status: "operational", parts: [] });
+  });
+});
+
+describe("rolledUp", () => {
+  it("says how much of a roll-up is out, and keeps other statuses' words", () => {
+    expect(rolledUp("outage", "all")).toEqual({ status: "outage", label: "Major outage" });
+    // A partial outage is amber, the degraded colour, as status pages show it.
+    expect(rolledUp("outage", "some")).toEqual({ status: "degraded", label: "Partial outage" });
+    expect(rolledUp("degraded", "some")).toEqual({
+      status: "degraded",
+      label: "Degraded performance",
+    });
+    expect(rolledUp("maintenance", "all")).toEqual({
+      status: "maintenance",
+      label: "Under maintenance",
+    });
   });
 });
 

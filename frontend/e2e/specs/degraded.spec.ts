@@ -49,10 +49,11 @@ test.describe("outage, degraded and maintenance components in one place, and an 
     await expect(banner).toContainText(ALL_BUT_ONE_OPERATIONAL);
     const [us, eu] = [apiCell(page, 0), apiCell(page, 1)];
     await expect(us).toContainText("Operational");
-    // EU's status is its worst part's; each part that is not operational is named.
-    await expect(eu.getByText("Service outage", { exact: true })).toBeVisible();
+    // EU says how much of it is out; each part that is not operational shows its icon and name.
+    await expect(eu.getByText("Partial outage", { exact: true })).toBeVisible();
     await expect(eu.getByText("Data plane", { exact: true })).toBeVisible();
-    await expect(eu.getByText("Control plane: under maintenance", { exact: true })).toBeVisible();
+    await expect(eu.getByText("Control plane", { exact: true })).toBeVisible();
+    await expect(eu.locator("svg")).toHaveCount(3);
     for (const name of PRODUCT_NAMES.filter((n) => n !== "API Platform")) {
       const row = productRows(page).filter({ has: page.getByRole("link", { name, exact: true }) });
       await expect(
@@ -121,7 +122,7 @@ test.describe("outage, degraded and maintenance components in one place, and an 
         range.selectNodeContents(el);
         return range.getBoundingClientRect().left;
       });
-    const cellStatus = await textStart(eu.getByText("Service outage", { exact: true }));
+    const cellStatus = await textStart(eu.getByText("Partial outage", { exact: true }));
     const partName = await textStart(eu.getByText("Data plane", { exact: true }));
     expect(Math.abs(partName - cellStatus)).toBeLessThanOrEqual(1);
   });

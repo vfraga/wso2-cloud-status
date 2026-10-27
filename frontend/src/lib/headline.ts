@@ -24,7 +24,6 @@ import {
   COMPONENTS_UNAVAILABLE,
   MAJOR_OUTAGE,
   PARTIAL_HEADLINE,
-  PARTIAL_OUTAGE,
   STATUS_LABEL,
   capitalise,
   headlineFor,
@@ -32,6 +31,7 @@ import {
   listNames,
   othersOperational,
   regionsUnavailable,
+  rolledUp,
   unavailableFor,
   unavailableForMany,
 } from "./status";
@@ -128,12 +128,10 @@ function affectedSentences(affected: Affected): DetailLine[] {
  * two ("Partial outage: API Platform").
  */
 function problemHeadline(status: Status, extent: Extent, names: readonly string[]): Headline {
-  if (status === "outage") {
-    return extent === "all"
-      ? { status, label: MAJOR_OUTAGE }
-      : { status: "degraded", label: headlineFor(PARTIAL_OUTAGE, names) };
-  }
-  return { status, label: headlineFor(BANNER_LABEL[status], names) };
+  const shown = rolledUp(status, extent);
+  return shown.label === MAJOR_OUTAGE
+    ? shown
+    : { ...shown, label: headlineFor(shown.label, names) };
 }
 
 function summaryLabel(summary: Summary, unknown: readonly ProductSummary[]): Headline {
