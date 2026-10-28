@@ -54,12 +54,14 @@ backends:
     type: legacy-status-api
     base_url: https://api.status.cloudservices.wso2.com
     # The API sends zone-less timestamps in UTC: CSM converts its stored
-    # times to UTC (verified in its source, 2026-10-21) and the existing
-    # pages print them as UTC.
+    # times to UTC (read in its public source, cs-tools, 2026-10-21) and the
+    # existing pages print them as UTC.
     timezone: UTC
   asgardeo:
     type: legacy-status-api
     base_url: https://api.status.asgardeo.io
+    # Taken to be UTC like the other; no source states it. Each backend's
+    # zone is checked against a known incident on staging before go-live.
     timezone: UTC
   # CSM's cloud-status API (csm-integration-service behind Choreo's API
   # gateway) serves every cloud once a client exists for it; point a

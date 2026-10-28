@@ -507,7 +507,8 @@ func TestMalformedUptimeFigureDropsOnlyThatFigure(t *testing.T) {
 		"us": [{"availability":null,"duration":"Last 7 days"},{"availability":"","duration":"Last 30 days"},
 		       {"availability":"NaN","duration":"Last 90 days"},{"availability":100.5,"duration":"Last 12 months"},
 		       {"availability":"99.9","duration":"Last 12 months"}],
-		"eu": [{"availability":"n/a","duration":"Last 7 days"}],
+		"eu": [{"availability":"n/a","duration":"Last 7 days"},{"availability":"0x1p-2","duration":"Last 30 days"},
+		       {"availability":"1_0","duration":"Last 90 days"},{"availability":"+5","duration":"Last 12 months"}],
 		"in": [{"availability":99.5,"duration":"Last 7 days"}]}`)
 	got, err := NewSource(newTestClient(t, srv.URL, nil), "c").Uptime(context.Background())
 	if err != nil {

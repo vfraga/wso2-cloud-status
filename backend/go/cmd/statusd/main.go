@@ -118,7 +118,8 @@ func serve(configPath string, stdout io.Writer) int {
 		return 2
 	}
 	// The digest matches the running configuration to a commit; every
-	// applied reload logs the new one.
+	// applied reload logs the new one, naming any section of it that waits
+	// for a restart.
 	log.Info("configuration loaded", slog.String("path", configPath), slog.String("sha256", sum))
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)

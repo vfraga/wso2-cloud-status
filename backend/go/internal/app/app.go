@@ -53,13 +53,15 @@ type App struct {
 	// providers are the running backends' providers, kept across reloads
 	// while their backend is unchanged (buildBindings).
 	providers map[string]built
-	// configSum is the SHA-256 of the file the last reload applied.
-	configSum string
-	reloadObs ReloadObserver
-	public    *http.Server
-	admin     *http.Server
-	publicLn  net.Listener
-	adminLn   net.Listener
+	// configSum is the SHA-256 of the file the last reload applied, and
+	// restartPending the sections of it that still wait for a restart.
+	configSum      string
+	restartPending []string
+	reloadObs      ReloadObserver
+	public         *http.Server
+	admin          *http.Server
+	publicLn       net.Listener
+	adminLn        net.Listener
 
 	configPath string
 	hup        <-chan os.Signal
@@ -160,6 +162,9 @@ func newServer(h http.Handler, log *slog.Logger) *http.Server {
 		IdleTimeout:       60 * time.Second,
 		MaxHeaderBytes:    16 << 10,
 		ErrorLog:          slog.NewLogLogger(log.Handler(), slog.LevelWarn),
+		// OPTIONS * goes to the handler, with its headers and origin lock,
+		// rather than net/http's own empty 200.
+		DisableGeneralOptionsHandler: true,
 	}
 }
 

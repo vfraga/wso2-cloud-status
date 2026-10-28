@@ -347,6 +347,48 @@ func TestReloadKeepsThePortOverride(t *testing.T) {
 	}
 }
 
+// TestReloadNamesSettingsAwaitingARestart: a reload that keeps a restart-only
+// setting logs the file's digest with the sections that still run the old
+// values, so the digest is not read as the whole running configuration.
+func TestReloadNamesSettingsAwaitingARestart(t *testing.T) {
+	t.Parallel()
+	path := filepath.Join(t.TempDir(), "statusd.yaml")
+	text := configText(t, upstream(t).URL)
+	if !strings.Contains(text, "max_in_flight: 1024") {
+		t.Fatal("the shipped config no longer has the max_in_flight value this test edits")
+	}
+	if err := os.WriteFile(path, []byte(text), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := config.Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var logs lockedBuffer
+	a, err := New(cfg, slog.New(slog.NewTextHandler(&logs, nil)), "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	a.EnableReload(path, nil)
+	if err := os.WriteFile(path, []byte(strings.Replace(text, "max_in_flight: 1024", "max_in_flight: 512", 1)), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if !a.reloadAndReport(t.Context(), "signal") {
+		t.Fatal("the reload was rejected")
+	}
+	if out := logs.String(); !strings.Contains(out, "configuration reloaded") || !strings.Contains(out, "restart_pending=[server]") {
+		t.Fatalf("the reload log does not name the sections awaiting a restart:\n%s", out)
+	}
+	// A later reload that matches the running values clears it.
+	if err := os.WriteFile(path, []byte(text), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	seen := len(logs.String())
+	if !a.reloadAndReport(t.Context(), "signal") || strings.Contains(logs.String()[seen:], "restart_pending") {
+		t.Fatalf("restart_pending outlived the change:\n%s", logs.String()[seen:])
+	}
+}
+
 // TestReloadRejectsRestartOnlyConflicts: a file that changes the server
 // section and polling together is valid on its own, but its polling is
 // invalid with the running server section, which only a restart replaces.

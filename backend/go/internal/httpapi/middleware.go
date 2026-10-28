@@ -103,8 +103,10 @@ func (s *statusRecorder) Write(b []byte) (int, error) {
 }
 
 // accessLog records telemetry for every request and logs server errors.
-// Routine access logs belong to the edge, so 2xx-4xx log at debug only. It
-// must pass r through unchanged: the mux sets r.Pattern on this request.
+// Routine access logs belong to the edge, so 2xx-4xx log at debug only, and
+// so do the probes: a 503 from /readyz while statusd warms up is a state the
+// probe reports, not an error. It must pass r through unchanged: the mux sets
+// r.Pattern on this request.
 func accessLog(log *slog.Logger, obs RequestObserver) middleware {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -121,7 +123,7 @@ func accessLog(log *slog.Logger, obs RequestObserver) middleware {
 			}
 			obs.ObserveRequest(route, rec.code, took)
 			level := slog.LevelDebug
-			if rec.code >= http.StatusInternalServerError {
+			if rec.code >= http.StatusInternalServerError && !isProbe(r) {
 				level = slog.LevelError
 			}
 			log.Log(r.Context(), level, "request",

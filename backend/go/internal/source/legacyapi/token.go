@@ -203,15 +203,18 @@ func (t *tokenSource) request(ctx context.Context) (string, time.Duration, error
 		TokenType   string      `json:"token_type"`
 		ExpiresIn   json.Number `json:"expires_in"`
 	}
+	// The errors below name the issuer and what was wrong, never a value from
+	// its answer: a decode error quotes the text it could not read, and an
+	// issuer could echo a secret there.
 	if err := json.NewDecoder(body).Decode(&answer); err != nil {
-		return "", 0, fmt.Errorf("%w: decode the answer from %s: %w", ErrToken, t.url.Redacted(), err)
+		return "", 0, fmt.Errorf("%w: %s sent an answer that is not a token in JSON", ErrToken, t.url.Redacted())
 	}
 	lifetime, ok := seconds(answer.ExpiresIn.String(), maxTokenLifetime)
 	switch {
 	case answer.AccessToken == "":
 		return "", 0, fmt.Errorf("%w: %s sent no access_token", ErrToken, t.url.Redacted())
 	case !strings.EqualFold(answer.TokenType, "bearer"):
-		return "", 0, fmt.Errorf("%w: %s sent token type %q, not Bearer", ErrToken, t.url.Redacted(), answer.TokenType)
+		return "", 0, fmt.Errorf("%w: %s sent a token type other than Bearer", ErrToken, t.url.Redacted())
 	case !ok:
 		return "", 0, fmt.Errorf("%w: %s sent no expires_in in whole seconds above 0", ErrToken, t.url.Redacted())
 	}

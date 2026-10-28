@@ -53,7 +53,12 @@ info:
     whose cache key ignores case or decodes paths cannot keep one in place of
     a real answer.
     The exception is a request the HTTP server rejects before the service
-    sees it (400 for a malformed request, 431 for oversized headers).
+    sees it (400 for a malformed request, 431 for oversized headers, 501 for
+    an unknown transfer encoding, 505 for an HTTP version it does not
+    speak).
+
+    Methods: GET, and HEAD, which answers as GET without the body. OPTIONS
+    answers a CORS preflight with 204. Any other method gets 405 with Allow.
 
     Overload: beyond the configured concurrency the service answers 503 with
     Retry-After instead of queueing.
@@ -131,6 +136,7 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/Summary" }
         "304": { $ref: "#/components/responses/NotModified" }
+        "405": { $ref: "#/components/responses/MethodNotAllowed" }
         "503": { $ref: "#/components/responses/Unavailable" }
 
   /api/v1/products/{id}:
@@ -145,6 +151,7 @@ paths:
           required: true
           description: Product id, as listed in the summary. Stable (see Identifiers above).
           schema: { $ref: "#/components/schemas/Slug" }
+          example: api-platform
         - $ref: "#/components/parameters/IfNoneMatch"
         - $ref: "#/components/parameters/IfModifiedSince"
       responses:
@@ -159,6 +166,7 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/ProductDetail" }
         "304": { $ref: "#/components/responses/NotModified" }
+        "405": { $ref: "#/components/responses/MethodNotAllowed" }
         "404": { $ref: "#/components/responses/NotFound" }
         "503": { $ref: "#/components/responses/Unavailable" }
 
@@ -187,6 +195,7 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/IncidentList" }
         "304": { $ref: "#/components/responses/NotModified" }
+        "405": { $ref: "#/components/responses/MethodNotAllowed" }
         "503": { $ref: "#/components/responses/Unavailable" }
 
   /healthz:
@@ -255,6 +264,12 @@ components:
     CacheControl:
       description: Caching policy for browsers and the CDN.
       schema: { type: string }
+    Vary:
+      description: Accept-Encoding, since the plain and gzip bodies differ.
+      schema: { type: string }
+    Allow:
+      description: The methods the resource answers (GET, HEAD).
+      schema: { type: string }
     RequestID:
       description: >-
         Request correlation id; a well-formed incoming X-Request-ID is echoed. On
@@ -265,9 +280,21 @@ components:
   responses:
     NotModified:
       description: The body has not changed since the supplied ETag.
-    NotFound:
-      description: No such resource. Cacheable briefly.
       headers:
+        ETag: { $ref: "#/components/headers/ETag" }
+        Cache-Control: { $ref: "#/components/headers/CacheControl" }
+        Vary: { $ref: "#/components/headers/Vary" }
+    NotFound:
+      description: No such resource. Never cached (no-store).
+      headers:
+        Cache-Control: { $ref: "#/components/headers/CacheControl" }
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/Problem" }
+    MethodNotAllowed:
+      description: A method other than GET, HEAD or OPTIONS. Never cached (no-store).
+      headers:
+        Allow: { $ref: "#/components/headers/Allow" }
         Cache-Control: { $ref: "#/components/headers/CacheControl" }
       content:
         application/problem+json:

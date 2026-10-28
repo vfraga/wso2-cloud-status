@@ -20,6 +20,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -466,6 +467,38 @@ func TestHugeTokenLifetimeCountsAsADay(t *testing.T) {
 			settle(ts)
 			if n := is.requests.Load(); n != 2 {
 				t.Errorf("requests = %d, want 2 (one, and one at half a day)", n)
+			}
+		})
+	}
+}
+
+// TestTokenErrorsQuoteNothingFromTheAnswer: an issuer's 200 that is not a
+// usable token is refused with an error that names the issuer, never a value
+// from the answer, which could hold a secret.
+func TestTokenErrorsQuoteNothingFromTheAnswer(t *testing.T) {
+	t.Parallel()
+	for _, answer := range []string{
+		`SECRET-BODY, not JSON`,
+		`{"access_token":"x","token_type":"Bearer","expires_in":"SECRET-LIFETIME"}`,
+		`{"access_token":"x","token_type":"SECRET-TYPE","expires_in":100}`,
+		`{"access_token":"x","token_type":"Bearer","expires_in":SECRET}`,
+	} {
+		t.Run(answer, func(t *testing.T) {
+			t.Parallel()
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				_, _ = io.WriteString(w, answer)
+			}))
+			t.Cleanup(srv.Close)
+			u, err := url.Parse(srv.URL)
+			if err != nil {
+				t.Fatal(err)
+			}
+			_, err = newTokenSource(u, "id", "secret", srv.Client()).token(context.Background())
+			if !errors.Is(err, ErrToken) {
+				t.Fatalf("token() error = %v, want ErrToken", err)
+			}
+			if strings.Contains(err.Error(), "SECRET") {
+				t.Errorf("token() error quotes the answer: %v", err)
 			}
 		})
 	}

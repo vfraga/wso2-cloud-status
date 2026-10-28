@@ -495,6 +495,14 @@ func TestServerErrorsAreLogged(t *testing.T) {
 	if rec := do(h, http.MethodGet, "/x", nil); rec.Code != http.StatusOK {
 		t.Fatalf("implicit status: %d", rec.Code)
 	}
+	// A probe's 503 is the state it reports, logged at debug like any request.
+	logs.Reset()
+	h = accessLog(slog.New(slog.NewTextHandler(&logs, nil)), nopRequestObserver{})(
+		http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusServiceUnavailable) }))
+	do(h, http.MethodGet, "/readyz", nil)
+	if logs.Len() != 0 {
+		t.Fatalf("a probe's 503 was logged above debug: %q", logs.String())
+	}
 }
 
 func TestPublishIsAtomicUnderLoad(t *testing.T) {

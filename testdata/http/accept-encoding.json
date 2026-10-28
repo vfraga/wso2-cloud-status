@@ -1,5 +1,5 @@
 {
-  "description": "Accept-Encoding header -> whether the response is gzip. One table for the Go and Node.js unit tests and the contract tests. Grammar: RFC 9110 section 12.5.3; q is 0[.ddd] or 1[.000], the q is case-insensitive, whitespace is allowed around entries and around ';'. An explicit gzip entry decides before '*'. Malformed entries are ignored.",
+  "description": "Accept-Encoding header -> whether the response is gzip. One table for the Go unit tests and the contract tests. Grammar: RFC 9110 section 12.5.3; q is 0[.ddd] or 1[.000], the q is case-insensitive, whitespace is allowed around entries and around ';'. An explicit gzip entry decides before '*'. Malformed entries are ignored.",
   "cases": [
     { "header": "", "gzip": false },
     { "header": "gzip", "gzip": true },

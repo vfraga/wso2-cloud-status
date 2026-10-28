@@ -18,7 +18,7 @@ package legacyapi
 
 import (
 	"fmt"
-	"math"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -119,15 +119,23 @@ func window(duration string) string {
 	return key
 }
 
+// jsonNumber is JSON's number grammar (RFC 8259 section 6). ParseFloat also
+// reads forms no JSON number takes ("NaN", "Inf", "0x1p-2", "1_0", "+5"), so
+// a figure must match this first.
+var jsonNumber = regexp.MustCompile(`^-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?$`)
+
 // toUptime reads uptime figures one by one. Uptime is secondary detail: a
 // figure that is not a percentage (null, empty, "NaN") is dropped, and the
 // others, and every status, stay.
 func toUptime(entries []wireAvailability) []domain.Uptime {
 	out := make([]domain.Uptime, 0, len(entries))
 	for _, e := range entries {
-		pct, err := strconv.ParseFloat(strings.TrimSpace(string(e.Availability)), 64)
-		// ParseFloat accepts "NaN" and "Inf", which JSON cannot encode.
-		if err != nil || math.IsNaN(pct) || pct < 0 || pct > 100 {
+		text := strings.TrimSpace(string(e.Availability))
+		if !jsonNumber.MatchString(text) {
+			continue
+		}
+		pct, err := strconv.ParseFloat(text, 64)
+		if err != nil || pct < 0 || pct > 100 {
 			continue
 		}
 		out = append(out, domain.Uptime{Window: window(e.Duration), Percent: pct})

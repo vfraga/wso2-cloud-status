@@ -17,6 +17,7 @@
 package contract
 
 import (
+	"bufio"
 	"bytes"
 	"compress/gzip"
 	"crypto/sha256"
@@ -25,7 +26,9 @@ import (
 	"fmt"
 	"io"
 	"maps"
+	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"reflect"
 	"slices"
@@ -649,6 +652,11 @@ func TestEveryResponseIsCacheExplicit(t *testing.T) {
 			t.Errorf("%s (%d) has no Cache-Control", c, r.code)
 		}
 	}
+	// OPTIONS * asks about the server, not a path. net/http answers it on its
+	// own unless told not to, without the handler's headers or origin lock.
+	if code, h := optionsStar(t, base); h.Get("Cache-Control") == "" || h.Get("X-Content-Type-Options") == "" {
+		t.Errorf("OPTIONS * (%d) lacks the handler's headers: %v", code, h)
+	}
 	// A CDN whose cache key ignores case or decodes paths would keep a cached
 	// 404 in place of a real answer, so no 404 may be cached.
 	for _, path := range []string{"/no/such/path", "/API/V1/SUMMARY"} {
@@ -656,6 +664,31 @@ func TestEveryResponseIsCacheExplicit(t *testing.T) {
 			t.Errorf("%s: 404 Cache-Control = %q, want no-store", path, cc)
 		}
 	}
+}
+
+// optionsStar sends "OPTIONS * HTTP/1.1", which no http.Client request can
+// spell, and returns the answer's status and headers.
+func optionsStar(t *testing.T, base string) (int, http.Header) {
+	t.Helper()
+	u, err := url.Parse(base)
+	if err != nil {
+		t.Fatal(err)
+	}
+	conn, err := (&net.Dialer{Timeout: 5 * time.Second}).DialContext(t.Context(), "tcp", u.Host)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = conn.Close() }()
+	_ = conn.SetDeadline(time.Now().Add(5 * time.Second))
+	if _, err := fmt.Fprintf(conn, "OPTIONS * HTTP/1.1\r\nHost: %s\r\nConnection: close\r\n\r\n", u.Host); err != nil {
+		t.Fatal(err)
+	}
+	resp, err := http.ReadResponse(bufio.NewReader(conn), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = resp.Body.Close()
+	return resp.StatusCode, resp.Header
 }
 
 // TestEncodedPaths: a percent-encoded spelling of a data path is not the

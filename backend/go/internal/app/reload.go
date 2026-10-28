@@ -116,8 +116,12 @@ func (a *App) reloadAndReport(ctx context.Context, trigger string) bool {
 		return valid
 	}
 	a.reloadObs.ConfigReloaded(reloadApplied)
-	a.log.InfoContext(ctx, "configuration reloaded", slog.String("trigger", trigger),
-		slog.Int("products", len(a.cfg.Products)), slog.String("sha256", a.configSum))
+	attrs := []any{slog.String("trigger", trigger), slog.Int("products", len(a.cfg.Products)), slog.String("sha256", a.configSum)}
+	if len(a.restartPending) > 0 {
+		// The digest is the file's; these of its sections still run the old values.
+		attrs = append(attrs, slog.Any("restart_pending", a.restartPending))
+	}
+	a.log.InfoContext(ctx, "configuration reloaded", attrs...)
 	return true
 }
 
@@ -139,7 +143,8 @@ func (a *App) Reload(ctx context.Context) error {
 		return err
 	}
 	next := l.cfg
-	if changed := a.cfg.RestartRequired(next); len(changed) > 0 {
+	changed := a.cfg.RestartRequired(next)
+	if len(changed) > 0 {
 		a.log.WarnContext(ctx, "these settings take effect on restart only; keeping the running values",
 			slog.Any("sections", changed))
 		next.Server, next.Reload = a.cfg.Server, a.cfg.Reload
@@ -151,7 +156,7 @@ func (a *App) Reload(ctx context.Context) error {
 	if err := a.agg.Apply(ctx, next, l.bindings); err != nil {
 		return fmt.Errorf("app: apply: %w", err)
 	}
-	a.cfg, a.providers, a.configSum = next, l.providers, l.sum
+	a.cfg, a.providers, a.configSum, a.restartPending = next, l.providers, l.sum, changed
 	return nil
 }
 

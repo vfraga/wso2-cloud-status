@@ -343,7 +343,7 @@ func (c *Config) RestartRequired(next *Config) []string {
 }
 
 // ApplyEnvOverrides applies the settings the platform passes in the
-// environment: PORT (Azure App Service, Cloud Run, Choreo) replaces the
+// environment: PORT, which platforms such as Cloud Run set, replaces the
 // public listener's port. Validate afterwards: the new address may collide
 // with the admin address. The service applies it at startup and on every
 // reload, so a reload never mistakes the override for a change that needs a
