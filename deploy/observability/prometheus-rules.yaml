@@ -168,3 +168,14 @@ groups:
           runbook_url: docs/operations/runbook.md#statusdconfigreloadfailed
           summary: "statusd {{ $labels.instance }} has an invalid configuration file"
           description: "The previous configuration is still running, but a restart would fail with this file. See the service logs for the validation errors and fix the file before any restart."
+
+      # Every deployment these rules watch runs behind Front Door with the
+      # origin lock on; 0 means STATUSD_CONFIG points at a file without it.
+      - alert: StatusdOriginLockOff
+        expr: statusd_origin_lock_enabled == 0
+        for: 5m
+        labels: { severity: warning }
+        annotations:
+          runbook_url: docs/operations/runbook.md#statusdoriginlockoff
+          summary: "statusd {{ $labels.instance }} answers requests that did not come through Front Door"
+          description: "Its origin lock is off, so its public port answers anyone who reaches it, outside Front Door's WAF and cache. STATUSD_CONFIG most likely points at a file without the lock."

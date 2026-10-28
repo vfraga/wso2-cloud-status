@@ -631,3 +631,23 @@ tests:
       - eval_time: 43m
         alertname: StatusdConfigReloadFailed
         exp_alerts: []
+
+  - name: a replica without the origin lock alerts after 5 minutes
+    interval: 1m
+    input_series:
+      - series: 'statusd_origin_lock_enabled{instance="a"}'
+        values: "0x10"
+      - series: 'statusd_origin_lock_enabled{instance="b"}'
+        values: "1x10"
+    alert_rule_test:
+      - eval_time: 4m
+        alertname: StatusdOriginLockOff
+        exp_alerts: []
+      - eval_time: 6m
+        alertname: StatusdOriginLockOff
+        exp_alerts:
+          - exp_labels: { severity: warning, instance: a }
+            exp_annotations:
+              runbook_url: docs/operations/runbook.md#statusdoriginlockoff
+              summary: "statusd a answers requests that did not come through Front Door"
+              description: "Its origin lock is off, so its public port answers anyone who reaches it, outside Front Door's WAF and cache. STATUSD_CONFIG most likely points at a file without the lock."
