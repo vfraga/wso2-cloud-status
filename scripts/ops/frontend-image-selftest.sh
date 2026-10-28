@@ -25,7 +25,9 @@
 #   /                     200 HTML with the app root, Cache-Control no-cache
 #   /products/<id>, /history
 #                         200, the same HTML (deep links are served by the shell)
-#   any other path        404 from the error page, with no-store
+#   any other path        404 from the error page, with no-store, the
+#                         shell's paths followed by a newline (%0a) and the
+#                         build's .gz copies asked for by name included
 #   the icons at the root 200 with their image types, cached for an hour
 #   each module script and stylesheet index.html references
 #                         200, a JavaScript or CSS type, cached for a year
@@ -34,7 +36,9 @@
 #                         immutable
 #   error pages           our own page, naming no server software, for a
 #                         missing asset, an oversized header, a failing
-#                         If-Match and an unknown Transfer-Encoding; /error.html
+#                         If-Match, an unknown Transfer-Encoding and an
+#                         oversized body (413, which nginx answers before
+#                         the origin lock); /error.html
 #                         itself is not served directly, and the base image's
 #                         50x.html is gone (/50x.html is a 404)
 #   no comments           the HTML shell and the error page carry no HTML
@@ -54,7 +58,7 @@
 #   /healthz              200 "ok", no-store; 405 to any method but GET and HEAD
 #   /.well-known/security.txt
 #                         200 text/plain; charset=utf-8 (RFC 9116) with
-#                         Contact, Policy and an Expires in the coming year
+#                         Contact, Policy and an Expires within 364 days
 #   the security headers (CSP, nosniff, Referrer-Policy, X-Frame-Options, COOP,
 #   X-Permitted-Cross-Domain-Policies, Permissions-Policy,
 #   Strict-Transport-Security) on every page, asset, 404
@@ -62,12 +66,14 @@
 #   the page, assets and deep-link lines of scripts/ops/synthetic-check.sh
 #   pass against it
 #   the origin lock       with FRONT_DOOR_ID set, a request without that ID in
-#                         X-Azure-FDID, or with another, gets 403 from the error
-#                         page, the health probe excepted; the image does not
+#                         X-Azure-FDID, with another, with it in other
+#                         letter case or with it twice, gets 403 from the
+#                         error page, the health probe excepted; the image does not
 #                         start without FRONT_DOOR_ID, or with a malformed one,
 #                         unless ORIGIN_LOCK=off; ORIGIN_LOCK=off answers
 #                         without it and INDEXING=off adds X-Robots-Tag: noindex
-#   the image runs as user 10001, which cannot change nginx's configuration,
+#   the image runs as user 10001, which owns no file under /etc/nginx or
+#   /docker-entrypoint.d and can write none of them, nor add one,
 #   carries the OCI version, revision and source labels, and its HEALTHCHECK
 #   reports healthy
 # Stops the containers it started. Needs docker and curl. Ports
@@ -121,7 +127,7 @@ verdict() {
 # get NAME PATH [curl options]: fetches PATH into $work/NAME.{body,headers}
 # and sets code. It sends the Front Door ID, as Front Door does, unless
 # NO_FDID is set.
-fdid=00000000-0000-4000-8000-000000000000
+fdid=a0a0a0a0-bbbb-4ccc-8ddd-e1e1e1e1e1e1
 get() {
   local id="$1" path="$2" lock=(-H "X-Azure-FDID: $fdid")
   shift 2
@@ -291,6 +297,14 @@ names_server missing "the missing asset's 404"
 get unknown /made/up/path
 expect unknown "/made/up/path" 404 "no-store"
 names_server unknown "the 404 for an unknown path"
+# A shell path followed by a newline is another path; so is a .gz copy asked
+# for by name, which gzip_static alone reads.
+get newline "/history%0a"
+expect newline "/history%0a" 404 "no-store"
+for gz in /index.html.gz "${assets[0]:-/index}.gz"; do
+  get gz "$gz"
+  expect gz "$gz" 404 "no-store"
+done
 
 # Past nginx's 8 KB header buffers: errors written before any location.
 long="$(printf '%9000s' '' | tr ' ' a)"
@@ -310,6 +324,11 @@ names_server precondition "the 412 for a failing If-Match"
 get unimplemented / -H 'Transfer-Encoding: selftest'
 expect unimplemented "/ with an unknown Transfer-Encoding" 501 "no-store"
 names_server unimplemented "the 501 for an unknown Transfer-Encoding"
+# A body over nginx's limit is refused before the origin lock is read: 413
+# from the same page, with or without the ID.
+NO_FDID=1 get bigbody / -X POST -H 'Content-Length: 99999999'
+expect bigbody "POST / with a 99999999-byte body" 413 "no-store"
+names_server bigbody "the 413 for an oversized body"
 
 # Byte ranges are off: a range past the end gets the whole file, never a 416
 # carrying the file's year-long Cache-Control.
@@ -364,10 +383,10 @@ grep -Eq '^Policy: https://[^ ]+$' "$work/securitytxt.body" || missing_fields+=(
 expires="$(sed -nE 's/^Expires: (.*)$/\1/p' "$work/securitytxt.body")"
 left="$(jq -nr --arg t "$expires" '($t | fromdateiso8601) - now | floor' 2>/dev/null || true)"
 # RFC 9116 wants Expires in the future and, recommended, less than a year
-# ahead; the build sets it a year after CREATED, or after the build when
+# ahead; the build sets it 364 days after CREATED, or after the build when
 # CREATED is unset.
-if [[ ! "$left" =~ ^[0-9]+$ || "$left" -gt $((366 * 86400)) ]]; then
-  missing_fields+=("Expires in the coming year (got \"$expires\")")
+if [[ ! "$left" =~ ^[0-9]+$ || "$left" -gt $((364 * 86400)) ]]; then
+  missing_fields+=("Expires within 364 days (got \"$expires\")")
 fi
 grep -q '^#' "$work/securitytxt.body" && missing_fields+=("no comment lines")
 if [[ ${#missing_fields[@]} -eq 0 ]]; then
@@ -384,6 +403,10 @@ for path in / "${assets[0]:-/}" /.well-known/security.txt /api/x; do
 done
 NO_FDID=1 get wrongid / -H "X-Azure-FDID: 11111111-1111-4111-8111-111111111111"
 expect wrongid "/ with another Front Door profile's ID" 403 "no-store"
+NO_FDID=1 get upperid / -H "X-Azure-FDID: $(tr '[:lower:]' '[:upper:]' <<<"$fdid")"
+expect upperid "/ with the ID in capital letters" 403 "no-store"
+NO_FDID=1 get twoids / -H "X-Azure-FDID: $fdid" -H "X-Azure-FDID: $fdid"
+expect twoids "/ with the ID twice" 403 "no-store"
 security refused "the origin lock's 403"
 verdict "production sends no X-Robots-Tag" "production sends X-Robots-Tag: $(hdr page X-Robots-Tag)" \
   [ -z "$(hdr page X-Robots-Tag)" ]
@@ -393,10 +416,16 @@ for env in "" "FRONT_DOOR_ID=has space" "ORIGIN_LOCK=maybe"; do
   verdict "the image refuses to start with ${env:-no FRONT_DOOR_ID}" \
     "the image started with ${env:-no FRONT_DOOR_ID}" [ "$started" = false ]
 done
-written=true
-docker exec "$name" sh -c 'touch /etc/nginx/api.conf' 2>/dev/null || written=false
+# The runtime user can change none of nginx's configuration: no file there is
+# its own or writable by its group (0) or by others, and it cannot add one.
+writable="$(docker exec "$name" sh -c '
+  find /etc/nginx /docker-entrypoint.d ! -type l \( -user "$(id -u)" -o -perm -020 -o -perm -002 \) 2>/dev/null
+  for d in /etc/nginx /etc/nginx/conf.d /etc/nginx/snippets /docker-entrypoint.d; do
+    touch "$d/selftest" 2>/dev/null && echo "$d/ (a new file)"
+  done
+  true')" || writable="(the check could not run in the container)"
 verdict "the runtime user cannot change nginx's configuration" \
-  "the runtime user can write /etc/nginx/api.conf" [ "$written" = false ]
+  "the runtime user can change: $(tr '\n' ' ' <<<"$writable")" [ -z "$writable" ]
 
 # A deployment with nothing in front of the page (local runs, the Choreo demo)
 # turns the lock off and, outside production, indexing too; one that also

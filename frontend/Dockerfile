@@ -14,9 +14,11 @@
 #
 # VERSION, REVISION (the full commit id), CREATED (the commit time, RFC 3339
 # in UTC) and SOURCE (the repository URL) become the OCI labels; make
-# web-docker and the release workflow set them. CREATED also dates
-# /.well-known/security.txt: it expires a year later (the build time when
-# CREATED is empty).
+# web-docker and the release workflow set them. SOURCE defaults to the
+# repository's planned home, the Go module's path; the release workflow passes
+# the repository it runs in. CREATED also dates /.well-known/security.txt: it
+# expires 364 days later, under the year RFC 9116 recommends (the build time
+# when CREATED is empty).
 FROM node:24.22.0-alpine@sha256:44fce696f38ba8c987c4db89954051000bbd05ffd8d8659ba15ed4a8602e937f AS build
 WORKDIR /app
 COPY package.json package-lock.json .npmrc ./
@@ -35,7 +37,7 @@ RUN node -e ' \
   const fs = require("node:fs"); \
   const base = process.env.CREATED ? Date.parse(process.env.CREATED) : Date.now(); \
   if (Number.isNaN(base)) throw new Error("CREATED is not a time: " + process.env.CREATED); \
-  const expires = new Date(base + 365 * 86400e3).toISOString().replace(/\.\d{3}Z$/, "Z"); \
+  const expires = new Date(base + 364 * 86400e3).toISOString().replace(/\.\d{3}Z$/, "Z"); \
   const fields = fs.readFileSync("docker/security.txt", "utf8").split("\n").filter((l) => !l.startsWith("#")); \
   fs.writeFileSync("security.txt", fields.join("\n").replace("@EXPIRES@", expires));'
 

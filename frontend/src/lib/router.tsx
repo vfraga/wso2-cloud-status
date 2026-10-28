@@ -76,8 +76,19 @@ export function replaceLocation(to: string): void {
 type Route =
   { name: "home" } | { name: "product"; id: string } | { name: "history" } | { name: "missing" };
 
+/**
+ * The route for a pathname as the address bar holds it, percent-encoded.
+ * nginx matches the decoded path when it picks the HTML shell, so this does
+ * too: /%68istory is the history page there and here.
+ */
 export function matchRoute(pathname: string): Route {
-  const path = trimTrailingSlashes(pathname) || "/";
+  let decoded: string;
+  try {
+    decoded = decodeURIComponent(pathname);
+  } catch {
+    return { name: "missing" };
+  }
+  const path = trimTrailingSlashes(decoded) || "/";
   if (path === "/") return { name: "home" };
   if (path === "/history") return { name: "history" };
   const product = /^\/products\/([a-z0-9-]+)$/.exec(path);

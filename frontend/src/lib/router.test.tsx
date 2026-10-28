@@ -36,13 +36,18 @@ describe("matchRoute", () => {
     ["/products/api-platform/", { name: "product", id: "api-platform" }],
     ["/products/Bad_ID", { name: "missing" }],
     ["/elsewhere", { name: "missing" }],
+    ["/%68istory", { name: "history" }],
+    ["/products/api%2Dplatform", { name: "product", id: "api-platform" }],
+    ["/history%0a", { name: "missing" }],
+    ["/products/%E0%A4%A", { name: "missing" }],
   ])("%s", (path, route) => {
     expect(matchRoute(path)).toEqual(route);
   });
 });
 
 // nginx serves the HTML shell only on the paths this router knows and answers
-// any other with a 404, so the two must agree.
+// any other with a 404, so the two must agree. nginx matches the decoded path,
+// and its \z (the end of the path) is JavaScript's $.
 describe("nginx's shell paths", () => {
   // A path, not a URL object: jsdom replaces the global URL, which node:fs rejects.
   const here = dirname(fileURLToPath(import.meta.url));
@@ -65,9 +70,14 @@ describe("nginx's shell paths", () => {
     "/history/x",
     "/elsewhere",
     "/assets",
+    "/%68istory",
+    "/products/api%2Dplatform",
+    "/history%0a",
+    "/products/x%0a",
   ])("%s", (path) => {
-    expect(pattern).toBeDefined();
-    expect(new RegExp(pattern ?? "").test(path)).toBe(matchRoute(path).name !== "missing");
+    expect(pattern).toMatch(/\\z$/);
+    const nginx = new RegExp((pattern ?? "").replace(/\\z$/, "$"));
+    expect(nginx.test(decodeURIComponent(path))).toBe(matchRoute(path).name !== "missing");
   });
 });
 

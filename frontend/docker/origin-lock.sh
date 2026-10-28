@@ -43,7 +43,10 @@ case "${ORIGIN_LOCK:-on}" in
         exit 1
         ;;
     esac
-    refused="map \$http_x_azure_fdid \$origin_refused { \"$id\" 0; default 1; }"
+    # A regular expression, so the ID is compared with its letter case, as
+    # statusd compares it; map's plain strings ignore case. The ID holds only
+    # letters, digits and hyphens, which match themselves.
+    refused="map \$http_x_azure_fdid \$origin_refused { \"~^$id\\z\" 0; default 1; }"
     echo "$0: origin lock on: requests without this Front Door profile's X-Azure-FDID get 403"
     ;;
   off)
