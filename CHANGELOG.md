@@ -181,7 +181,7 @@ section here, or while the Unreleased section still holds entries. The public AP
   A reload that is invalid together with the running restart-only settings
   is rejected.
 - A percent-encoded spelling of an API path (`/api/v1/%73ummary`) is
-  answered with the cacheable 404, not a second copy of the body.
+  answered with the 404 for unknown paths, not a second copy of the body.
 - The plain and gzip bodies have distinct strong ETags.
 - The external check also fetches the incident list and a product page,
   so an edge fault on either route alerts instead of passing.
@@ -214,7 +214,21 @@ section here, or while the Unreleased section still holds entries. The public AP
   probe that lacks the Front Door profile's ID, and it does not start
   without it unless `ORIGIN_LOCK=off` (local runs and the demo).
   `INDEXING=off` adds `X-Robots-Tag: noindex` (staging and the demo). Its
-  runtime user can no longer change nginx's configuration.
+  runtime user can no longer change nginx's configuration files.
+- Only the page's own paths (`/`, `/history`, `/products/<id>`) get its
+  HTML; any other path is a 404, so made-up paths no longer each load the
+  page, and `/healthz` answers GET and HEAD only. The icons are cached for
+  an hour.
+  nginx no longer writes an access log: Front Door's records every request,
+  and a flood of refused requests wrote one line each.
+- statusd sends every 404 and redirect with `no-store`, and the
+  `server.not_found_cache_control` setting is gone: a CDN whose cache key
+  ignores case or decodes paths could have kept a cached 404 for
+  `/API/V1/SUMMARY` in place of the summary.
+- statusd's origin lock runs before load shedding, so requests that did not
+  come through the CDN take no slot, and refuses a request that carries the
+  Front Door ID header more than once, as the page's container does, or an
+  encoded spelling of a probe's path.
 - The release workflow builds and scans both images in a job without
   registry credentials or an OIDC token; a second job checks that it holds
   the exact images scanned, then pushes, signs and attests them.
