@@ -11,8 +11,9 @@ section here, or while the Unreleased section still holds entries. The public AP
 
 ### Added
 
-- API 1.1.0: each product lists its `locations` (US, EU) with a status
-  that fails closed over their regions, and each region names its
+- API 1.1.0: each product lists its `locations` (US, EU; none for a
+  product whose regions name none) with a status that fails closed over
+  their regions, and each region names its
   `location`; summary regions carry their `uptime`.
 - An incident history page (`/history`): every incident the API holds,
   under the reader's local month each started, for all products or one
@@ -39,7 +40,11 @@ section here, or while the Unreleased section still holds entries. The public AP
 
 - statusd logs the configuration file's SHA-256 when it starts
   (`configuration loaded`) and with every reload it applies, so the running
-  file can be matched to its commit.
+  file can be matched to its commit; a reload that keeps restart-only
+  settings names them beside it (`restart_pending`).
+- The API description documents the methods, the 405 with `Allow`, the
+  headers of a 304 and every answer net/http writes before statusd sees
+  the request; a 404 is documented as never cached.
 - The headline words a problem by how much it affects: "Partial outage:
   API Platform" in amber when part of WSO2 Cloud is out, naming up to two
   products and then counting them, and "Major outage" in red only when
@@ -101,10 +106,29 @@ section here, or while the Unreleased section still holds entries. The public AP
 - A component the source publishes no uptime for shows a muted dash in its
   columns, read as "not published".
 - Legend entries are buttons: Enter or Space shows a colour's description.
-- A screen reader hears the status of every plane a home cell names.
+- Every plane a home cell names has its status in text, for assistive
+  technology.
 
 ### Fixed
 
+- A product's page whose product sends no history days no longer reads
+  "The last 0 days."
+- A percent-encoded page address (`/%68istory`) opens the page it names,
+  as nginx serves the page for it.
+- An uptime figure is read only in a form a JSON number can take; "0x1p-2",
+  "1_0" and "+5" are dropped like any unreadable figure.
+- A failing readiness probe is logged at debug, like any request, not as
+  an error.
+- `/.well-known/security.txt` expires 364 days after the build, under the
+  year RFC 9116 recommends.
+- The release workflow requires a dated `CHANGELOG.md` section for the
+  version (`## [0.5.0] - 2026-11-02`), with its dots matched as dots.
+- `make pins` also fails when a pin of the release workflow is missing,
+  when SkyWalking Eyes' version differs from the action's, and when a
+  Dockerfile builds with a Go or Node version other than `go.mod`'s or
+  `.nvmrc`'s. The image self-test checks that the runtime user owns and can
+  write no configuration file. CodeQL also analyses the contract tests'
+  module. Code owners cover the gates and the accepted scan findings.
 - A live reload no longer gives a CSM backend a second token and throttling
   circuit: every cloud of the backend, added by a reload or not, shares
   them.
@@ -146,8 +170,8 @@ section here, or while the Unreleased section still holds entries. The public AP
   stopped.
 - On a phone, a tapped legend description stays open until the reader taps
   elsewhere, instead of closing 1.5 s after the tap.
-- A screen reader no longer hears "Status changed" again with every later
-  notice: the change announcement has its own live region.
+- "Status changed" is no longer repeated in the live region with every
+  later notice: the change announcement has its own live region.
 - The loading placeholder no longer carries a label a plain element may
   not have (an accessibility error while the page loads); an accessibility
   scan of the loading state now runs with the others.
@@ -162,8 +186,8 @@ section here, or while the Unreleased section still holds entries. The public AP
   data".
 - An incident whose end precedes its start marks its start day instead of
   no day.
-- A screen reader hears each uptime list's region, and its windows in
-  words ("7 days").
+- Each uptime list names its region for assistive technology, and its
+  windows in words ("7 days").
 - A region on a product's page that the reader opened or closed keeps
   that state when its status changes.
 - `history.days` may be any number of days from 1 to 366; the 15-day
@@ -205,6 +229,16 @@ section here, or while the Unreleased section still holds entries. The public AP
 
 ### Security
 
+- The page's container compares the Front Door ID with its letter case, as
+  statusd does, and serves the page's HTML on no other path: a path ending
+  in an encoded newline (`/history%0a`) and the build's `.gz` copies asked
+  for by name are 404s.
+- statusd answers `OPTIONS *` through its handler, with its headers and
+  origin lock, instead of net/http's own empty 200.
+- A token error names the issuer and what was wrong, never a value from its
+  answer.
+- An alert, StatusdOriginLockOff, fires when a replica has run without the
+  origin lock for 5 minutes.
 - statusd refuses a CSM `client_secret` written in the configuration file
   (it must be one `${NAME}` reference) and CSM credentials with surrounding
   spaces or control characters; every backend type takes https, or http
@@ -296,7 +330,8 @@ release. Public API version 1.0.0.
 - Alert rules with unit tests, including
   StatusdNoProductData (critical when 4 or more of 6 products have no known
   status, warning when any has none), and an external check of the page
-  and API every 5 minutes from GitHub's runners that pages once per failure
+  and API from GitHub's runners, scheduled every 5 minutes (GitHub runs it
+  about every 15), that pages once per failure
   episode.
 - Releases: gated on CI, images pushed by digest, scanned, signed keyless,
   with build provenance and CycloneDX SBOMs, and the version tagged last
