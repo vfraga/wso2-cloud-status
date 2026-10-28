@@ -25,8 +25,6 @@ server:
   # max-age plus stale-while-revalidate must stay under the page's 30 s poll,
   # and stale-if-error at most polling.stale_after; -check-config enforces both.
   cache_control: "public, max-age=10, stale-while-revalidate=10, stale-if-error=300"
-  # 404s are cacheable so the CDN absorbs floods of random paths.
-  not_found_cache_control: "public, max-age=60"
   allowed_origins: ["*"]
   shutdown_timeout: 10s
   # Requests beyond this concurrency get 503 + Retry-After instead of queueing.

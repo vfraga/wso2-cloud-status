@@ -49,12 +49,10 @@ type Config struct {
 type Server struct {
 	Addr string `yaml:"addr"`
 	// AdminAddr serves /metrics and probes; keep it off the public ingress.
-	AdminAddr    string `yaml:"admin_addr"`
-	CacheControl string `yaml:"cache_control"`
-	// NotFoundCacheControl lets the CDN absorb floods of random paths.
-	NotFoundCacheControl string        `yaml:"not_found_cache_control"`
-	AllowedOrigins       []string      `yaml:"allowed_origins"`
-	ShutdownTimeout      time.Duration `yaml:"shutdown_timeout"`
+	AdminAddr       string        `yaml:"admin_addr"`
+	CacheControl    string        `yaml:"cache_control"`
+	AllowedOrigins  []string      `yaml:"allowed_origins"`
+	ShutdownTimeout time.Duration `yaml:"shutdown_timeout"`
 	// MaxInFlight sheds load with 503 once this many requests are in
 	// progress, protecting the origin if the CDN is bypassed.
 	MaxInFlight int `yaml:"max_in_flight"`
@@ -313,7 +311,6 @@ func (c *Config) applyDefaults() {
 	setDefault(&c.Server.Addr, ":8080")
 	setDefault(&c.Server.AdminAddr, ":9090")
 	setDefault(&c.Server.CacheControl, "public, max-age=10, stale-while-revalidate=10, stale-if-error=300")
-	setDefault(&c.Server.NotFoundCacheControl, "public, max-age=60")
 	setDefault(&c.Server.MaxInFlight, 1024)
 	if c.Server.AllowedOrigins == nil {
 		c.Server.AllowedOrigins = []string{"*"}

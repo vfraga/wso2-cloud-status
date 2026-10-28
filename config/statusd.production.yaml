@@ -10,7 +10,6 @@ server:
   addr: ":8080"
   admin_addr: ":9090"
   cache_control: "public, max-age=10, stale-while-revalidate=10, stale-if-error=300"
-  not_found_cache_control: "public, max-age=60"
   allowed_origins: ["*"]
   shutdown_timeout: 10s
   max_in_flight: 1024

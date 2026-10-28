@@ -49,7 +49,9 @@ info:
     changes the body at once. ETag and Last-Modified therefore change every
     minute; compare the status fields to detect a change.
     Every response the service writes, errors included, carries
-    Cache-Control; 404s are cacheable so a CDN absorbs floods of random paths.
+    Cache-Control; 404s and redirects are never cached (no-store), so a CDN
+    whose cache key ignores case or decodes paths cannot keep one in place of
+    a real answer.
     The exception is a request the HTTP server rejects before the service
     sees it (400 for a malformed request, 431 for oversized headers).
 

@@ -113,10 +113,9 @@ func splitListen(addr string) (host string, port int, ok bool) {
 // hands each poll the copy from before the previous one, so every change
 // reaches readers a poll late. A copy served on error after
 // polling.stale_after arrives already stale, so every reader sees "Status
-// unavailable". Both cache settings may use only the directives those rules
-// read (cacheSeconds).
+// unavailable". The setting may use only the directives those rules read
+// (cacheSeconds).
 func (c *Config) validateCacheControl(e *errs) {
-	cacheSeconds(e, "server.not_found_cache_control", c.Server.NotFoundCacheControl)
 	seconds := cacheSeconds(e, "server.cache_control", c.Server.CacheControl)
 	maxAge, window := seconds["max-age"], seconds["max-age"]+seconds["stale-while-revalidate"]
 	if maxAge == 0 || time.Duration(window)*time.Second >= browserPoll {

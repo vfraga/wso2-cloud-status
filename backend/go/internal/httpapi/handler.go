@@ -37,10 +37,9 @@ func (nopRequestObserver) ObserveRequest(string, int, time.Duration) {}
 
 // Options configure the public handler.
 type Options struct {
-	Store                *Store
-	CacheControl         string
-	NotFoundCacheControl string
-	AllowedOrigins       []string
+	Store          *Store
+	CacheControl   string
+	AllowedOrigins []string
 	// MaxInFlight sheds requests beyond this concurrency with 503; 0 means
 	// unlimited.
 	MaxInFlight int
@@ -52,9 +51,8 @@ type Options struct {
 }
 
 type handler struct {
-	store         *Store
-	cacheControl  string
-	notFoundCache string
+	store        *Store
+	cacheControl string
 }
 
 // NewHandler returns the public API handler with its middleware.
@@ -65,10 +63,7 @@ func NewHandler(opts Options) http.Handler {
 	if opts.Observer == nil {
 		opts.Observer = nopRequestObserver{}
 	}
-	h := &handler{store: opts.Store, cacheControl: opts.CacheControl, notFoundCache: opts.NotFoundCacheControl}
-	if h.notFoundCache == "" {
-		h.notFoundCache = noStore
-	}
+	h := &handler{store: opts.Store, cacheControl: opts.CacheControl}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/v1/summary", func(w http.ResponseWriter, r *http.Request) { h.serve(w, r, routeSummary) })
 	mux.HandleFunc("GET /api/v1/incidents", func(w http.ResponseWriter, r *http.Request) { h.serve(w, r, routeIncidents) })
@@ -77,22 +72,23 @@ func NewHandler(opts Options) http.Handler {
 	})
 	registerProbes(mux, opts.Store)
 	mux.HandleFunc("/", h.fallback(mux))
-	return withMiddleware(h.canonicalOnly(mux), opts, h.notFoundCache)
+	return withMiddleware(h.canonicalOnly(mux), opts)
 }
 
-// withMiddleware wraps the public routes, outermost first. The access log
-// sits outside the recoverer, so a request that panics is logged and counted
-// as the 500 it gets.
-func withMiddleware(next http.Handler, opts Options, notFoundCache string) http.Handler {
+// withMiddleware wraps the public routes, outermost first. The origin lock
+// comes before load shedding, so requests that did not come through the CDN
+// take no slot. The access log sits outside the recoverer, so a request that
+// panics is logged and counted as the 500 it gets.
+func withMiddleware(next http.Handler, opts Options) http.Handler {
 	return chain(next,
 		securityHeaders,
-		defaultCacheControl(notFoundCache),
+		defaultCacheControl(noStore),
 		corsHeaders(opts.AllowedOrigins),
 		requestID,
+		originLock(opts.RequiredHeaders, opts.Logger, opts.Observer),
 		shed(opts.MaxInFlight, opts.Observer),
 		accessLog(opts.Logger, opts.Observer),
 		recoverer(opts.Logger),
-		originLock(opts.RequiredHeaders),
 		preflight,
 	)
 }
@@ -132,29 +128,28 @@ func writeJSON(w http.ResponseWriter, code int, body string) {
 
 // fallback answers 405 for a known path with the wrong method and 404 for
 // everything else. Registering "/" would otherwise turn every 405 into 404.
-// 404s are cacheable so a CDN absorbs floods of random paths.
 func (h *handler) fallback(mux *http.ServeMux) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		probe := r.Clone(r.Context())
 		probe.Method = http.MethodGet
 		if _, pattern := mux.Handler(probe); pattern != "/" {
 			w.Header().Set("Allow", "GET, HEAD")
-			problem(w, http.StatusMethodNotAllowed, noStore, "Method not allowed", "This resource only supports GET and HEAD.")
+			problem(w, http.StatusMethodNotAllowed, "Method not allowed", "This resource only supports GET and HEAD.")
 			return
 		}
-		problem(w, http.StatusNotFound, h.notFoundCache, "Not found", "No resource exists at this path.")
+		problem(w, http.StatusNotFound, "Not found", "No resource exists at this path.")
 	}
 }
 
 // canonicalOnly answers a percent-encoded spelling of a path (one whose
-// escaped form is not the default, so r.URL.RawPath is set) with the
-// cacheable 404 for unknown paths, before routing. Ids are [a-z0-9-] and the
+// escaped form is not the default, so r.URL.RawPath is set) with the 404 for
+// unknown paths, before routing. Ids are [a-z0-9-] and the
 // page never encodes a path, so every such spelling would otherwise be a
 // separate cache entry at the CDN, each answered with a full body.
 func (h *handler) canonicalOnly(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.RawPath != "" {
-			problem(w, http.StatusNotFound, h.notFoundCache, "Not found", "No resource exists at this path.")
+			problem(w, http.StatusNotFound, "Not found", "No resource exists at this path.")
 			return
 		}
 		next.ServeHTTP(w, r)
@@ -164,12 +159,12 @@ func (h *handler) canonicalOnly(next http.Handler) http.Handler {
 func (h *handler) serve(w http.ResponseWriter, r *http.Request, key string) {
 	snap := h.store.current.Load()
 	if snap == nil {
-		problem(w, http.StatusServiceUnavailable, noStore, "Warming up", "Status data has not been loaded yet. Retry shortly.")
+		problem(w, http.StatusServiceUnavailable, "Warming up", "Status data has not been loaded yet. Retry shortly.")
 		return
 	}
 	enc, ok := snap.routes[key]
 	if !ok {
-		problem(w, http.StatusNotFound, h.notFoundCache, "Not found", "No product exists with this id.")
+		problem(w, http.StatusNotFound, "Not found", "No product exists with this id.")
 		return
 	}
 	// The plain and gzip bodies are two representations, each with its own
@@ -283,10 +278,11 @@ func parseCoding(entry string) (coding string, q float64, ok bool) {
 	return coding, q, err == nil
 }
 
-// problem writes an RFC 9457 problem document.
-func problem(w http.ResponseWriter, code int, cacheControl, title, detail string) {
+// problem writes an RFC 9457 problem document. No error is cached: a CDN
+// could keep one in place of a real answer.
+func problem(w http.ResponseWriter, code int, title, detail string) {
 	w.Header().Set("Content-Type", "application/problem+json")
-	w.Header().Set("Cache-Control", cacheControl)
+	w.Header().Set("Cache-Control", noStore)
 	w.WriteHeader(code)
 	_, _ = w.Write([]byte(`{"type":"about:blank","title":` + strconv.Quote(title) +
 		`,"status":` + strconv.Itoa(code) + `,"detail":` + strconv.Quote(detail) + `}`))

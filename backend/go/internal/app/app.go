@@ -132,7 +132,7 @@ func NewWithRegistry(cfg *config.Config, log *slog.Logger, version string, reg *
 		return nil, err
 	}
 	public := httpapi.NewHandler(httpapi.Options{
-		Store: store, CacheControl: cfg.Server.CacheControl, NotFoundCacheControl: cfg.Server.NotFoundCacheControl,
+		Store: store, CacheControl: cfg.Server.CacheControl,
 		AllowedOrigins: cfg.Server.AllowedOrigins, MaxInFlight: cfg.Server.MaxInFlight,
 		RequiredHeaders: cfg.Server.RequiredHeaders, Logger: log, Observer: metrics,
 	})

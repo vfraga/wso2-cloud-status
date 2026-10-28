@@ -142,7 +142,7 @@ func TestNewDefaults(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.Server.MaxInFlight != 1024 || cfg.Server.NotFoundCacheControl != "public, max-age=60" ||
+	if cfg.Server.MaxInFlight != 1024 ||
 		cfg.Reload.Interval() != 10*time.Second || cfg.Backends["b"].Type != "legacy-status-api" {
 		t.Fatalf("defaults: %+v %+v %v", cfg.Server, cfg.Backends["b"], cfg.Reload.Interval())
 	}
@@ -417,7 +417,6 @@ func TestValuesThatCannotWorkAreRejected(t *testing.T) {
 		"directive value not a number":         {`server: { cache_control: "public, max-age=ten" }`, "max-age must be a number"},
 		"a CDN lifetime the rules do not read": {`server: { cache_control: "public, max-age=10, s-maxage=600" }`, `"s-maxage=600" is not public`},
 		"a directive given twice":              {`server: { cache_control: "public, max-age=600, max-age=10" }`, "max-age is given twice"},
-		"not-found copy with s-maxage":         {`server: { not_found_cache_control: "public, s-maxage=86400" }`, "server.not_found_cache_control"},
 		"listeners on one port":                {`server: { addr: ":18803", admin_addr: "127.0.0.1:18803" }`, "must differ"},
 		"one address, two spellings":           {`server: { addr: "[::ffff:127.0.0.1]:18803", admin_addr: "127.0.0.1:18803" }`, "must differ"},
 		"a host name":                          {`server: { addr: "localhost:18803", admin_addr: "127.0.0.1:18804" }`, `server.addr must be host:port with an IP address or no host`},

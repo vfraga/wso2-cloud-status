@@ -282,7 +282,7 @@ func TestNotFoundAndMethodNotAllowed(t *testing.T) {
 }
 
 // TestEncodedPathsAreNotFound: a percent-encoded spelling of a path gets the
-// cacheable 404 for unknown paths, not the canonical path's body.
+// 404 for unknown paths, never cached, not the canonical path's body.
 func TestEncodedPathsAreNotFound(t *testing.T) {
 	t.Parallel()
 	store := &Store{}
@@ -290,12 +290,12 @@ func TestEncodedPathsAreNotFound(t *testing.T) {
 		t.Fatal(err)
 	}
 	obs := &observed{}
-	h := NewHandler(Options{Store: store, NotFoundCacheControl: "public, max-age=60", Observer: obs})
+	h := NewHandler(Options{Store: store, Observer: obs})
 	for _, path := range []string{"/api/v1/%73ummary", "/api/v1/sum%6dary", "/api/v1/%69ncidents", "/api/v1/products/api%2Dplatform", "/%68ealthz"} {
 		rec := do(h, http.MethodGet, path, nil)
-		if rec.Code != http.StatusNotFound || rec.Header().Get("Cache-Control") != "public, max-age=60" ||
+		if rec.Code != http.StatusNotFound || rec.Header().Get("Cache-Control") != "no-store" ||
 			rec.Header().Get("Content-Type") != "application/problem+json" {
-			t.Errorf("GET %s: %d Cache-Control %q Content-Type %q, want the cacheable 404", path, rec.Code,
+			t.Errorf("GET %s: %d Cache-Control %q Content-Type %q, want the 404 with no-store", path, rec.Code,
 				rec.Header().Get("Cache-Control"), rec.Header().Get("Content-Type"))
 		}
 	}
@@ -418,13 +418,13 @@ func TestSecurityHeadersOnEveryResponse(t *testing.T) {
 
 func TestDefaultCacheControl(t *testing.T) {
 	t.Parallel()
-	h := NewHandler(Options{Store: &Store{}, NotFoundCacheControl: "public, max-age=60", AllowedOrigins: []string{"*"}})
+	h := NewHandler(Options{Store: &Store{}, AllowedOrigins: []string{"*"}})
 	// ServeMux redirects unclean paths itself; the redirect must not reach
 	// the CDN without a Cache-Control header.
-	if rec := do(h, http.MethodGet, "/api//v1/summary", nil); rec.Code != http.StatusTemporaryRedirect || rec.Header().Get("Cache-Control") != "public, max-age=60" {
+	if rec := do(h, http.MethodGet, "/api//v1/summary", nil); rec.Code != http.StatusTemporaryRedirect || rec.Header().Get("Cache-Control") != "no-store" {
 		t.Fatalf("redirect: %d Cache-Control = %q", rec.Code, rec.Header().Get("Cache-Control"))
 	}
-	if rec := do(h, http.MethodOptions, "/api/v1/summary", nil); rec.Code != http.StatusNoContent || rec.Header().Get("Cache-Control") != "public, max-age=60" {
+	if rec := do(h, http.MethodOptions, "/api/v1/summary", nil); rec.Code != http.StatusNoContent || rec.Header().Get("Cache-Control") != "no-store" {
 		t.Fatalf("preflight: %d Cache-Control = %q", rec.Code, rec.Header().Get("Cache-Control"))
 	}
 	if got := do(h, http.MethodGet, "/healthz", nil).Header().Get("Cache-Control"); got != "no-store" {
@@ -461,7 +461,7 @@ func TestPanicIsCounted(t *testing.T) {
 	t.Parallel()
 	obs := &codes{}
 	h := withMiddleware(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { panic("boom") }),
-		Options{Logger: slog.New(slog.DiscardHandler), Observer: obs}, noStore)
+		Options{Logger: slog.New(slog.DiscardHandler), Observer: obs})
 	rec := do(h, http.MethodGet, "/api/v1/summary", nil)
 	if rec.Code != http.StatusInternalServerError || rec.Header().Get("X-Content-Type-Options") != "nosniff" {
 		t.Fatalf("code %d, headers %v; want 500 with the security headers", rec.Code, rec.Header())
@@ -630,17 +630,23 @@ func TestIfModifiedSince(t *testing.T) {
 	}
 }
 
-func TestNotFoundIsCacheable(t *testing.T) {
+// TestNotFoundIsNotCached: a CDN whose cache key ignores case or decodes
+// paths would keep a cached 404 for /API/V1/SUMMARY or /api/v1/%73ummary in
+// place of the summary, so no 404 may be cached.
+func TestNotFoundIsNotCached(t *testing.T) {
 	t.Parallel()
-	h := NewHandler(Options{Store: &Store{}, NotFoundCacheControl: "public, max-age=60"})
-	if got := do(h, http.MethodGet, "/random-path-123", nil).Header().Get("Cache-Control"); got != "public, max-age=60" {
-		t.Fatalf("404 Cache-Control = %q", got)
+	store := &Store{}
+	if err := store.Publish(sampleBuild()); err != nil {
+		t.Fatal(err)
+	}
+	h := NewHandler(Options{Store: store})
+	for _, path := range []string{"/random-path-123", "/API/V1/SUMMARY", "/api/v1/products/nope"} {
+		if got := do(h, http.MethodGet, path, nil).Header().Get("Cache-Control"); got != "no-store" {
+			t.Errorf("%s: 404 Cache-Control = %q, want no-store", path, got)
+		}
 	}
 	if got := do(h, http.MethodPost, "/api/v1/summary", nil).Header().Get("Cache-Control"); got != "no-store" {
 		t.Fatalf("405 Cache-Control = %q", got)
-	}
-	if got := do(NewHandler(Options{Store: &Store{}}), http.MethodGet, "/x", nil).Header().Get("Cache-Control"); got != "no-store" {
-		t.Fatalf("unset NotFoundCacheControl must default to no-store, got %q", got)
 	}
 }
 
@@ -701,6 +707,78 @@ func TestOriginLock(t *testing.T) {
 	}
 	if rec := do(h, http.MethodGet, "/readyz", nil); rec.Code != http.StatusOK {
 		t.Fatalf("probes must stay open: %d", rec.Code)
+	}
+	// A probe's path counts as sent: an encoded spelling is not a probe.
+	if rec := do(h, http.MethodGet, "/%68ealthz", nil); rec.Code != http.StatusForbidden {
+		t.Errorf("/%%68ealthz without the header: %d, want 403", rec.Code)
+	}
+	// The ID must arrive once: a second value, in either order, is refused.
+	for _, values := range [][]string{{"id-1", "id-2"}, {"id-2", "id-1"}, {"id-1", "id-1"}} {
+		req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/api/v1/summary", nil)
+		for _, v := range values {
+			req.Header.Add("X-Azure-FDID", v)
+		}
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		if rec.Code != http.StatusForbidden {
+			t.Errorf("X-Azure-FDID %q: %d, want 403", values, rec.Code)
+		}
+	}
+}
+
+// TestOriginLockBeforeShedding: requests the origin lock refuses take no
+// load-shedding slot, so a flood that did not come through the CDN cannot
+// crowd out the requests that did.
+func TestOriginLockBeforeShedding(t *testing.T) {
+	t.Parallel()
+	release := make(chan struct{})
+	entered := make(chan struct{})
+	var once sync.Once
+	slow := http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {
+		once.Do(func() { close(entered) })
+		<-release
+	})
+	obs := &codes{}
+	h := withMiddleware(slow, Options{
+		MaxInFlight: 1, RequiredHeaders: map[string]string{"X-Azure-FDID": "id-1"},
+		Logger: slog.New(slog.DiscardHandler), Observer: obs,
+	})
+	done := make(chan struct{})
+	go func() {
+		do(h, http.MethodGet, "/a", map[string]string{"X-Azure-FDID": "id-1"})
+		close(done)
+	}()
+	<-entered
+	refused := do(h, http.MethodGet, "/b", nil)
+	shed := do(h, http.MethodGet, "/c", map[string]string{"X-Azure-FDID": "id-1"})
+	close(release)
+	<-done
+	if refused.Code != http.StatusForbidden {
+		t.Errorf("without the ID while the slot is taken: %d, want 403", refused.Code)
+	}
+	if shed.Code != http.StatusServiceUnavailable {
+		t.Errorf("with the ID while the slot is taken: %d, want 503", shed.Code)
+	}
+	obs.mu.Lock()
+	defer obs.mu.Unlock()
+	if !slices.Contains(obs.seen, "unmatched 403") || !slices.Contains(obs.seen, "shed 503") {
+		t.Errorf("observed %q, want unmatched 403 and shed 503", obs.seen)
+	}
+}
+
+// TestOriginLockLogsRefusals: at debug level a refused request is logged as
+// the access log logs the others, so an operator sees every request.
+func TestOriginLockLogsRefusals(t *testing.T) {
+	t.Parallel()
+	var buf bytes.Buffer
+	h := NewHandler(Options{
+		Store: &Store{}, RequiredHeaders: map[string]string{"X-Azure-FDID": "id-1"},
+		Logger: slog.New(slog.NewJSONHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug})),
+	})
+	do(h, http.MethodGet, "/api/v1/summary", nil)
+	if line := buf.String(); !strings.Contains(line, `"msg":"request"`) || !strings.Contains(line, `"status":403`) ||
+		!strings.Contains(line, `"route":"unmatched"`) {
+		t.Fatalf("refusal not logged as a request: %q", line)
 	}
 }
 

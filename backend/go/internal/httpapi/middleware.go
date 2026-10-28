@@ -47,7 +47,7 @@ func recoverer(log *slog.Logger) middleware {
 						panic(v)
 					}
 					log.ErrorContext(r.Context(), "handler panic", slog.Any("panic", v), slog.String("request_id", requestIDFrom(r.Context())))
-					problem(w, http.StatusInternalServerError, noStore, "Internal error", "The request could not be completed.")
+					problem(w, http.StatusInternalServerError, "Internal error", "The request could not be completed.")
 				}
 			}()
 			next.ServeHTTP(w, r)
@@ -134,9 +134,11 @@ func accessLog(log *slog.Logger, obs RequestObserver) middleware {
 // isProbe reports whether the request is a liveness or readiness probe. The
 // platform's probes pass the controls on public traffic: the origin lock
 // and load shedding. A probe shed under load would read as a dead replica
-// and get it restarted.
+// and get it restarted. The path is compared as sent, so an encoded spelling
+// of a probe's path is not a probe.
 func isProbe(r *http.Request) bool {
-	return r.URL.Path == "/healthz" || r.URL.Path == "/readyz"
+	path := r.URL.EscapedPath()
+	return path == "/healthz" || path == "/readyz"
 }
 
 // shed rejects requests beyond max concurrent ones with 503, so a flood that
@@ -159,16 +161,18 @@ func shed(limit int, obs RequestObserver) middleware {
 				next.ServeHTTP(w, r)
 			default:
 				w.Header().Set("Retry-After", "1")
-				problem(w, http.StatusServiceUnavailable, noStore, "Overloaded", "Too many requests in progress. Retry shortly.")
+				problem(w, http.StatusServiceUnavailable, "Overloaded", "Too many requests in progress. Retry shortly.")
 				obs.ObserveRequest("shed", http.StatusServiceUnavailable, 0)
 			}
 		})
 	}
 }
 
-// originLock answers 403 unless every required header matches, so only the
-// CDN can reach the public API. Probes stay open for the platform.
-func originLock(required map[string]string) middleware {
+// originLock answers 403 unless each required header arrives exactly once
+// with its value, so only the CDN can reach the public API. Refused requests
+// are observed and logged as the access log would, under the route
+// "unmatched", as they never reach routing. Probes stay open for the platform.
+func originLock(required map[string]string, log *slog.Logger, obs RequestObserver) middleware {
 	if len(required) == 0 {
 		return func(next http.Handler) http.Handler { return next }
 	}
@@ -179,8 +183,14 @@ func originLock(required map[string]string) middleware {
 				return
 			}
 			for name, want := range required {
-				if subtle.ConstantTimeCompare([]byte(r.Header.Get(name)), []byte(want)) != 1 {
-					problem(w, http.StatusForbidden, noStore, "Forbidden", "Use the public status page address.")
+				got := r.Header.Values(name)
+				if len(got) != 1 || subtle.ConstantTimeCompare([]byte(got[0]), []byte(want)) != 1 {
+					problem(w, http.StatusForbidden, "Forbidden", "Use the public status page address.")
+					obs.ObserveRequest("unmatched", http.StatusForbidden, 0)
+					log.DebugContext(r.Context(), "request",
+						slog.String("method", r.Method), slog.String("route", "unmatched"),
+						slog.Int("status", http.StatusForbidden), slog.Duration("took", 0),
+						slog.String("request_id", requestIDFrom(r.Context())))
 					return
 				}
 			}

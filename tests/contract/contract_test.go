@@ -649,14 +649,18 @@ func TestEveryResponseIsCacheExplicit(t *testing.T) {
 			t.Errorf("%s (%d) has no Cache-Control", c, r.code)
 		}
 	}
-	if cc := call(t, http.MethodGet, base+"/no/such/path", nil).header.Get("Cache-Control"); strings.Contains(cc, "no-store") {
-		t.Errorf("404 Cache-Control = %q; random-path floods would all reach the origin", cc)
+	// A CDN whose cache key ignores case or decodes paths would keep a cached
+	// 404 in place of a real answer, so no 404 may be cached.
+	for _, path := range []string{"/no/such/path", "/API/V1/SUMMARY"} {
+		if cc := call(t, http.MethodGet, base+path, nil).header.Get("Cache-Control"); cc != "no-store" {
+			t.Errorf("%s: 404 Cache-Control = %q, want no-store", path, cc)
+		}
 	}
 }
 
 // TestEncodedPaths: a percent-encoded spelling of a data path is not the
-// data. Each spelling would be a separate CDN cache entry, so it gets the
-// cacheable 404 for unknown paths.
+// data. Each spelling would be a separate CDN cache entry, so it gets the 404
+// for unknown paths, which is never cached.
 func TestEncodedPaths(t *testing.T) {
 	base := baseURL(t)
 	for _, path := range []string{"/api/v1/%73ummary", "/api/v1/sum%6dary", "/api/v1/%69ncidents", "/api/v1/products/mo%65sif"} {
@@ -665,8 +669,8 @@ func TestEncodedPaths(t *testing.T) {
 		if r.code != http.StatusNotFound {
 			t.Errorf("%s: %d, want 404", p, r.code)
 		}
-		if cc := r.header.Get("Cache-Control"); cc == "" || strings.Contains(cc, "no-store") {
-			t.Errorf("%s: Cache-Control %q, want the cacheable 404", p, cc)
+		if cc := r.header.Get("Cache-Control"); cc != "no-store" {
+			t.Errorf("%s: Cache-Control %q, want no-store", p, cc)
 		}
 	}
 }
