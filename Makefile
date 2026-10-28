@@ -18,7 +18,8 @@ HADOLINT_ACTION := v3.5.0
 HADOLINT     := ghcr.io/hadolint/hadolint:v2.15.1-debian@sha256:9a3944b7fddcb947d1ffd90829ac1a6e5c30479223358f249d8b96c7d0019e27
 SHELLCHECK   := koalaman/shellcheck:v0.11.0@sha256:61862eba1fcf09a484ebcc6feea46f1782532571a34ed51fedf90dd25f925a8d
 SPECTRAL     := stoplight/spectral:6.17.0@sha256:c8ffae6ee561b70e80402f1ea669e8b37c74fee48a3dbe2147b71359ed987239
-# The SkyWalking Eyes that apache/skywalking-eyes/header v0.9.0 (ci.yml) runs.
+# The SkyWalking Eyes release that apache/skywalking-eyes/header (ci.yml) builds
+# from source; make pins checks the two name the same version.
 LICENSE_EYE  := apache/skywalking-eyes:0.9.0@sha256:cd89ccbbcba2e87d3fb0e34b156b1da208d6c5ac1ada4e2d335e920022c765b8
 ACTIONLINT   := rhysd/actionlint:1.7.12@sha256:b1934ee5f1c509618f2508e6eb47ee0d3520686341fec936f3b79331f9315667
 # Releases are tagged v<semver> (v0.1.0); other tags never name a build.
@@ -187,15 +188,30 @@ workflow-cache: ## No workflow job with secrets or id-token: write uses an actio
 	    print "no job with secrets or id-token: write uses an action with its cache on"; \
 	  }' .github/workflows/*.yml
 
-pins: workflow-cache ## The tool versions copied from ci.yml, here and in release.yml, still match it; no privileged job uses a cache
+pins: workflow-cache ## The tool versions copied from ci.yml, here and in release.yml, still match it; the Dockerfiles build with go.mod's Go and .nvmrc's Node; no privileged job uses a cache
 	@status=0; \
 	for pin in '$(GOVULNCHECK)' '$(GOLICENSES)' '$(LICENSES_OK)' '$(PROMETHEUS)' '$(SHELLCHECK)' '$(SPECTRAL)' '$(ACTIONLINT)'; do \
 	  awk -v p=": $$pin" 'substr($$0, length($$0) - length(p) + 1) == p { found = 1 } END { exit !found }' .github/workflows/ci.yml \
 	    || { echo "Makefile pin not in ci.yml: $$pin"; status=1; }; \
 	done; \
+	found=0; \
 	while IFS= read -r line; do \
+	  found=$$((found + 1)); \
 	  grep -qxF -- "$$line" .github/workflows/ci.yml || { echo "release.yml pin not in ci.yml: $$line"; status=1; }; \
 	done < <(grep -E '^  (TRIVY_VERSION|BUILDKIT_IMAGE):' .github/workflows/release.yml); \
+	[[ $$found == 2 ]] || { echo "release.yml has $$found of its two pins (TRIVY_VERSION, BUILDKIT_IMAGE)"; status=1; }; \
+	eye='$(LICENSE_EYE)'; eye="$${eye#*:}"; eye="$${eye%%@*}"; \
+	eye_uses="$$(grep -E 'uses: apache/skywalking-eyes/header@' .github/workflows/ci.yml || true)"; \
+	[[ -n "$$eye_uses" ]] && ! grep -vqE " # v$${eye}"'$$' <<<"$$eye_uses" \
+	  || { echo "ci.yml runs a skywalking-eyes/header other than v$$eye, the release LICENSE_EYE copies"; status=1; }; \
+	go_version="$$(awk '$$1 == "go" { print $$2 }' backend/go/go.mod)"; \
+	[[ "$$(awk '$$1 == "go" { print $$2 }' tests/contract/go.mod)" == "$$go_version" ]] \
+	  || { echo "tests/contract/go.mod is not on Go $$go_version like backend/go/go.mod"; status=1; }; \
+	grep -qF "FROM golang:$$go_version-" backend/go/Dockerfile \
+	  || { echo "backend/go/Dockerfile does not build with Go $$go_version (backend/go/go.mod)"; status=1; }; \
+	node_version="$$(tr -d '[:space:]' <frontend/.nvmrc)"; \
+	grep -qF "FROM node:$$node_version-" frontend/Dockerfile \
+	  || { echo "frontend/Dockerfile does not build with Node $$node_version (frontend/.nvmrc)"; status=1; }; \
 	hadolint_uses="$$(grep -E 'uses: hadolint/hadolint-action@' .github/workflows/ci.yml || true)"; \
 	[[ -n "$$hadolint_uses" ]] && ! grep -vqE ' # $(HADOLINT_ACTION)$$' <<<"$$hadolint_uses" \
 	  || { echo "ci.yml runs a hadolint-action other than $(HADOLINT_ACTION), whose hadolint HADOLINT copies"; status=1; }; \

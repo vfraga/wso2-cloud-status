@@ -47,7 +47,10 @@ updates:
       interval: daily
     cooldown:
       default-days: 7
-      exclude: ["distroless/static-debian13", "nginxinc/nginx-unprivileged"]
+      # GitHub does not say which form of an image's name the list matches,
+      # so both are given; the first Dependabot pull requests show whether
+      # the exclusion holds (go-live checklist).
+      exclude: ["distroless/static-debian13", "gcr.io/distroless/static-debian13", "nginxinc/nginx-unprivileged"]
     ignore:
       - dependency-name: "node"
         update-types: ["version-update:semver-major"]

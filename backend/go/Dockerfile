@@ -8,7 +8,8 @@
 #             statusd -version, statusd_build_info and the version label
 #   REVISION  the full commit id (label)
 #   CREATED   the commit time, RFC 3339 in UTC (label)
-#   SOURCE    the repository URL (label)
+#   SOURCE    the repository URL (label); the default is its planned home,
+#             the Go module's path
 
 FROM golang:1.27.3-alpine@sha256:f2c872bcee949b7be9c490efd02b48a8a2fbf947cdf533f1c58525ec9d8170fd AS build
 WORKDIR /src

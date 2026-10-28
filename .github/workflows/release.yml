@@ -8,7 +8,10 @@
 # that digest (skopeo, digests preserved), signs both images keyless with
 # Sigstore cosign (this workflow's OIDC identity), attests their build
 # provenance and their SBOMs, and only then gives them the version tag. A run
-# that fails leaves no version behind and can be run again. A GitHub release
+# that fails before that step leaves no version behind and can be run again;
+# one that fails between the two tags leaves statusd's, which a release
+# manager deletes before running it again (the workflow refuses a version
+# the registry already has). A GitHub release
 # follows with the CHANGELOG.md section, both SBOMs and the image digests.
 # Deploy by digest, after checking the signature (cosign verify) and the
 # attestations (gh attestation verify).
@@ -94,8 +97,11 @@ jobs:
             echo "::error title=Release::$TAG is not on main; tag a commit of main"
             exit 1
           fi
-          if ! grep -q "^## \[${TAG#v}\]" CHANGELOG.md; then
-            echo "::error title=Release::CHANGELOG.md has no section \"## [${TAG#v}]\""
+          # The section names the version, dots matched as dots, and the
+          # release date: "## [0.5.0] - 2026-11-02".
+          version="${TAG#v}"
+          if ! grep -qE "^## \[${version//./\\.}\] - [0-9]{4}-[0-9]{2}-[0-9]{2}$" CHANGELOG.md; then
+            echo "::error title=Release::CHANGELOG.md has no section \"## [$version] - <date>\""
             exit 1
           fi
           if awk '/^## \[Unreleased\]/ { on = 1; next } on && /^## \[/ { exit } on && NF { found = 1; exit } END { exit !found }' CHANGELOG.md; then

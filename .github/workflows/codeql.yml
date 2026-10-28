@@ -50,10 +50,13 @@ jobs:
           languages: ${{ matrix.language }}
           build-mode: ${{ matrix.build-mode }}
           queries: security-and-quality
+      # Both Go modules: the service, and the contract tests with the fixture
+      # upstream they run.
       - name: Build
         if: matrix.build-mode == 'manual'
-        working-directory: backend/go
-        run: go build ./...
+        run: |
+          (cd backend/go && go build ./...)
+          (cd tests/contract && go build ./...)
       - uses: github/codeql-action/analyze@6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee # v4.39.0
         with:
           category: /language:${{ matrix.language }}

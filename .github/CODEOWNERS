@@ -18,3 +18,13 @@
 /frontend/Dockerfile            @wso2/status-page-maintainers @wso2/status-page-sre
 /frontend/docker/               @wso2/status-page-maintainers @wso2/status-page-sre
 /SECURITY.md                    @wso2/status-page-maintainers @wso2/status-page-sre
+
+# What decides whether a change passes: the gates, their tool versions and
+# configuration, and the scan findings accepted as risks.
+/Makefile                       @wso2/status-page-maintainers @wso2/status-page-sre
+/scripts/*.sh                   @wso2/status-page-maintainers @wso2/status-page-sre
+/.trivyignore.yaml              @wso2/status-page-maintainers @wso2/status-page-sre
+/.licenserc.yaml                @wso2/status-page-maintainers @wso2/status-page-sre
+/.spectral.yaml                 @wso2/status-page-maintainers @wso2/status-page-sre
+/backend/go/.golangci.yml       @wso2/status-page-maintainers @wso2/status-page-sre
+/frontend/eslint.config.js      @wso2/status-page-maintainers @wso2/status-page-sre

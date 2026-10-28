@@ -141,12 +141,33 @@ jobs:
       - uses: actions/setup-go@v6
 YAML
 )" workflow-cache
-mkdir -p "$work/pins/.github/workflows" "$work/drift/.github/workflows"
-cp .github/workflows/ci.yml .github/workflows/release.yml "$work/pins/.github/workflows/"
-expect "pins: the workflows as they are" 0 gate "$work/pins" pins
-cp .github/workflows/release.yml "$work/drift/.github/workflows/"
+# pins: a tree holding the files make pins reads, as they are, and copies of
+# it with one of them drifted.
+pins_tree() {
+  rm -rf "${work:?}/${1:?}"
+  mkdir -p "$work/$1/.github/workflows" "$work/$1/backend/go" "$work/$1/tests/contract" "$work/$1/frontend"
+  cp .github/workflows/ci.yml .github/workflows/release.yml "$work/$1/.github/workflows/"
+  cp backend/go/go.mod backend/go/Dockerfile "$work/$1/backend/go/"
+  cp tests/contract/go.mod "$work/$1/tests/contract/"
+  cp frontend/.nvmrc frontend/Dockerfile "$work/$1/frontend/"
+}
+pins_tree pins
+expect "pins: the files as they are" 0 gate "$work/pins" pins
+pins_tree drift
 sed -E 's/(hadolint-action@[0-9a-f]+ # )v[0-9.]+$/\1v0.0.1/' .github/workflows/ci.yml >"$work/drift/.github/workflows/ci.yml"
 expect "pins: ci.yml moved to another hadolint-action" 1 gate "$work/drift" pins
+pins_tree drift
+sed -E 's/(skywalking-eyes\/header@[0-9a-f]+ # )v[0-9.]+$/\1v0.0.1/' .github/workflows/ci.yml >"$work/drift/.github/workflows/ci.yml"
+expect "pins: ci.yml moved to another skywalking-eyes" 1 gate "$work/drift" pins
+pins_tree drift
+sed 's/^  TRIVY_VERSION:/  TRIVY_RELEASE:/' .github/workflows/release.yml >"$work/drift/.github/workflows/release.yml"
+expect "pins: release.yml lost a pin line" 1 gate "$work/drift" pins
+pins_tree drift
+sed -E 's/^(FROM golang:)[0-9.]+-/\10.0.1-/' backend/go/Dockerfile >"$work/drift/backend/go/Dockerfile"
+expect "pins: the Go image is not go.mod's Go" 1 gate "$work/drift" pins
+pins_tree drift
+echo 0.0.1 >"$work/drift/frontend/.nvmrc"
+expect "pins: .nvmrc is not the Node image's" 1 gate "$work/drift" pins
 
 if [[ "$failures" -gt 0 ]]; then
   echo "gates-selftest: $failures of $cases cases failed" >&2

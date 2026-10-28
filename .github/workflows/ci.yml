@@ -231,6 +231,9 @@ jobs:
           ignore-unfixed: true
           exit-code: "1"
           trivyignores: .trivyignore.yaml
+      # Trivy reads the npm licences from package-lock.json; a Go module's
+      # licence only from the module cache, which this job does not fill, so
+      # go-licenses (the go job) covers Go.
       - name: Dependency licenses and misconfiguration (Trivy)
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
