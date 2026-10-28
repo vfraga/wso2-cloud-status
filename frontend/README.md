@@ -60,8 +60,8 @@ How the frontend behaves in each state, data missing included:
   the not-found page) is in `src/lib/status.ts`; headings and link texts stay
   with their components. Times go through `Intl` in the reader's locale
   (`src/lib/time.ts`), data times and history days in UTC.
-- Accessibility: the banner's live region announces late data and headline
-  changes; after an in-page navigation focus moves to the new view's h1 once
+- Accessibility: the banner's live region carries late data and headline
+  changes (no screen reader has been tested yet); after an in-page navigation focus moves to the new view's h1 once
   it shows data or a failure; the home page's table states every role, so a
   phone layout keeps it a table; the history strip is one tab stop with
   arrow keys; status is never colour alone. axe runs in the end-to-end tests.
@@ -113,7 +113,7 @@ pack's paths unchanged.
   Oxygen UI would drop them.
 - Oxygen UI inlines its Inter font as `data:` URIs in its JavaScript. `build/externalize-fonts.ts`
   moves each into a content-hashed `.woff2` under `/assets/` and preloads the Latin subset.
-- The build has three chunks: `index` (app code, about 21 kB gzip), `vendor`
+- The build has three chunks: `index` (app code, about 23 kB gzip), `vendor`
   (React, MUI, Oxygen, about 180 kB gzip; cached long-term) and a small
   `rolldown-runtime` (under 1 kB). The image compresses each file once at
   level 9 and nginx sends the `.gz` copy (`gzip_static`).

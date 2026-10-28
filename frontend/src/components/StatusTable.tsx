@@ -82,7 +82,7 @@ const ICON_BOX = "16px";
 
 /**
  * A part under its place's status: its own status as an icon, then its name.
- * The banner above gives each status in words; a screen reader hears it here.
+ * The banner above gives each status in words; here it is in text too, for assistive technology.
  */
 function PartLine({ name, status }: { name: string; status: Status }) {
   return (

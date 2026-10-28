@@ -50,8 +50,8 @@ export function clockSkew(receivedAt: Date, serverNow: Date | null): number {
 /**
  * True when a response's generated_at was longer ago than the limit at the
  * moment it was sent (`serverNow`, the server's clock, or the arrival time
- * when that is unknown): a frozen service, or a CDN copy served under
- * stale-if-error. Measured once, on arrival, so a tab back from the
+ * when that is unknown): a frozen service, or a cached copy served past its
+ * freshness (a CDN that honours stale-if-error would). Measured once, on arrival, so a tab back from the
  * background does not flash "Status unavailable" before its refresh answers.
  */
 export function staleOnArrival(serverNow: Date, generatedAt: Date | null): boolean {

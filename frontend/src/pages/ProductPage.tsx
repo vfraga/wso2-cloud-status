@@ -86,7 +86,7 @@ function RecentIncidents({ product, now }: { product: ProductDetail; now: Date }
         Recent incidents
       </Typography>
       <Typography variant="body2" sx={sectionNote}>
-        {recentSpan(product.history.length)}{" "}
+        {product.history.length > 0 && `${recentSpan(product.history.length)} `}
         <Link to={`/history?product=${encodeURIComponent(product.id)}`}>{OLDER_INCIDENTS}</Link>
       </Typography>
       <IncidentsUnavailable missing={missing} />

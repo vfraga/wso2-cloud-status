@@ -98,8 +98,9 @@ describe("built-in product list", () => {
   });
 
   // The end-to-end specs take the catalogue from e2e/helpers.ts. A spec that
-  // names every product, or counts them with a number, is a second copy that
-  // adding a product breaks (adding one needs no test change).
+  // names every product, or counts them or the table's cells with a number,
+  // is a second copy that adding a product breaks (adding one needs no test
+  // change).
   it("stay the only copy the end-to-end specs read", () => {
     const specs = resolve(here, "../../e2e/specs");
     const count = new RegExp(`toHaveCount\\(${String(FALLBACK_PRODUCTS.length)}\\b`);
@@ -108,6 +109,9 @@ describe("built-in product list", () => {
       const named = FALLBACK_PRODUCTS.filter((p) => text.includes(`"${p.name}"`));
       expect(named.length, `${file} names every product`).toBeLessThan(FALLBACK_PRODUCTS.length);
       expect(text, `${file} counts the products with a number`).not.toMatch(count);
+      expect(text, `${file} counts the table's cells with a number`).not.toMatch(
+        /cells\.filter\(.*\)\)\.toHaveCount\(\d/,
+      );
     }
   });
 

@@ -17,6 +17,7 @@
  */
 
 import { expect, test, type Page } from "@playwright/test";
+import { FALLBACK_PRODUCTS } from "../../src/lib/fallbackProducts";
 import {
   collectConsoleErrors,
   expectNoSeriousViolations,
@@ -52,11 +53,26 @@ test.describe("all operational", () => {
     const rows = productRows(page);
     await expect(rows).toHaveCount(PRODUCTS);
     await expect(rows.getByRole("rowheader").getByRole("link")).toHaveText(PRODUCT_NAMES);
-    // Every place a product runs in is operational; the others are marked as not its regions.
+    // Every place a product runs in is operational; the others are marked as
+    // not its regions. Where each product runs comes from the API, so a new
+    // product changes no number here.
+    const summary = (await (await page.request.get("/api/v1/summary")).json()) as {
+      products: { locations: { name: string }[]; regions: { name: string; location?: string }[] }[];
+    };
+    const runsIn = summary.products.map(
+      (p) =>
+        new Set([
+          ...p.locations.map((l) => l.name),
+          ...p.regions.filter((r) => r.location === undefined).map((r) => r.name),
+        ]),
+    );
+    const placesRun = runsIn.reduce((n, places) => n + places.size, 0);
     const cells = rows.getByRole("cell");
     await expect(cells).toHaveCount(2 * PRODUCTS);
-    await expect(cells.filter({ hasText: "Operational" })).toHaveCount(10);
-    await expect(cells.filter({ hasText: "No EU region" })).toHaveCount(2);
+    await expect(cells.filter({ hasText: "Operational" })).toHaveCount(placesRun);
+    await expect(cells.filter({ hasText: "No EU region" })).toHaveCount(
+      runsIn.filter((places) => !places.has("EU")).length,
+    );
     // The detail is on each product's page.
     await expect(page.getByRole("grid")).toHaveCount(0);
     await expect(page.getByRole("heading", { name: "Past incidents" })).toHaveCount(0);
@@ -472,6 +488,31 @@ test.describe("all operational", () => {
     expect(linkColour).toBe(textColour);
     expect(await link.evaluate((el) => getComputedStyle(el).textDecorationLine)).toBe("underline");
     expect(await link.evaluate((el) => getComputedStyle(el).textDecorationColor)).toBe(textColour);
+  });
+
+  test("no link on any page leads to a status page of a product", async ({ page }) => {
+    const hrefs: string[] = [];
+    const collect = async () => {
+      hrefs.push(
+        ...(await page
+          .locator("a[href]")
+          .evaluateAll((links) => links.map((a) => (a as HTMLAnchorElement).href))),
+      );
+    };
+    await ready(page);
+    await collect();
+    for (const { id, name } of FALLBACK_PRODUCTS) {
+      await readyProduct(page, id, name);
+      await collect();
+    }
+    await page.goto("/history");
+    await expect(page.getByText(RECENT_INCIDENT).first()).toBeVisible();
+    await collect();
+    expect(hrefs.length).toBeGreaterThan(0);
+    const statusPages = hrefs.filter((href) =>
+      /(^|\.)status\.|statuspage/.test(new URL(href).hostname),
+    );
+    expect(statusPages).toEqual([]);
   });
 
   test("axe finds no serious or critical issues at 360 px, home and product page", async ({

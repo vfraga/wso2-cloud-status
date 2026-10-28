@@ -19,7 +19,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { days, incident } from "../test/factories";
 import { dayDetail } from "./history";
-import { formatClock, formatUtcClock, utcDayKey } from "./time";
+import { formatClock, formatDuration, formatUtcClock, utcDayKey } from "./time";
 
 /*
  * Where UTC (the history strip, data times) meets the reader's zone (incident
@@ -37,13 +37,17 @@ describe(`UTC days and local times, in ${zone}`, () => {
   // 23:30 UTC: the next day east of UTC, the same day west of it.
   const late = new Date("2026-10-20T23:30:00Z");
 
-  it("puts an incident on its UTC day in the strip", () => {
+  it("counts an incident's minutes on its UTC day in the strip", () => {
     const resolved = new Date(late.getTime() + 20 * 60_000);
     const item = incident({ id: "late", startedAt: late, resolvedAt: resolved });
-    const strip = days(1, { 0: { date: utcDayKey(late), incidentIds: ["late"] } })[0]!;
-    expect(dayDetail(strip, new Map([["late", item]]), resolved).titles).toEqual([
-      "Elevated latency",
-    ]);
+    // The API's figure differs, so only a day cut at UTC midnight gives 20 minutes;
+    // a day cut at local midnight east of UTC holds none of the incident.
+    const strip = days(1, {
+      0: { date: utcDayKey(late), incidentIds: ["late"], minutes: { degraded: 5 } },
+    })[0]!;
+    const detail = dayDetail(strip, new Map([["late", item]]), resolved);
+    expect(detail.titles).toEqual(["Elevated latency"]);
+    expect(detail.minutes.map((m) => m.text)).toEqual([formatDuration(20 * 60_000)]);
   });
 
   it("names the reader's zone on local times and UTC on data times", () => {

@@ -644,6 +644,19 @@ describe("product page", () => {
     expect(screen.getByText(UPTIME_NOTE)).toBeInTheDocument();
   });
 
+  it("names no span over Recent incidents when the product sends no history days", async () => {
+    window.history.pushState(null, "", "/products/api-platform");
+    server.use(
+      http.get("http://api.test/api/v1/products/api-platform", () =>
+        HttpResponse.json({ ...detail(), ...currentBody(), history: [] }),
+      ),
+    );
+    render(<App />);
+    const recent = await screen.findByRole("region", { name: "Recent incidents" });
+    expect(within(recent).queryByText(/The last/)).toBeNull();
+    expect(within(recent).getByRole("link", { name: "Older incidents" })).toBeInTheDocument();
+  });
+
   it("shows an ongoing incident above the history and regions, and not again below", async () => {
     window.history.pushState(null, "", "/products/api-platform");
     const open = {

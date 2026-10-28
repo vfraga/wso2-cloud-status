@@ -57,6 +57,10 @@ describe("minifyHtml", () => {
     expect(min).not.toContain("<!--");
     expect(min).not.toContain("/*");
     expect(min).toContain("If the current status does not appear, reload the page in a moment.");
+    // A browser without JavaScript reads why the status is missing.
+    expect(min).toContain(
+      "<noscript><p>This page needs JavaScript to show the current status.</p></noscript>",
+    );
   });
 });
 

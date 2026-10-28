@@ -64,7 +64,7 @@ export function nextDelay(
  * The server's clock for this session, anchored at the response with the
  * newest server time (Date plus Age) seen on any path. The server's clock
  * only moves forward, so a response whose server time is not newer is a
- * copy made earlier, such as a CDN copy served without Age, and is judged on
+ * copy made earlier, such as a cache's copy served without Age, and is judged on
  * the anchor's clock: its age shows instead of reading as fresh.
  */
 let anchor: { serverMs: number; skewMs: number } | null = null;
@@ -88,7 +88,7 @@ export function forgetPolledState(): void {
 
 /**
  * State after a valid response. A body built before the one shown (a
- * replica a poll behind, an older CDN copy) never replaces it: the page
+ * replica a poll behind, an older cached copy) never replaces it: the page
  * keeps the newer data, and the answer counts as a successful contact.
  */
 function received<T>(

@@ -32,8 +32,8 @@ function readDate(headers: Headers, name: string): Date | null {
  * The server's clock when the response was sent: Date plus Age, the seconds
  * a cache held it. Null when Date is missing or unreadable (a cross-origin
  * response without the header exposed, or a static fallback); the client
- * clock is used then. A CDN copy without Age carries the origin's Date, so
- * the time it sat in the cache is not counted.
+ * clock is used then. A cached copy without Age carries the origin's Date,
+ * so the time it sat in the cache is not counted.
  */
 function readServerNow(headers: Headers): Date | null {
   const date = readDate(headers, "Date");
