@@ -16,6 +16,9 @@
  * under the License.
  */
 
+import { readFileSync } from "node:fs";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { act, render, renderHook, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -35,6 +38,36 @@ describe("matchRoute", () => {
     ["/elsewhere", { name: "missing" }],
   ])("%s", (path, route) => {
     expect(matchRoute(path)).toEqual(route);
+  });
+});
+
+// nginx serves the HTML shell only on the paths this router knows and answers
+// any other with a 404, so the two must agree.
+describe("nginx's shell paths", () => {
+  // A path, not a URL object: jsdom replaces the global URL, which node:fs rejects.
+  const here = dirname(fileURLToPath(import.meta.url));
+  const conf = readFileSync(resolve(here, "../../docker/nginx.conf"), "utf8");
+  const pattern =
+    /location ~ "([^"]+)" \{\s*include \/etc\/nginx\/snippets\/origin-lock\.conf;\s*try_files \/index\.html/.exec(
+      conf,
+    )?.[1];
+
+  it.each([
+    "/",
+    "//",
+    "/history",
+    "/history/",
+    "/products/api-platform",
+    "/products/api-platform/",
+    "/products/Bad_ID",
+    "/products/",
+    "/products/a/b",
+    "/history/x",
+    "/elsewhere",
+    "/assets",
+  ])("%s", (path) => {
+    expect(pattern).toBeDefined();
+    expect(new RegExp(pattern ?? "").test(path)).toBe(matchRoute(path).name !== "missing");
   });
 });
 

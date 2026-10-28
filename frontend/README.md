@@ -94,7 +94,7 @@ modified. Screenshots go to `SHOT_DIR`, a zone's run under a subdirectory.
 
 `Dockerfile` builds the site and serves `dist/` with `nginx-unprivileged` (non-root,
 port 8080, security headers, one-year cache for hashed assets, `no-cache` for
-`index.html`, `/healthz`). Both base images are pinned by digest. Route `/api` to the
+`index.html`, a 404 for paths the page does not have, `/healthz`). Both base images are pinned by digest. Route `/api` to the
 status API at the ingress. Build: `docker build -t wso2-cloud-status-web frontend`.
 
 `public/` holds the icons, the WSO2 pulse glyph from the brand pack: `icon.svg`,

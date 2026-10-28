@@ -23,7 +23,10 @@
 # Without IMAGE it builds frontend/Dockerfile as wso2-cloud-status-web:selftest.
 # Expects:
 #   /                     200 HTML with the app root, Cache-Control no-cache
-#   /products/<id>        200, the same HTML (deep links are served by the shell)
+#   /products/<id>, /history
+#                         200, the same HTML (deep links are served by the shell)
+#   any other path        404 from the error page, with no-store
+#   the icons at the root 200 with their image types, cached for an hour
 #   each module script and stylesheet index.html references
 #                         200, a JavaScript or CSS type, cached for a year
 #                         (immutable), gzip on request from the file the
@@ -33,7 +36,7 @@
 #                         missing asset, an oversized header, a failing
 #                         If-Match and an unknown Transfer-Encoding; /error.html
 #                         itself is not served directly, and the base image's
-#                         50x.html is gone (/50x.html is the HTML shell)
+#                         50x.html is gone (/50x.html is a 404)
 #   no comments           the HTML shell and the error page carry no HTML
 #                         comment, security.txt no comment line
 #   a byte range          ignored: the whole file, 200 and immutable, even
@@ -48,7 +51,7 @@
 #   /api/x                404 with no-store, not the HTML shell; with
 #                         /etc/nginx/api.conf replaced, that file answers it,
 #                         with no Cache-Control added by nginx
-#   /healthz              200 "ok", no-store
+#   /healthz              200 "ok", no-store; 405 to any method but GET and HEAD
 #   /.well-known/security.txt
 #                         200 text/plain; charset=utf-8 (RFC 9116) with
 #                         Contact, Policy and an Expires in the coming year
@@ -190,9 +193,12 @@ fi
 NO_FDID=1 get healthz /healthz
 expect healthz "/healthz without the Front Door ID" 200 "no-store"
 verdict "/healthz says ok" "/healthz body is not ok" [ "$(cat "$work/healthz.body")" = ok ]
+NO_FDID=1 get healthzpost /healthz -X POST
+expect healthzpost "POST /healthz" 405 "no-store"
 
+shell="no-cache"
 get page /
-expect page "/" 200 "no-cache"
+expect page "/" 200 "$shell"
 security page "/"
 if [[ "$(hdr page Content-Type)" == text/html* ]] && grep -q 'id="root"' "$work/page.body"; then
   ok "/ is the HTML shell with the app root"
@@ -201,8 +207,10 @@ else
 fi
 
 get deep /products/moesif
-expect deep "/products/moesif" 200 "no-cache"
+expect deep "/products/moesif" 200 "$shell"
 verdict "/products/moesif is the same shell" "/products/moesif differs from /" cmp -s "$work/page.body" "$work/deep.body"
+get history /history
+expect history "/history" 200 "$shell"
 
 # The assets the shell loads: module scripts, module preloads, stylesheets.
 assets=()
@@ -257,7 +265,7 @@ else
   for icon in "${icons[@]}"; do
     i=$((i + 1))
     get "icon$i" "$icon"
-    expect "icon$i" "$icon" 200 "no-cache"
+    expect "icon$i" "$icon" 200 "public, max-age=3600"
     type="$(hdr "icon$i" Content-Type)"
     case "$icon:$type" in
       *.ico:image/x-icon | *.svg:image/svg+xml | *.png:image/png) ok "$icon is served as $type" ;;
@@ -278,6 +286,11 @@ names_server() {
   verdict "$2 names no server software" "$2 names nginx in its body" [ "$named" = false ]
 }
 names_server missing "the missing asset's 404"
+
+# Any other path is a 404, so made-up paths do not each get the shell.
+get unknown /made/up/path
+expect unknown "/made/up/path" 404 "no-store"
+names_server unknown "the 404 for an unknown path"
 
 # Past nginx's 8 KB header buffers: errors written before any location.
 long="$(printf '%9000s' '' | tr ' ' a)"
@@ -304,12 +317,9 @@ get range "${assets[0]:-/}" -H 'Range: bytes=999999999-'
 expect range "${assets[0]:-/} with a range past its end" 200 "$immutable"
 
 # The base image's own error page names nginx: the image does not hold it, so
-# /50x.html falls back to the HTML shell like any unknown path.
+# /50x.html is a 404 like any unknown path.
 get stock /50x.html
-stock_page=false
-grep -q 'id="root"' "$work/stock.body" && stock_page=true
-verdict "/50x.html is the HTML shell, not the base image's error page" \
-  "/50x.html is not the HTML shell" [ "$stock_page" = true ]
+expect stock "/50x.html" 404 "no-store"
 names_server stock "/50x.html"
 
 # What readers download carries none of the source's comments.
@@ -403,7 +413,7 @@ for _ in $(seq 1 50); do
   sleep 0.2
 done
 NO_FDID=1 get_port=$((port + 1)) get unlocked /
-expect unlocked "/ with ORIGIN_LOCK=off and no Front Door ID" 200 "no-cache"
+expect unlocked "/ with ORIGIN_LOCK=off and no Front Door ID" 200 "$shell"
 verdict "INDEXING=off sends X-Robots-Tag: noindex" \
   "INDEXING=off sends X-Robots-Tag \"$(hdr unlocked X-Robots-Tag)\"" [ "$(hdr unlocked X-Robots-Tag)" = noindex ]
 

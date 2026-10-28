@@ -63,10 +63,10 @@ COPY docker/nginx.conf /etc/nginx/conf.d/default.conf
 COPY docker/security-headers.conf docker/origin-lock.conf /etc/nginx/snippets/
 COPY docker/api.conf /etc/nginx/api.conf
 COPY --chmod=755 docker/origin-lock.sh /docker-entrypoint.d/40-origin-lock.sh
-# The runtime user cannot change nginx's configuration: the base image leaves
-# it writable by group 0, the group a numeric USER runs with. Only /tmp (the
-# origin lock's settings, pid and temporary files) and nginx's cache stay
-# writable.
+# The runtime user cannot change nginx's configuration files: the base image
+# leaves them writable by group 0, the group a numeric USER runs with. Only
+# /tmp (the origin lock's settings, written at every start, the pid and
+# temporary files) and nginx's cache stay writable.
 RUN chmod -R go-w /etc/nginx /docker-entrypoint.d
 COPY --from=build /app/dist /usr/share/nginx/html
 COPY --from=build /app/security.txt /usr/share/nginx/html/.well-known/security.txt
