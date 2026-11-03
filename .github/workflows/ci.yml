@@ -18,6 +18,11 @@ on:
     - cron: "17 3 * * *" # Nightly: live upstream smoke test and the strict vulnerability scan (VULN_SEVERITY).
   workflow_dispatch:
   workflow_call: # release.yml runs CI on the tagged commit before it builds anything
+    inputs:
+      release:
+        description: Called by the release workflow; nothing is restored from an Actions cache.
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -33,6 +38,9 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
+  # "false" when release.yml calls CI: a cache any job on main can write must
+  # not shape what a release builds and signs.
+  CACHE: ${{ !inputs.release }}
   COVERAGE_MIN: "85"
   GOLANGCI_LINT_VERSION: v2.15.0
   GOVULNCHECK: golang.org/x/vuln/cmd/govulncheck@v1.9.0
@@ -66,6 +74,7 @@ jobs:
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: backend/go/go.mod
+          cache: ${{ env.CACHE }}
           cache-dependency-path: |
             backend/go/go.sum
             tests/contract/go.sum
@@ -73,11 +82,13 @@ jobs:
         uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
         with:
           version: ${{ env.GOLANGCI_LINT_VERSION }}
+          skip-cache: ${{ env.CACHE != 'true' }}
           working-directory: backend/go
       - name: Lint contract tests
         uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
         with:
           version: ${{ env.GOLANGCI_LINT_VERSION }}
+          skip-cache: ${{ env.CACHE != 'true' }}
           working-directory: tests/contract
           args: --config ../../backend/go/.golangci.yml
       - name: Unit and integration tests (race detector)
@@ -135,11 +146,13 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: frontend/.nvmrc
-          cache: npm
+          cache: ${{ env.CACHE == 'true' && 'npm' || '' }}
+          package-manager-cache: ${{ env.CACHE }}
           cache-dependency-path: frontend/package-lock.json
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: backend/go/go.mod
+          cache: ${{ env.CACHE }}
           cache-dependency-path: |
             backend/go/go.sum
             tests/contract/go.sum
@@ -224,6 +237,7 @@ jobs:
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           version: ${{ env.TRIVY_VERSION }}
+          cache: ${{ env.CACHE }}
           scan-type: fs
           scan-ref: .
           scanners: vuln
@@ -238,6 +252,7 @@ jobs:
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           version: ${{ env.TRIVY_VERSION }}
+          cache: ${{ env.CACHE }}
           scan-type: fs
           scan-ref: .
           scanners: license,misconfig
@@ -334,6 +349,7 @@ jobs:
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           version: ${{ env.TRIVY_VERSION }}
+          cache: ${{ env.CACHE }}
           image-ref: wso2-cloud-statusd:ci
           severity: ${{ env.VULN_SEVERITY }}
           ignore-unfixed: true
@@ -361,6 +377,7 @@ jobs:
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           version: ${{ env.TRIVY_VERSION }}
+          cache: ${{ env.CACHE }}
           image-ref: wso2-cloud-status-web:ci
           severity: ${{ env.VULN_SEVERITY }}
           ignore-unfixed: true
@@ -379,5 +396,6 @@ jobs:
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: backend/go/go.mod
+          cache: ${{ env.CACHE }}
           cache-dependency-path: backend/go/go.sum
       - run: make live
