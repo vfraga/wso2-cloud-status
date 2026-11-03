@@ -26,8 +26,7 @@ import type { Plugin } from "vite";
  * kept: only whitespace holding a line break between two tags goes.
  */
 export function minifyHtml(html: string): string {
-  return html
-    .replace(/<!--[\s\S]*?-->/g, "")
+  return removeAll(html, /<!--[\s\S]*?-->/g)
     .replace(/(<style[^>]*>)([^<]*)(<\/style>)/g, (_, open: string, css: string, close: string) => {
       return open + minifyCss(css) + close;
     })
@@ -37,12 +36,25 @@ export function minifyHtml(html: string): string {
 
 /** Removes a stylesheet's comments and the spacing around its punctuation. */
 export function minifyCss(css: string): string {
-  return css
-    .replace(/\/\*[\s\S]*?\*\//g, "")
+  return removeAll(css, /\/\*[\s\S]*?\*\//g)
     .replace(/\s+/g, " ")
     .replace(/ ?([{};,]) ?/g, "$1")
     .replace(/;}/g, "}")
     .trim();
+}
+
+/**
+ * Removes every match of a pattern, then removes again until nothing matches,
+ * since removing one comment can join the text around it into another.
+ */
+function removeAll(text: string, pattern: RegExp): string {
+  let rest = text;
+  let before: string;
+  do {
+    before = rest;
+    rest = rest.replace(pattern, "");
+  } while (rest !== before);
+  return rest;
 }
 
 function files(dir: string): string[] {

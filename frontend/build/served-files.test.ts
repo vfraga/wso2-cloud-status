@@ -21,7 +21,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
-import { minifyHtml, sourceLeaks } from "./served-files.ts";
+import { minifyCss, minifyHtml, sourceLeaks } from "./served-files.ts";
 
 describe("minifyHtml", () => {
   it("drops comments and layout whitespace, keeps text and its spaces", () => {
@@ -46,6 +46,11 @@ describe("minifyHtml", () => {
       '<!doctype html><html lang="en"><head><style>.a{padding: 15vh 16px 16px;font-family: a,b}</style>' +
         "</head><body><p>Reload the <strong>page</strong> in a moment.</p></body></html>",
     );
+  });
+
+  it("removes a comment that removing another one forms", () => {
+    expect(minifyHtml("<p>a</p><!<!-- x -->-- y --><p>b</p>")).toBe("<p>a</p><p>b</p>");
+    expect(minifyCss("a{}//* x */* y */b{}")).toBe("a{}b{}");
   });
 
   it("minifies the page's own index.html without a comment left", () => {
