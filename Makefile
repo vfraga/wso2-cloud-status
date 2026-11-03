@@ -38,7 +38,7 @@ SHELL_SCRIPTS = $(shell git ls-files '*.sh' 2>/dev/null || find . -name '*.sh' -
 .DEFAULT_GOAL := help
 .PHONY: help fmt lint test cover vuln licenses rules contract contract-edge contract-csm check-config live build run docker ci clean \
 	web-install web-check web-licenses web-e2e web-docker web-docker-selftest dockerfile-lint shellcheck api-lint \
-	headers workflow-lint workflow-cache pins gates-selftest verify \
+	headers workflow-lint workflow-cache pins gates-selftest verify hooks \
 	synthetic synthetic-selftest
 
 help: ## List targets
@@ -91,6 +91,9 @@ synthetic-selftest: ## The external check against a local statusd, passing and f
 
 gates-selftest: ## The licence and coverage gate scripts with inputs that must pass and must fail
 	scripts/gates-selftest.sh
+
+hooks: ## Install the pre-push hook: the quick gates for what a push changes (scripts/pre-push.sh)
+	ln -sf "$$PWD/scripts/pre-push.sh" "$$(git rev-parse --git-path hooks)/pre-push"
 
 live: ## Smoke test against the real public status APIs (network)
 	cd $(GO_DIR) && go test -tags live -count=1 -run Live ./internal/app/
@@ -225,4 +228,4 @@ clean: ## Remove build outputs
 	rm -rf bin $(GO_DIR)/coverage.out
 
 # Local-only targets (the internal documents), when present.
--include docs/docs.mk
+-include local/docs.mk

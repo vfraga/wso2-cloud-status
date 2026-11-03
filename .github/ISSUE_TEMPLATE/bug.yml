@@ -1,0 +1,35 @@
+name: Bug
+description: The page, the API, statusd or its operations do something wrong.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: A security problem goes to WSO2's process in SECURITY.md, not here.
+  - type: dropdown
+    id: where
+    attributes:
+      label: Where
+      options:
+        - Status page
+        - Status API
+        - statusd
+        - Alerts or the external check
+        - Build, CI or release
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you saw, and what you expected instead.
+    validations:
+      required: true
+  - type: textarea
+    id: how
+    attributes:
+      label: How to see it
+      description: >-
+        The page or API path, the browser or client, and the time with its
+        time zone; for statusd, the configuration and the log lines.
+    validations:
+      required: true

@@ -1,6 +1,6 @@
 ## What and why
 
-<!-- The change and the reason for it. Link the issue or ADR. -->
+<!-- The change and the reason for it. Link the issue. -->
 
 ## How it was verified
 

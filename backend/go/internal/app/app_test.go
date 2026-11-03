@@ -227,7 +227,7 @@ func TestOriginLockIsVisible(t *testing.T) {
 		log     []string
 		gauge   string
 	}{
-		{nil, []string{`"level":"WARN"`, `"msg":"origin lock off: the public port answers requests that did not come through the CDN"`}, "statusd_origin_lock_enabled 0"},
+		{nil, []string{`"level":"ERROR"`, `"msg":"origin lock off: the public port answers requests that did not come through the CDN"`}, "statusd_origin_lock_enabled 0"},
 		{map[string]string{"X-Azure-FDID": "secret-id"}, []string{`"level":"INFO"`, `"msg":"origin lock on","headers":["X-Azure-FDID"]`}, "statusd_origin_lock_enabled 1"},
 	} {
 		cfg := shippedConfig(t, "http://127.0.0.1:1")

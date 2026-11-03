@@ -8,7 +8,7 @@ API in `../backend/go` (contract: `../api/openapi.yaml`).
 
 ## Run
 
-Node 24.22.0 (`.nvmrc`).
+Node 24.22.1 (`.nvmrc`).
 
 ```sh
 npm ci
@@ -119,8 +119,8 @@ pack's paths unchanged.
   level 9 and nginx sends the `.gz` copy (`gzip_static`).
 - The API is not preloaded from the HTML. Chromium hands a preloaded response
   to the page's first matching request however late it comes (a tab opened in
-  the background, a visit that starts on a product page), and the page then
-  showed an old status as just checked. An end-to-end test checks that both
+  the background, a visit that starts on a product page), so the page would
+  show an old status as just checked. An end-to-end test checks that both
   cases fetch the status anew.
 - `node scripts/transfer.mjs <url>` lists what a page requests on its first load,
   with each file's gzip size (raw for fonts) and the total. It needs Playwright's Chromium
@@ -130,13 +130,15 @@ pack's paths unchanged.
 
 ## Direct dependencies
 
+Versions are in `package.json`.
+
 Production:
 
-| Package                              | Why                                                            |
-| ------------------------------------ | -------------------------------------------------------------- |
-| `react`, `react-dom` 19.2.3          | UI runtime; exact version pinned by Oxygen UI's peer range     |
-| `@wso2/oxygen-ui` 0.16.0             | WSO2 design system (MUI v7 re-export, theming, colour schemes) |
-| `@wso2/oxygen-ui-icons-react` 0.16.0 | Lucide icon set used by Oxygen UI                              |
+| Package                       | Why                                                            |
+| ----------------------------- | -------------------------------------------------------------- |
+| `react`, `react-dom`          | UI runtime; the exact version Oxygen UI's peer range pins      |
+| `@wso2/oxygen-ui`             | WSO2 design system (MUI v7 re-export, theming, colour schemes) |
+| `@wso2/oxygen-ui-icons-react` | Lucide icon set used by Oxygen UI                              |
 
 Development:
 

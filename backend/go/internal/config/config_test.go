@@ -17,7 +17,6 @@
 package config
 
 import (
-	"bytes"
 	"fmt"
 	"maps"
 	"os"
@@ -26,8 +25,6 @@ import (
 	"strings"
 	"testing"
 	"time"
-
-	"go.yaml.in/yaml/v3"
 )
 
 const (
@@ -189,8 +186,6 @@ func TestEnvOptionsRecordWholeReferences(t *testing.T) {
     options:
       quoted: "${STATUSD_TEST_SECRET}"
       plain: ${STATUSD_TEST_SECRET}
-      prefixed: "x${STATUSD_TEST_SECRET}"
-      two: "${STATUSD_TEST_SECRET}${STATUSD_TEST_SECRET}"
       literal: s3cret`, 1)
 	cfg, err := Parse([]byte(body))
 	if err != nil {
@@ -234,51 +229,48 @@ func TestBackendURLsAreHTTPS(t *testing.T) {
 	}
 }
 
-// TestEnvironmentReferencesAreTyped: an unquoted reference reads as the
-// type of its value, so it can set an integer or a boolean field; a quoted
-// one, or one that would read as null, stays a string.
-func TestEnvironmentReferencesAreTyped(t *testing.T) {
-	t.Setenv("STATUSD_TEST_DAYS", "30")
-	t.Setenv("STATUSD_TEST_FLIGHT", "512")
-	t.Setenv("STATUSD_TEST_FLAG", "true")
+// TestEnvironmentReferencesAreConfined: ${NAME} reads the environment only
+// as the whole value of a backend option or a server.required_headers entry,
+// where it stays a string; anywhere else, part of a longer value, or copied
+// by a YAML alias, it is an error that names the place, so whoever can change
+// the file cannot copy a secret into a URL or a published name.
+func TestEnvironmentReferencesAreConfined(t *testing.T) {
+	t.Setenv("STATUSD_TEST_SECRET", "s3cret")
 	t.Setenv("STATUSD_TEST_ID", "12345")
 	t.Setenv("STATUSD_TEST_NULL", "null")
-	t.Setenv("STATUSD_TEST_EMPTY", "")
-	cfg, err := Parse([]byte(minimal + `history:
-  days: ${STATUSD_TEST_DAYS}
-server:
-  max_in_flight: ${STATUSD_TEST_FLIGHT}
+	cfg, err := Parse([]byte(minimal + `server:
   required_headers:
     A: ${STATUSD_TEST_ID}
     B: "${STATUSD_TEST_ID}"
     C: ${STATUSD_TEST_NULL}
-    D: ${STATUSD_TEST_EMPTY}x
 `))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.History.Days != 30 || cfg.Server.MaxInFlight != 512 {
-		t.Fatalf("days %d, max_in_flight %d; want 30 and 512 from the environment", cfg.History.Days, cfg.Server.MaxInFlight)
-	}
-	want := map[string]string{"A": "12345", "B": "12345", "C": "null", "D": "x"}
-	if !maps.Equal(cfg.Server.RequiredHeaders, want) {
+	if want := map[string]string{"A": "12345", "B": "12345", "C": "null"}; !maps.Equal(cfg.Server.RequiredHeaders, want) {
 		t.Fatalf("required headers = %v, want %v", cfg.Server.RequiredHeaders, want)
 	}
 
-	// The configuration has no boolean field yet; decode the expansion
-	// into one the way Parse decodes the configuration.
-	raw, err := expandEnv([]byte("on: ${STATUSD_TEST_FLAG}\nquoted: \"${STATUSD_TEST_FLAG}\"\n"))
-	if err != nil {
-		t.Fatal(err)
+	for place, body := range map[string]string{
+		"history.days":           minimal + "history:\n  days: ${STATUSD_TEST_ID}\n",
+		"server.max_in_flight":   minimal + "server:\n  max_in_flight: ${STATUSD_TEST_ID}\n",
+		"backends.b.base_url":    strings.Replace(minimal, `"https://example.test"`, `"https://example.test/${STATUSD_TEST_SECRET}"`, 1),
+		"products.0.description": strings.Replace(minimal, "name: P\n", "name: P\n    description: \"${STATUSD_TEST_SECRET}\"\n", 1),
+		"backends.b.options.token_url": strings.Replace(minimal, `b: { base_url: "https://example.test" }`,
+			`b: { base_url: "https://example.test", options: { token_url: "https://t.test/${STATUSD_TEST_SECRET}" } }`, 1),
+		"server.required_headers.D": minimal + "server: { required_headers: { D: \"${STATUSD_TEST_ID}${STATUSD_TEST_ID}\" } }\n",
+	} {
+		_, err := Parse([]byte(body))
+		if err == nil || !strings.Contains(err.Error(), "allowed only as the whole value") || !strings.Contains(err.Error(), place) {
+			t.Errorf("%s: err = %v, want the reference refused there", place, err)
+		}
 	}
-	var flags struct {
-		On     bool   `yaml:"on"`
-		Quoted string `yaml:"quoted"`
-	}
-	dec := yaml.NewDecoder(bytes.NewReader(raw))
-	dec.KnownFields(true)
-	if err := dec.Decode(&flags); err != nil || !flags.On || flags.Quoted != "true" {
-		t.Fatalf("flags = %+v, err %v; want the bool true and the string \"true\"", flags, err)
+
+	alias := strings.Replace(minimal, `b: { base_url: "https://example.test" }`,
+		`b: { base_url: "https://example.test", options: { client_secret: &s "${STATUSD_TEST_SECRET}" } }`, 1)
+	alias = strings.Replace(alias, "name: P\n", "name: P\n    description: *s\n", 1)
+	if _, err := Parse([]byte(alias)); err == nil || !strings.Contains(err.Error(), "aliases are not allowed") {
+		t.Errorf("alias: err = %v, want aliases refused", err)
 	}
 }
 

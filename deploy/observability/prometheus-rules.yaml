@@ -171,10 +171,12 @@ groups:
 
       # Every deployment these rules watch runs behind Front Door with the
       # origin lock on; 0 means STATUSD_CONFIG points at a file without it.
+      # Critical: until it is fixed, the WAF and its rate limits can be
+      # bypassed by anyone who reaches the origin.
       - alert: StatusdOriginLockOff
         expr: statusd_origin_lock_enabled == 0
         for: 5m
-        labels: { severity: warning }
+        labels: { severity: critical }
         annotations:
           runbook_url: docs/operations/runbook.md#statusdoriginlockoff
           summary: "statusd {{ $labels.instance }} answers requests that did not come through Front Door"

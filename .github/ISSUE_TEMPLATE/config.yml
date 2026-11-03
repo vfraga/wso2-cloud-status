@@ -1,0 +1,6 @@
+# Security problems are never reported in an issue (SECURITY.md).
+blank_issues_enabled: false
+contact_links:
+  - name: Report a security problem
+    url: https://security.docs.wso2.com/en/latest/security-reporting/report-security-issues/
+    about: Privately, through WSO2's process in SECURITY.md, never in an issue.

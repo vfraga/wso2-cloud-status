@@ -237,6 +237,64 @@ func TestReloadKeepsOneProviderPerBackend(t *testing.T) {
 	}
 }
 
+// TestReloadDoesNotMoveACredential: a reload that points a backend holding a
+// credential from the environment at another host (its token URL or its
+// base URL) keeps the running backend until a restart, so the file cannot
+// send the client secret or its token anywhere new, and says so.
+func TestReloadDoesNotMoveACredential(t *testing.T) {
+	for _, field := range []string{"token_url", "base_url"} {
+		t.Run(field, func(t *testing.T) {
+			t.Setenv("STATUSD_TEST_CSM_SECRET", "secret")
+			f, other := newCSMFake(t), newCSMFake(t)
+			path := filepath.Join(t.TempDir(), "statusd.yaml")
+			text := csmConfig(f.URL, "moesif")
+			if err := os.WriteFile(path, []byte(text), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			cfg, err := config.Load(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var logs lockedBuffer
+			a, err := New(cfg, slog.New(slog.NewTextHandler(&logs, nil)), "test")
+			if err != nil {
+				t.Fatal(err)
+			}
+			a.EnableReload(path, nil)
+			a.agg.RefreshAll(t.Context())
+
+			moved := strings.Replace(text, "base_url: "+f.URL, "base_url: "+other.URL, 1)
+			if field == "token_url" {
+				moved = strings.Replace(text, `token_url: "`+f.URL, `token_url: "`+other.URL, 1)
+			}
+			if moved == text {
+				t.Fatalf("csmConfig no longer has the %s this test edits", field)
+			}
+			if err := os.WriteFile(path, []byte(moved), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			if !a.reloadAndReport(t.Context(), "signal") {
+				t.Fatal("the reload was rejected")
+			}
+			a.agg.RefreshAll(t.Context())
+			if n, m := other.tokens.Load(), other.reads.Load(); n != 0 || m != 0 {
+				t.Errorf("the reload sent %d token requests and %d reads to the new host, want none before a restart", n, m)
+			}
+			out := logs.String()
+			if !strings.Contains(out, "restart_pending=[backends.csm]") {
+				t.Errorf("the reload log does not name the backend awaiting a restart:\n%s", out)
+			}
+			running, proposed := strings.TrimPrefix(f.URL, "http://"), strings.TrimPrefix(other.URL, "http://")
+			if !strings.Contains(out, "hosts=map[csm:["+running+"]]") {
+				t.Errorf("the reload log does not name the running host %s:\n%s", running, out)
+			}
+			if !strings.Contains(out, "pending_hosts=") || !strings.Contains(out, proposed) {
+				t.Errorf("the restart-only warning does not name the pending host %s:\n%s", proposed, out)
+			}
+		})
+	}
+}
+
 // TestProvidersAreKeptWhileTheirBackendIsUnchanged: buildBindings reuses a
 // backend's provider while its type, base URL, time zone and options are
 // unchanged, and a change to any of them gets a new provider.

@@ -41,6 +41,10 @@ updates:
       # The frontend runs on Node 24 (frontend/.nvmrc); a new major is a decision.
       - dependency-name: "@types/node"
         update-types: ["version-update:semver-major"]
+      # typescript-eslint accepts TypeScript below 6.1 only (its peer
+      # range). Lift this when a typescript-eslint release accepts 7.
+      - dependency-name: "typescript"
+        update-types: ["version-update:semver-major"]
   - package-ecosystem: docker
     directories: ["/backend/go", "/frontend"]
     schedule:

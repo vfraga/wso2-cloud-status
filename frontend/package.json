@@ -8,8 +8,8 @@
     "npm": ">=11"
   },
   "dependencies": {
-    "@wso2/oxygen-ui": "0.16.0",
-    "@wso2/oxygen-ui-icons-react": "0.16.0",
+    "@wso2/oxygen-ui": "0.17.0",
+    "@wso2/oxygen-ui-icons-react": "0.17.0",
     "react": "19.2.3",
     "react-dom": "19.2.3"
   },
@@ -35,7 +35,7 @@
     "prettier": "3.9.10",
     "typescript": "6.0.3",
     "typescript-eslint": "8.72.0",
-    "vite": "8.3.4",
+    "vite": "8.3.5",
     "vitest": "5.0.5"
   },
   "scripts": {

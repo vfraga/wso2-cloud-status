@@ -25,6 +25,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -541,6 +542,35 @@ func TestNon200IsAnError(t *testing.T) {
 	_, err := NewSource(newTestClient(t, srv.URL, nil), "c").Components(context.Background())
 	if !errors.Is(err, ErrUnexpectedStatus) {
 		t.Fatalf("err = %v, want ErrUnexpectedStatus", err)
+	}
+}
+
+// requestIDForm is the X-Request-ID statusd sends upstream: 32 hex digits,
+// as it gives its own requests.
+var requestIDForm = regexp.MustCompile(`^[0-9a-f]{32}$`)
+
+// Every request carries its own X-Request-ID, and the error about a failed
+// one names it, so the failure can be found in the upstream's logs.
+func TestFailedFetchNamesItsRequestID(t *testing.T) {
+	t.Parallel()
+	ids := make(chan string, 2)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ids <- r.Header.Get("X-Request-ID")
+		http.Error(w, "upstream down", http.StatusBadGateway)
+	}))
+	t.Cleanup(srv.Close)
+	src := NewSource(newTestClient(t, srv.URL, nil), "c")
+	seen := map[string]bool{}
+	for range 2 {
+		_, err := src.Components(context.Background())
+		id := <-ids
+		if !requestIDForm.MatchString(id) || seen[id] {
+			t.Fatalf("X-Request-ID %q: want 32 hex digits, new on every request", id)
+		}
+		seen[id] = true
+		if !errors.Is(err, ErrUnexpectedStatus) || !strings.HasSuffix(err.Error(), "(X-Request-ID "+id+")") {
+			t.Fatalf("err = %v, want it to name X-Request-ID %s", err, id)
+		}
 	}
 }
 

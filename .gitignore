@@ -14,7 +14,7 @@ playwright-report/
 
 # Local only, never pushed: internal documents, the tooling that renders
 # them, and Claude Code's instructions and settings.
-/docs/
+/local/
 /tools/
 /scripts/docs/
 /CLAUDE.md

@@ -5,9 +5,30 @@ Integration Platform, Identity Platform, Developer Platform and Moesif. One
 summary page with each product's status per region, a page per product with
 its history, regions and incidents, and an incident history by month.
 
-This repository holds the status API (`backend/go`), the web frontend
-(`frontend`, React and WSO2 Oxygen UI), the API contract
-(`api/openapi.yaml`) and the contract test suite (`tests/contract`).
+## Repository structure
+
+```text
+wso2-cloud-status/
+├── backend/go/            # statusd: the status API (Go)
+├── frontend/              # the status page (React, WSO2 Oxygen UI) and its nginx image
+├── api/openapi.yaml       # the API contract
+├── config/                # statusd's configuration: the product catalogue and the sources
+├── tests/contract/        # black-box contract tests, and a fake upstream that replays recorded answers
+├── testdata/              # recorded upstream answers, normal and edge cases
+├── deploy/observability/  # Prometheus alert rules and their unit tests
+├── scripts/               # contract runner, fixture capture, gate scripts, pre-push hook
+│   └── ops/               # the external synthetic check, its notifier, the image self-test
+└── .github/               # CI, CodeQL, release and synthetic-check workflows; Dependabot; issue forms
+```
+
+## Components
+
+| Component | Description |
+|---|---|
+| statusd (`backend/go`) | Polls each product's status source, keeps the last good data, and serves pre-built JSON with its freshness. See the [statusd README](backend/go/README.md): architecture, configuration, adding a product, API, operations. |
+| Status page (`frontend`) | Renders the API: the current status, a page per product and the incident history; served by nginx. See the [frontend README](frontend/README.md). |
+| External check (`scripts/ops`) | Loads the page, its scripts and the API through the public address on a schedule, and pages when data is old or missing. |
+| Alert rules (`deploy/observability`) | Stale data, unknown statuses, errors, latency, load shedding, configuration and the origin lock. |
 
 ## Quick start
 
@@ -28,6 +49,7 @@ cd frontend && nvm use && npm ci && npm run dev   # http://localhost:5173, proxi
 | Target | What it does |
 |---|---|
 | `make verify` | every local gate, in order; `make -k verify` reports every failure. Only CI runs gitleaks, Trivy and the statusd image build and smoke test |
+| `make hooks` | once per clone: a pre-push hook that runs both unit test suites for any change but Markdown, and the lint and image checks for the folders a push changes (about a minute when everything changed); `git push --no-verify` skips it |
 | `make ci` | the CI go job: lint (backend and contract tests), cover, vuln, licenses, check-config, contract, contract-edge, contract-csm, synthetic-selftest, gates-selftest |
 | `make lint` | vet, staticcheck, gosec, cyclomatic (10) and cognitive (15) complexity, license headers |
 | `make test` | unit and integration tests with the race detector |
@@ -41,34 +63,6 @@ cd frontend && nvm use && npm ci && npm run dev   # http://localhost:5173, proxi
 | `make web-e2e` | frontend end-to-end tests against the real backend |
 | `make rules`, `make dockerfile-lint`, `make shellcheck`, `make api-lint`, `make headers`, `make workflow-lint`, `make web-docker-selftest` | the Docker-based gates: alert rules, Dockerfiles, shell scripts, the OpenAPI document, license headers, the workflows, and the frontend image's headers and `security.txt` |
 | `make synthetic-selftest`, `make gates-selftest` | the external synthetic check against a local statusd, and the licence and coverage gate scripts, each with passing and failing cases |
-
-## API
-
-| Endpoint | Purpose |
-|---|---|
-| `GET /api/v1/summary` | overall status, product rows with regions (grouped by location, with uptime) and 90-day history, active incidents |
-| `GET /api/v1/products/{id}` | regions, component groups, uptime and incidents for one product |
-| `GET /api/v1/incidents` | every incident the sources keep, with each product's coverage and freshness |
-| `GET /healthz`, `GET /readyz` | probes (also on the admin port) |
-| `GET :9090/metrics` | Prometheus metrics, admin port only |
-
-Responses carry a strong ETag; poll with `If-None-Match`. See
-`api/openapi.yaml`.
-
-## Configuration
-
-`config/statusd.yaml` lists backends and the product catalogue;
-`config/statusd.production.yaml` is the same with the origin lock on, for
-production. Unknown keys are rejected and every validation problem is
-reported at once; `statusd -check-config <file>` reports them without
-starting the service. Changes are picked up live (file change or SIGHUP);
-an invalid file is rejected and the running configuration stays. Adding a
-product needs no change to the service, only to the configuration, the
-frontend's fallback list and the test data. `${NAME}` in a value reads
-the environment.
-
-Environment: `STATUSD_CONFIG` (path), `PORT` (overrides the public port),
-`STATUSD_LOG_LEVEL` (debug, info, warn, error).
 
 ## Quality gates (CI)
 
@@ -92,9 +86,11 @@ repository without it.
 
 ## Documentation
 
-- `frontend/README.md`: the web frontend, its behaviour and build
+- [statusd](backend/go/README.md) and the [status page](frontend/README.md):
+  each component's architecture, setup and behaviour
 - `api/openapi.yaml`: the public API
-- `CHANGELOG.md`: changes per release; `SECURITY.md`: how to report a vulnerability
+- [CHANGELOG.md](CHANGELOG.md): changes per release;
+  [SECURITY.md](SECURITY.md): how to report a vulnerability
 
 ## License
 

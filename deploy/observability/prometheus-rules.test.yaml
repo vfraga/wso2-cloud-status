@@ -646,7 +646,7 @@ tests:
       - eval_time: 6m
         alertname: StatusdOriginLockOff
         exp_alerts:
-          - exp_labels: { severity: warning, instance: a }
+          - exp_labels: { severity: critical, instance: a }
             exp_annotations:
               runbook_url: docs/operations/runbook.md#statusdoriginlockoff
               summary: "statusd a answers requests that did not come through Front Door"

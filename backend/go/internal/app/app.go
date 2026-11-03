@@ -26,6 +26,7 @@ import (
 	"maps"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"slices"
 	"strings"
@@ -214,6 +215,7 @@ func (a *App) Run(ctx context.Context) error {
 	}()
 	a.log.InfoContext(ctx, "serving", slog.String("public", a.Addr().String()), slog.String("admin", a.AdminAddr().String()))
 	a.logOriginLock(ctx)
+	a.log.InfoContext(ctx, "sources", slog.Any("hosts", backendHosts(a.cfg)))
 
 	var runErr error
 	select {
@@ -231,10 +233,11 @@ func (a *App) Run(ctx context.Context) error {
 }
 
 // logOriginLock says whether the public port is locked to the CDN, naming
-// the required headers but never their values.
+// the required headers but never their values. Off is logged as an error:
+// behind Front Door it means the WAF and its rate limits can be bypassed.
 func (a *App) logOriginLock(ctx context.Context) {
 	if len(a.server.RequiredHeaders) == 0 {
-		a.log.WarnContext(ctx, "origin lock off: the public port answers requests that did not come through the CDN")
+		a.log.ErrorContext(ctx, "origin lock off: the public port answers requests that did not come through the CDN")
 		return
 	}
 	a.log.InfoContext(ctx, "origin lock on", slog.Any("headers", slices.Sorted(maps.Keys(a.server.RequiredHeaders))))
@@ -257,4 +260,25 @@ func ParseLevel(name string) (slog.Level, error) {
 		return slog.LevelInfo, fmt.Errorf("app: log level %q: %w", name, err)
 	}
 	return level, nil
+}
+
+// backendHosts names, per backend, the hosts it sends requests to: its base
+// URL's and those of its options ending in "_url" (a token endpoint), so the
+// log shows where each credential goes.
+func backendHosts(cfg *config.Config) map[string][]string {
+	hosts := map[string][]string{}
+	for name, b := range cfg.Backends {
+		raw := []string{b.BaseURL}
+		for _, k := range slices.Sorted(maps.Keys(b.Options)) {
+			if strings.HasSuffix(k, "_url") {
+				raw = append(raw, b.Options[k])
+			}
+		}
+		for _, r := range raw {
+			if u, err := url.Parse(r); err == nil && u.Host != "" && !slices.Contains(hosts[name], u.Host) {
+				hosts[name] = append(hosts[name], u.Host)
+			}
+		}
+	}
+	return hosts
 }

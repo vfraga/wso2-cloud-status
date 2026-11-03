@@ -24,11 +24,13 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"maps"
 	"net"
 	"os"
 	"reflect"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -183,14 +185,16 @@ var (
 	wholeRef = regexp.MustCompile(`^` + envRef.String() + `$`)
 )
 
-// expandEnv replaces ${NAME} in YAML values (never in comments or keys) with
-// the environment value. An unset variable is an error, so a missing secret
-// fails at startup, not at the first request.
-//
-// An unquoted value that held a reference loses its string tag, so the
-// result is typed by its new text: "max_in_flight: ${N}" with N=512 is the
-// integer 512, as if 512 had been written there. A quoted value stays a
-// string, and so does a result that would read as null (empty, "~", "null").
+// expandEnv replaces ${NAME} with the environment value where a reference
+// is allowed: as the whole value of a backend option (a credential) or of a
+// server.required_headers entry (the origin lock's ID). Anywhere else, or
+// as part of a longer value, a reference is an error, as is a YAML alias:
+// otherwise whoever can change the file could copy a secret into a value
+// the service sends elsewhere or publishes (a base URL, a product's name).
+// A backend option that reads the environment makes its backend change only
+// on restart (RestartRequired), so a reload never reads a new variable. An
+// unset variable is an error, so a missing secret fails at startup, not at
+// the first request. Expanded values stay strings.
 func expandEnv(raw []byte) ([]byte, error) {
 	var doc yaml.Node
 	if err := yaml.Unmarshal(raw, &doc); err != nil {
@@ -199,49 +203,100 @@ func expandEnv(raw []byte) ([]byte, error) {
 	if len(doc.Content) == 0 {
 		return raw, nil
 	}
-	var missing []string
-	walkValues(&doc, func(n *yaml.Node) {
-		found := false
-		n.Value = envRef.ReplaceAllStringFunc(n.Value, func(ref string) string {
-			found = true
-			name := envRef.FindStringSubmatch(ref)[1]
-			value, ok := os.LookupEnv(name)
-			if !ok {
-				missing = append(missing, name)
-			}
-			return value
-		})
-		if found && n.Style&quoted == 0 && !nullish[n.Value] {
-			n.Tag = ""
-		}
-	})
-	if len(missing) > 0 {
-		slices.Sort(missing)
-		return nil, fmt.Errorf("config: unset environment variables: %v", slices.Compact(missing))
+	var e envExpansion
+	if err := walkValues(&doc, nil, e.visit); err != nil {
+		return nil, err
+	}
+	if err := e.err(); err != nil {
+		return nil, err
 	}
 	return yaml.Marshal(&doc)
 }
 
-// quoted styles keep a scalar a string whatever its text.
-const quoted = yaml.SingleQuotedStyle | yaml.DoubleQuotedStyle | yaml.LiteralStyle | yaml.FoldedStyle
+// envExpansion expands the references it visits and collects the misplaced
+// ones and the unset variables.
+type envExpansion struct {
+	missing, misplaced []string
+}
 
-// nullish are the plain scalars YAML reads as null.
-var nullish = map[string]bool{"": true, "~": true, "null": true, "Null": true, "NULL": true}
+func (e *envExpansion) visit(n *yaml.Node, path []string) {
+	if !envRef.MatchString(n.Value) {
+		return
+	}
+	if !wholeRef.MatchString(n.Value) || !envAllowed(path) {
+		e.misplaced = append(e.misplaced, strings.Join(path, "."))
+		return
+	}
+	name := envRef.FindStringSubmatch(n.Value)[1]
+	value, ok := os.LookupEnv(name)
+	if !ok {
+		e.missing = append(e.missing, name)
+	}
+	n.Value, n.Tag, n.Style = value, "!!str", yaml.DoubleQuotedStyle
+}
 
-// walkValues visits every scalar that is a value, skipping mapping keys.
-func walkValues(n *yaml.Node, visit func(*yaml.Node)) {
+func (e *envExpansion) err() error {
+	var errs []error
+	if len(e.misplaced) > 0 {
+		errs = append(errs, fmt.Errorf("config: ${NAME} is allowed only as the whole value of a backend option or a server.required_headers entry: %v", e.misplaced))
+	}
+	if len(e.missing) > 0 {
+		slices.Sort(e.missing)
+		errs = append(errs, fmt.Errorf("config: unset environment variables: %v", slices.Compact(e.missing)))
+	}
+	return errors.Join(errs...)
+}
+
+// envAllowed reports whether a value at path may be a ${NAME} reference:
+// backends.<name>.options.<key> or server.required_headers.<header>.
+func envAllowed(path []string) bool {
+	return (len(path) == 4 && path[0] == "backends" && path[2] == "options") ||
+		(len(path) == 3 && path[0] == "server" && path[1] == "required_headers")
+}
+
+// walkValues visits every scalar that is a value, with its path of mapping
+// keys and sequence indices, skipping mapping keys. An alias is an error.
+func walkValues(n *yaml.Node, path []string, visit func(*yaml.Node, []string)) error {
 	switch n.Kind {
+	case yaml.AliasNode:
+		return fmt.Errorf("config: YAML aliases are not allowed (at %s)", strings.Join(path, "."))
 	case yaml.ScalarNode:
-		visit(n)
-	case yaml.MappingNode:
-		for i := 1; i < len(n.Content); i += 2 {
-			walkValues(n.Content[i], visit)
+		visit(n, path)
+		return nil
+	case yaml.DocumentNode, yaml.SequenceNode, yaml.MappingNode:
+	}
+	nodes, keys := children(n)
+	for i, c := range nodes {
+		next := path
+		if keys[i] != "" {
+			next = append(slices.Clone(path), keys[i])
 		}
-	default:
-		for _, c := range n.Content {
-			walkValues(c, visit)
+		if err := walkValues(c, next, visit); err != nil {
+			return err
 		}
 	}
+	return nil
+}
+
+// children lists a node's value children with the path segment each adds: a
+// mapping's values under their keys, a sequence's items under their indices,
+// a document's root under none.
+func children(n *yaml.Node) ([]*yaml.Node, []string) {
+	var nodes []*yaml.Node
+	var keys []string
+	switch n.Kind {
+	case yaml.MappingNode:
+		for i := 1; i < len(n.Content); i += 2 {
+			nodes, keys = append(nodes, n.Content[i]), append(keys, n.Content[i-1].Value)
+		}
+	case yaml.SequenceNode:
+		for i, c := range n.Content {
+			nodes, keys = append(nodes, c), append(keys, strconv.Itoa(i))
+		}
+	default:
+		nodes, keys = n.Content, make([]string, len(n.Content))
+	}
+	return nodes, keys
 }
 
 // Parse decodes raw (decode) and validates it. Every validation problem is
@@ -330,7 +385,11 @@ func (c *Config) applyDefaults() {
 }
 
 // RestartRequired lists the settings that differ from next but only take
-// effect on restart: listeners and the reload loop itself.
+// effect on restart: listeners, the reload loop itself, and every backend
+// that reads an option from the environment (a credential) and that next
+// adds, changes or removes, named "backends.<name>". The file decides
+// where such a backend sends its credential, so a reload must not move it:
+// whoever can change the file would otherwise receive the secret.
 func (c *Config) RestartRequired(next *Config) []string {
 	var changed []string
 	if !reflect.DeepEqual(c.Server, next.Server) {
@@ -339,7 +398,30 @@ func (c *Config) RestartRequired(next *Config) []string {
 	if c.Reload.Interval() != next.Reload.Interval() {
 		changed = append(changed, "reload")
 	}
+	names := map[string]bool{}
+	for name := range c.Backends {
+		names[name] = true
+	}
+	for name := range next.Backends {
+		names[name] = true
+	}
+	for _, name := range slices.Sorted(maps.Keys(names)) {
+		running, ran := c.Backends[name]
+		proposed, proposes := next.Backends[name]
+		if !running.credentialed() && !proposed.credentialed() {
+			continue
+		}
+		if ran != proposes || !reflect.DeepEqual(running, proposed) {
+			changed = append(changed, "backends."+name)
+		}
+	}
 	return changed
+}
+
+// credentialed reports whether the backend reads any option from the
+// environment.
+func (b Backend) credentialed() bool {
+	return slices.Contains(slices.Collect(maps.Values(b.EnvOptions)), true)
 }
 
 // ApplyEnvOverrides applies the settings the platform passes in the

@@ -13,10 +13,11 @@
 # regions under the place, control plane first. Every region of a product
 # has a location, or none does.
 #
-# ${NAME} reads the environment variable NAME; an unset one fails
-# validation. Unquoted, the result reads as if written there, so it can set
-# a number (max_in_flight: ${MAX_IN_FLIGHT}); quoted, it stays text. Keep
-# secrets out of this file.
+# ${NAME} reads the environment variable NAME, only as the whole value of a
+# backend option or a server.required_headers entry; anywhere else it is an
+# error, as is a YAML alias. An unset variable fails validation. A backend
+# that reads the environment changes only on restart. Keep secrets out of
+# this file.
 
 server:
   addr: ":8080"
@@ -54,8 +55,8 @@ backends:
     type: legacy-status-api
     base_url: https://api.status.cloudservices.wso2.com
     # The API sends zone-less timestamps in UTC: CSM converts its stored
-    # times to UTC (read in its public source, cs-tools, 2026-10-21) and the
-    # existing pages print them as UTC.
+    # times to UTC (as its public source, cs-tools, shows) and the existing
+    # pages print them as UTC.
     timezone: UTC
   asgardeo:
     type: legacy-status-api

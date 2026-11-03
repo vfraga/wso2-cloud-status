@@ -153,7 +153,7 @@ func TestCheckConfigCSMSecret(t *testing.T) {
 	for secret, want := range map[string]string{
 		`"${STATUSD_TEST_SECRET}"`:         "",
 		`s3cret`:                           "CSM option client_secret must be one ${NAME} reference to the environment, not a value in the file",
-		`"x-${STATUSD_TEST_SECRET}"`:       "CSM option client_secret must be one ${NAME} reference",
+		`"x-${STATUSD_TEST_SECRET}"`:       "allowed only as the whole value of a backend option",
 		`"${STATUSD_TEST_SECRET_NEWLINE}"`: "CSM option client_secret has surrounding spaces or a control character",
 	} {
 		path := writeConfig(t, csm(secret))

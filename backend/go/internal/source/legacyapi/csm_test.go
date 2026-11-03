@@ -671,6 +671,54 @@ func TestCSMRequestShape(t *testing.T) {
 	}
 }
 
+// The token request and each read carry their own X-Request-ID, and the
+// error about whichever fails names it.
+func TestCSMFailuresNameTheirRequestID(t *testing.T) {
+	t.Parallel()
+	for _, failing := range []string{"token", "read"} {
+		t.Run(failing, func(t *testing.T) {
+			t.Parallel()
+			var mu sync.Mutex
+			ids := map[string]string{}
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				step := "read"
+				if r.URL.Path == "/oauth2/token" {
+					step = "token"
+				}
+				mu.Lock()
+				ids[step] = r.Header.Get("X-Request-ID")
+				mu.Unlock()
+				switch step {
+				case failing:
+					http.Error(w, "down", http.StatusBadGateway)
+				case "token":
+					_, _ = w.Write([]byte(`{"access_token":"abc","token_type":"bearer","expires_in":60}`))
+				default:
+					_, _ = w.Write([]byte(`{"result":{"code":0,"message":"success","cloud":"choreo-eu","data":{"EU":[]}}}`))
+				}
+			}))
+			t.Cleanup(srv.Close)
+			backend := config.Backend{Type: CSMType, BaseURL: srv.URL, Options: map[string]string{
+				"token_url": srv.URL + "/oauth2/token", "client_id": "id", "client_secret": "secret",
+			}, EnvOptions: secretFromEnv}
+			p, err := NewCSMProvider("csm", backend, source.Env{HTTPClient: &http.Client{Timeout: 2 * time.Second}, UserAgent: "statusd-test"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			_, err = p.Source("choreo-eu").Uptime(context.Background())
+			mu.Lock()
+			defer mu.Unlock()
+			id := ids[failing]
+			if !requestIDForm.MatchString(id) || err == nil || !strings.HasSuffix(err.Error(), "(X-Request-ID "+id+")") {
+				t.Fatalf("err = %v, want it to name the %s request's X-Request-ID %q", err, failing, id)
+			}
+			if failing == "read" && ids["token"] == id {
+				t.Fatal("the token request and the read share an X-Request-ID")
+			}
+		})
+	}
+}
+
 func TestCSMProviderOptions(t *testing.T) {
 	t.Parallel()
 	env := source.Env{HTTPClient: &http.Client{}}

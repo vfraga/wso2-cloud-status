@@ -1,5 +1,6 @@
 # golangci-lint v2. Complexity gates: cyclomatic 10 (gocyclo), cognitive 15
-# (gocognit). Raise a threshold only with an ADR, never with a blanket nolint.
+# (gocognit). Raise a threshold here, with its reason, never with a blanket
+# nolint.
 version: "2"
 
 run:

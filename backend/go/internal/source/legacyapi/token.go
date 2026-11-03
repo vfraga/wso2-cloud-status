@@ -180,14 +180,19 @@ func later(a, b time.Time) time.Time {
 // expires_in above maxTokenLifetime counts as maxTokenLifetime.
 func (t *tokenSource) request(ctx context.Context) (string, time.Duration, error) {
 	form := url.Values{"grant_type": {"client_credentials"}}.Encode()
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, t.url.String(), strings.NewReader(form))
+	req, id, err := newRequest(ctx, http.MethodPost, t.url.String(), strings.NewReader(form))
 	if err != nil {
 		return "", 0, fmt.Errorf("%w: build request: %w", ErrToken, err)
 	}
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.Header.Set("Accept", "application/json")
 	req.SetBasicAuth(url.QueryEscape(t.id), url.QueryEscape(t.secret))
+	token, lifetime, err := t.exchange(req)
+	return token, lifetime, withRequestID(err, id)
+}
 
+// exchange sends the token request and reads the issuer's answer.
+func (t *tokenSource) exchange(req *http.Request) (string, time.Duration, error) {
 	resp, err := t.http.Do(req)
 	if err != nil {
 		return "", 0, fmt.Errorf("%w: %s: %w", ErrToken, t.url.Redacted(), err)

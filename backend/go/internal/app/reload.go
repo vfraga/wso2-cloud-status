@@ -23,7 +23,11 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"strings"
 	"time"
+
+	"github.com/wso2/wso2-cloud-status/backend/go/internal/aggregator"
+	"github.com/wso2/wso2-cloud-status/backend/go/internal/config"
 )
 
 // ReloadObserver records configuration reload outcomes, and whether the
@@ -116,7 +120,10 @@ func (a *App) reloadAndReport(ctx context.Context, trigger string) bool {
 		return valid
 	}
 	a.reloadObs.ConfigReloaded(reloadApplied)
-	attrs := []any{slog.String("trigger", trigger), slog.Int("products", len(a.cfg.Products)), slog.String("sha256", a.configSum)}
+	attrs := []any{
+		slog.String("trigger", trigger), slog.Int("products", len(a.cfg.Products)),
+		slog.String("sha256", a.configSum), slog.Any("hosts", backendHosts(a.cfg)),
+	}
 	if len(a.restartPending) > 0 {
 		// The digest is the file's; these of its sections still run the old values.
 		attrs = append(attrs, slog.Any("restart_pending", a.restartPending))
@@ -143,21 +150,78 @@ func (a *App) Reload(ctx context.Context) error {
 		return err
 	}
 	next := l.cfg
+	bindings, providers := l.bindings, l.providers
 	changed := a.cfg.RestartRequired(next)
 	if len(changed) > 0 {
 		a.log.WarnContext(ctx, "these settings take effect on restart only; keeping the running values",
-			slog.Any("sections", changed))
-		next.Server, next.Reload = a.cfg.Server, a.cfg.Reload
-		if err := next.Validate(); err != nil {
-			return fmt.Errorf("%w: it is invalid with the running %v settings, which change only on restart: %w",
-				errNeedsRestart, changed, err)
+			slog.Any("sections", changed), slog.Any("pending_hosts", pendingHosts(next, changed)))
+		if bindings, providers, err = a.keepRestartOnly(next, changed, bindings, providers); err != nil {
+			return err
 		}
 	}
-	if err := a.agg.Apply(ctx, next, l.bindings); err != nil {
+	if err := a.agg.Apply(ctx, next, bindings); err != nil {
 		return fmt.Errorf("app: apply: %w", err)
 	}
-	a.cfg, a.providers, a.configSum, a.restartPending = next, l.providers, l.sum, changed
+	a.cfg, a.providers, a.configSum, a.restartPending = next, providers, l.sum, changed
 	return nil
+}
+
+// keepRestartOnly gives next the running values of the settings that change
+// only on restart, rebuilding the bindings when that keeps a backend (its
+// definition then matches the running one, so it keeps its provider and its
+// credential's hosts), and rejects a file that is invalid with them.
+func (a *App) keepRestartOnly(next *config.Config, changed []string,
+	bindings map[string]aggregator.Binding, providers map[string]built,
+) (map[string]aggregator.Binding, map[string]built, error) {
+	next.Server, next.Reload = a.cfg.Server, a.cfg.Reload
+	if keepRunningBackends(next, a.cfg, changed) {
+		var err error
+		if bindings, providers, err = buildBindings(next, a.registry, a.env, a.providers); err != nil {
+			return nil, nil, fmt.Errorf("%w: %w", errNeedsRestart, err)
+		}
+	}
+	if err := next.Validate(); err != nil {
+		return nil, nil, fmt.Errorf("%w: it is invalid with the running %v settings, which change only on restart: %w",
+			errNeedsRestart, changed, err)
+	}
+	return bindings, providers, nil
+}
+
+// pendingHosts names the hosts the file gives the backends that wait for a
+// restart, so the log shows where a restart would send their credentials.
+func pendingHosts(next *config.Config, changed []string) map[string][]string {
+	all := backendHosts(next)
+	pending := map[string][]string{}
+	for _, section := range changed {
+		if name, ok := strings.CutPrefix(section, "backends."); ok && len(all[name]) > 0 {
+			pending[name] = all[name]
+		}
+	}
+	return pending
+}
+
+// keepRunningBackends gives next the running definition of every backend
+// that changed names as restart-only ("backends.<name>"), dropping the ones
+// the running configuration does not have, and reports whether it changed
+// any.
+func keepRunningBackends(next, running *config.Config, changed []string) bool {
+	kept := false
+	for _, section := range changed {
+		name, ok := strings.CutPrefix(section, "backends.")
+		if !ok {
+			continue
+		}
+		kept = true
+		if b, ok := running.Backends[name]; ok {
+			if next.Backends == nil {
+				next.Backends = map[string]config.Backend{}
+			}
+			next.Backends[name] = b
+		} else {
+			delete(next.Backends, name)
+		}
+	}
+	return kept
 }
 
 func fileHash(path string) ([sha256.Size]byte, error) {

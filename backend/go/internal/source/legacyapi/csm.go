@@ -208,14 +208,17 @@ func (c *csmClient) fetch(ctx context.Context, kind, cloud string, out any) erro
 	}
 	u := c.base.JoinPath("cloud-status", kind)
 	u.RawQuery = url.Values{"cloud": {cloud}}.Encode()
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
+	req, id, err := newRequest(ctx, http.MethodGet, u.String(), nil)
 	if err != nil {
 		return fmt.Errorf("legacyapi: build request: %w", err)
 	}
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("User-Agent", c.userAgent)
 	req.Header.Set("Authorization", "Bearer "+token)
+	return withRequestID(c.read(req, kind, cloud, token, out), id)
+}
 
+func (c *csmClient) read(req *http.Request, kind, cloud, token string, out any) error {
 	resp, err := c.http.Do(req)
 	if err != nil {
 		return fmt.Errorf("legacyapi: GET cloud-status/%s: %w", kind, err)

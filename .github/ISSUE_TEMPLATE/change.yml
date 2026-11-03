@@ -1,0 +1,15 @@
+name: Change
+description: A change to what the page shows or to how the service runs.
+labels: [enhancement]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What should change, and why
+    validations:
+      required: true
+  - type: input
+    id: decided
+    attributes:
+      label: Who asked or decided
+      description: The team, or the decision record, behind the change.

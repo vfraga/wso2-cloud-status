@@ -35,6 +35,9 @@ section here, or while the Unreleased section still holds entries. The public AP
 - The footer links WSO2's privacy policy, cookie policy, terms of use,
   modern slavery statement and California opt-out page, as the product
   status pages do.
+- statusd sends its own `X-Request-ID` with every request to a status
+  source and to the token issuer, and the failed-fetch log line names it,
+  so a failure can be found in the upstream's logs.
 
 ### Changed
 
@@ -229,6 +232,18 @@ section here, or while the Unreleased section still holds entries. The public AP
 
 ### Security
 
+- A configuration reload no longer adds, changes or removes a backend that
+  reads a credential from the environment (the CSM backend): it keeps the
+  running backend and reports it in `restart_pending` until a restart, so
+  whoever can change the file cannot send the client secret or its token
+  to another host. The startup and reload logs name each backend's hosts,
+  and a held change names the hosts it would use.
+- `${NAME}` reads the environment only as the whole value of a backend
+  option or a `server.required_headers` entry; anywhere else, or in a YAML
+  alias, the file is invalid, so it cannot copy a secret into a URL or a
+  published name. An unquoted reference no longer sets a number.
+- statusd logs a start without the origin lock as an error, and
+  StatusdOriginLockOff is critical.
 - The page's container compares the Front Door ID with its letter case, as
   statusd does, and serves the page's HTML on no other path: a path ending
   in an encoded newline (`/history%0a`) and the build's `.gz` copies asked

@@ -23,6 +23,8 @@ package legacyapi
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -72,13 +74,16 @@ func (c *Client) endpoint(path, cloud string) string {
 }
 
 func (c *Client) fetch(ctx context.Context, path, cloud string, out any) error {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.endpoint(path, cloud), nil)
+	req, id, err := newRequest(ctx, http.MethodGet, c.endpoint(path, cloud), nil)
 	if err != nil {
 		return fmt.Errorf("legacyapi: build request: %w", err)
 	}
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("User-Agent", c.userAgent)
+	return withRequestID(c.read(req, path, cloud, out), id)
+}
 
+func (c *Client) read(req *http.Request, path, cloud string, out any) error {
 	resp, err := c.http.Do(req)
 	if err != nil {
 		return fmt.Errorf("legacyapi: GET %s: %w", path, err)
@@ -94,4 +99,28 @@ func (c *Client) fetch(ctx context.Context, path, cloud string, out any) error {
 		return fmt.Errorf("legacyapi: decode %s?cloud=%s: %w", path, cloud, err)
 	}
 	return nil
+}
+
+// newRequest builds a request to an upstream with its own X-Request-ID, a
+// random correlation id in the form statusd gives its own requests. An
+// error about the request names it (withRequestID), so a failed fetch's log
+// line can be matched with the upstream's logs.
+func newRequest(ctx context.Context, method, target string, body io.Reader) (*http.Request, string, error) {
+	req, err := http.NewRequestWithContext(ctx, method, target, body)
+	if err != nil {
+		return nil, "", err
+	}
+	b := make([]byte, 16)
+	_, _ = rand.Read(b)
+	id := hex.EncodeToString(b)
+	req.Header.Set("X-Request-ID", id)
+	return req, id, nil
+}
+
+// withRequestID adds the X-Request-ID of the request that err is about.
+func withRequestID(err error, id string) error {
+	if err == nil {
+		return nil
+	}
+	return fmt.Errorf("%w (X-Request-ID %s)", err, id)
 }
