@@ -19,6 +19,7 @@ package app
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -179,10 +180,41 @@ func TestServerLimits(t *testing.T) {
 	}
 	for name, srv := range map[string]*http.Server{"public": a.public, "admin": a.admin} {
 		if srv.ReadHeaderTimeout != 5*time.Second || srv.ReadTimeout != 10*time.Second ||
-			srv.WriteTimeout != 10*time.Second || srv.IdleTimeout != time.Minute || srv.MaxHeaderBytes != 16<<10 {
+			srv.WriteTimeout != 10*time.Second || srv.IdleTimeout != time.Minute || srv.MaxHeaderBytes != maxHeaderBytes {
 			t.Errorf("%s server: header %s, read %s, write %s, idle %s, max header %d bytes", name,
 				srv.ReadHeaderTimeout, srv.ReadTimeout, srv.WriteTimeout, srv.IdleTimeout, srv.MaxHeaderBytes)
 		}
+	}
+}
+
+// TestEdgeSizedRequestReachesTheHandler: a request head as large as Front
+// Door forwards gets statusd's own answer, with Cache-Control, rather than
+// net/http's 431, which has none.
+func TestEdgeSizedRequestReachesTheHandler(t *testing.T) {
+	t.Parallel()
+	a, err := New(shippedConfig(t, "http://127.0.0.1:1"), slog.New(slog.DiscardHandler), "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ts := httptest.NewUnstartedServer(nil)
+	ts.Config = a.public
+	ts.Start()
+	t.Cleanup(ts.Close)
+
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, ts.URL+"/"+strings.Repeat("a", 8<<10), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := range 64 { // 64 header lines of 1 KB each
+		req.Header.Set(fmt.Sprintf("X-Pad-%02d", i), strings.Repeat("a", 1024-len("X-Pad-00: \r\n")))
+	}
+	resp, err := ts.Client().Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = resp.Body.Close()
+	if resp.StatusCode == http.StatusRequestHeaderFieldsTooLarge || resp.Header.Get("Cache-Control") == "" {
+		t.Fatalf("answered %d with Cache-Control %q, want statusd's own answer", resp.StatusCode, resp.Header.Get("Cache-Control"))
 	}
 }
 

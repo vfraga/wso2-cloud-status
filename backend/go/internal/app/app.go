@@ -154,6 +154,12 @@ func NewWithRegistry(cfg *config.Config, log *slog.Logger, version string, reg *
 	}, nil
 }
 
+// maxHeaderBytes is above the largest request head Front Door forwards (64 KB
+// of headers and an 8 KB URL) plus the headers it and the ingress add, so an
+// oversized request is refused at the edge. net/http's own 431 carries no
+// Cache-Control, and an edge cache could keep it in place of a real answer.
+const maxHeaderBytes = 128 << 10
+
 func newServer(h http.Handler, log *slog.Logger) *http.Server {
 	return &http.Server{
 		Handler:           h,
@@ -161,7 +167,7 @@ func newServer(h http.Handler, log *slog.Logger) *http.Server {
 		ReadTimeout:       10 * time.Second,
 		WriteTimeout:      10 * time.Second,
 		IdleTimeout:       60 * time.Second,
-		MaxHeaderBytes:    16 << 10,
+		MaxHeaderBytes:    maxHeaderBytes,
 		ErrorLog:          slog.NewLogLogger(log.Handler(), slog.LevelWarn),
 		// OPTIONS * goes to the handler, with its headers and origin lock,
 		// rather than net/http's own empty 200.

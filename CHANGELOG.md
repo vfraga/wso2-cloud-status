@@ -232,6 +232,11 @@ section here, or while the Unreleased section still holds entries. The public AP
 
 ### Security
 
+- statusd reads request heads up to 128 KiB, more than Front Door forwards
+  (64 KB of headers and an 8 KB URL), so an oversized request is refused
+  at the edge. Before, 16 KB of headers drew net/http's 431, which carries
+  no Cache-Control, and an edge cache could keep it in place of a real
+  answer.
 - A configuration reload no longer adds, changes or removes a backend that
   reads a credential from the environment (the CSM backend): it keeps the
   running backend and reports it in `restart_pending` until a restart, so
