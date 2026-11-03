@@ -545,7 +545,11 @@ describe("product page", () => {
     expect(document.getElementById(region.getAttribute("aria-controls") ?? "")).toContainElement(
       screen.getByText("API Proxy Invocation"),
     );
-    expect(screen.getByText(/^Incidents last updated .+ UTC \(2\d min ago\)$/)).toBeInTheDocument();
+    // 19 when a minute turns between the page's clock (taken at mount) and
+    // the answer's times (floored when the handler runs).
+    expect(
+      screen.getByText(/^Incidents last updated .+ UTC \((19|2\d) min ago\)$/),
+    ).toBeInTheDocument();
     expect(screen.getByText("99.994%")).toBeInTheDocument();
     expect(screen.getByText("Elevated latency")).toBeInTheDocument();
     // The name readers also know it by sits in the title, not on a line of its own.
