@@ -198,6 +198,12 @@ func (a *App) Run(ctx context.Context) error {
 			return err
 		}
 	}
+	// Logged before the watcher starts: from then on only the watcher reads
+	// or replaces a.cfg.
+	a.log.InfoContext(ctx, "serving", slog.String("public", a.Addr().String()), slog.String("admin", a.AdminAddr().String()))
+	a.logOriginLock(ctx)
+	a.log.InfoContext(ctx, "sources", slog.Any("hosts", backendHosts(a.cfg)))
+
 	errs := make(chan error, 2)
 	go func() { errs <- serve(a.public, a.publicLn) }()
 	go func() { errs <- serve(a.admin, a.adminLn) }()
@@ -213,9 +219,6 @@ func (a *App) Run(ctx context.Context) error {
 		a.watchConfig(pollCtx)
 		close(watched)
 	}()
-	a.log.InfoContext(ctx, "serving", slog.String("public", a.Addr().String()), slog.String("admin", a.AdminAddr().String()))
-	a.logOriginLock(ctx)
-	a.log.InfoContext(ctx, "sources", slog.Any("hosts", backendHosts(a.cfg)))
 
 	var runErr error
 	select {
