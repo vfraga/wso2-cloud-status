@@ -354,6 +354,7 @@ func TestAnswerLimits(t *testing.T) {
 		{"uptime region keys", uptime(MaxRegions, 1), uptime(MaxRegions+1, 1), uptimeCall},
 		{"uptime figures", uptime(1, MaxFigures), uptime(1, MaxFigures+1), uptimeCall},
 		{"title", titled(long), titled(long + "x"), incidentsCall},
+		{"incident id", withID(strings.Repeat("a", MaxID)), withID(strings.Repeat("a", MaxID+1)), incidentsCall},
 		{
 			"component name", `{"us":[{"display_name":"G","subgroups":[{"display_name":"` + long + `","status":0}]}]}`,
 			`{"us":[{"display_name":"G","subgroups":[{"display_name":"` + long + `x","status":0}]}]}`, componentsCall,
@@ -388,6 +389,10 @@ func incidentAnswer(n int) string {
 
 func titled(title string) string {
 	return `{"2026-10":{"incidents":[{"id":"x","begin":"2026-10-01 00:00:00","short_description":"` + title + `","status":"Investigating"}]}}`
+}
+
+func withID(id string) string {
+	return `{"2026-10":{"incidents":[{"id":"` + id + `","begin":"2026-10-01 00:00:00","status":"Investigating"}]}}`
 }
 
 // monitors is a monitors answer with the given region keys, groups per
@@ -456,6 +461,9 @@ func TestLimitsLeaveRoomAboveTheCapturedAnswers(t *testing.T) {
 		}
 		if 10*m.longest > MaxText {
 			t.Errorf("%s: a value of %d characters, more than a tenth of MaxText %d", name, m.longest, MaxText)
+		}
+		if 2*m.longestID > MaxID {
+			t.Errorf("%s: an incident id of %d characters, more than half of MaxID %d", name, m.longestID, MaxID)
 		}
 	}
 }

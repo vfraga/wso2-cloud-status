@@ -216,6 +216,9 @@ func TestDataEndpointsMatchTheSchema(t *testing.T) {
 			t.Errorf("summary missing %s", h)
 		}
 	}
+	if got := r.header.Get("X-Robots-Tag"); got != "noindex" {
+		t.Errorf("summary X-Robots-Tag = %q, want noindex", got)
+	}
 	var sum summary
 	if err := json.Unmarshal(r.body, &sum); err != nil {
 		t.Fatal(err)

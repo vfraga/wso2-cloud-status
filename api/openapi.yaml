@@ -272,9 +272,9 @@ components:
       schema: { type: string }
     RequestID:
       description: >-
-        Request correlation id; a well-formed incoming X-Request-ID is echoed. On
-        a copy served by a cache it names the origin request that filled the
-        cache, not the reader's.
+        Request correlation id, the service's own. An incoming X-Request-ID is
+        not echoed: when well formed it is logged beside this one. On a copy
+        served by a cache it names the origin request that filled the cache.
       schema: { type: string }
 
   responses:
@@ -510,7 +510,11 @@ components:
           description: >-
             The most severe known status among the product's regions and the
             impacts of its active incidents (an unknown impact counting as
-            degraded).
+            degraded). A region whose status is unknown is skipped, so one
+            silent source does not hide what the others report: read "status"
+            together with "data_complete", which is false when any region is
+            unknown. The summary's status and each location's status fail
+            closed instead ("unknown").
         extent:
           $ref: "#/components/schemas/Extent"
           description: >-

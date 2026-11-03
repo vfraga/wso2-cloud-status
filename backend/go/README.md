@@ -94,7 +94,9 @@ sources after a restart.
 
 `internal/httpapi` wraps the public routes in these middlewares, outermost
 first: security headers, a `no-store` default for `Cache-Control`, CORS,
-the request ID (a caller's well-formed `X-Request-ID`, or a new one), the
+the request ID (statusd's own, sent back in `X-Request-ID`; a caller's
+well-formed `X-Request-ID` is logged beside it as `caller_request_id`, never
+echoed, since a cached answer reaches other readers), the
 origin lock, load shedding (beyond `server.max_in_flight` requests in
 flight, a 503 with `Retry-After: 1`), the access log, panic recovery and
 CORS preflights. Probes are exempt from the origin lock and from load

@@ -232,6 +232,18 @@ section here, or while the Unreleased section still holds entries. The public AP
 
 ### Security
 
+- statusd answers with an `X-Request-ID` of its own and logs a caller's
+  well-formed one beside it as `caller_request_id`, instead of echoing it:
+  a response the edge caches no longer carries a value one reader chose to
+  every other reader.
+- An incident id longer than 64 characters fails the source's answer like
+  any value over its limit, and the last good data stays: the history lists
+  an id on every day its incident spans, so ids of the old 1,000-character
+  limit could grow one product's answer to tens of megabytes.
+- A CSM failure's message and cloud reach the log cut to 200 characters.
+- Every statusd response carries `X-Robots-Tag: noindex`.
+- The release workflow installs cosign before it logs in to the registry,
+  and the CI run it starts restores no Actions cache.
 - statusd reads request heads up to 128 KiB, more than Front Door forwards
   (64 KB of headers and an 8 KB URL), so an oversized request is refused
   at the edge. Before, 16 KB of headers drew net/http's 431, which carries

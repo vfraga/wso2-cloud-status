@@ -198,6 +198,10 @@ const (
 	MaxComponents = 500  // components, across groups
 	MaxFigures    = 1000 // uptime figures, across regions or components
 	MaxText       = 1000 // characters in one key, name, description, message, title or window
+	// MaxID is held to twice the 32 characters of every captured incident
+	// id, not ten times: the history lists an incident's id on every day it
+	// spans, so a long id is repeated up to 90 times per product.
+	MaxID = 64 // characters in one incident id
 )
 
 // The times an answer may hold. JSON cannot encode a year outside 0-9999,
@@ -218,10 +222,11 @@ func checkTime(what string, t time.Time) error {
 // measure counts what one answer holds against the limits above and keeps
 // the first limit it passes in err.
 type measure struct {
-	counts  map[string]int
-	limit   map[string]int
-	longest int
-	err     error
+	counts    map[string]int
+	limit     map[string]int
+	longest   int
+	longestID int
+	err       error
 }
 
 func (m *measure) count(what string, n, most int) {
@@ -242,6 +247,14 @@ func (m *measure) text(values ...string) {
 		if m.err == nil && n > MaxText {
 			m.err = fmt.Errorf("legacyapi: a value of %d characters, more than the %d one may hold", n, MaxText)
 		}
+	}
+}
+
+func (m *measure) id(v string) {
+	n := utf8.RuneCountInString(v)
+	m.longestID = max(m.longestID, n)
+	if m.err == nil && n > MaxID {
+		m.err = fmt.Errorf("legacyapi: an incident id of %d characters, more than the %d one may hold", n, MaxID)
 	}
 }
 
@@ -286,7 +299,8 @@ func measureIncidents(raw map[string]wireMonth) measure {
 		m.count("incidents", len(w.Incidents), MaxIncidents)
 		m.text(month)
 		for _, inc := range w.Incidents {
-			m.text(inc.ID, inc.Type, inc.Status, inc.ShortDescription)
+			m.id(inc.ID)
+			m.text(inc.Type, inc.Status, inc.ShortDescription)
 		}
 	}
 	return m

@@ -46,7 +46,7 @@ func recoverer(log *slog.Logger) middleware {
 					if v == http.ErrAbortHandler { //nolint:errorlint // Sentinel compared by identity, as net/http does.
 						panic(v)
 					}
-					log.ErrorContext(r.Context(), "handler panic", slog.Any("panic", v), slog.String("request_id", requestIDFrom(r.Context())))
+					log.ErrorContext(r.Context(), "handler panic", slog.Any("panic", v), requestIDAttr(r.Context()))
 					problem(w, http.StatusInternalServerError, "Internal error", "The request could not be completed.")
 				}
 			}()
@@ -59,16 +59,21 @@ type ctxKey struct{}
 
 var validRequestID = regexp.MustCompile(`^[A-Za-z0-9._-]{1,128}$`)
 
-// requestID propagates a caller's X-Request-ID when it is well formed and
-// generates one otherwise.
+// requestIDs are statusd's own id for a request and the one its caller
+// sent, when well formed.
+type requestIDs struct{ own, caller string }
+
+// requestID gives every request an id of statusd's own, sent back in
+// X-Request-ID. A caller's well-formed X-Request-ID is logged beside it but
+// never echoed: a response the edge caches is served to other readers.
 func requestID(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		id := r.Header.Get("X-Request-ID")
-		if !validRequestID.MatchString(id) {
-			id = newRequestID()
+		ids := requestIDs{own: newRequestID()}
+		if caller := r.Header.Get("X-Request-ID"); validRequestID.MatchString(caller) {
+			ids.caller = caller
 		}
-		w.Header().Set("X-Request-ID", id)
-		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), ctxKey{}, id)))
+		w.Header().Set("X-Request-ID", ids.own)
+		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), ctxKey{}, ids)))
 	})
 }
 
@@ -78,9 +83,14 @@ func newRequestID() string {
 	return hex.EncodeToString(b)
 }
 
-func requestIDFrom(ctx context.Context) string {
-	id, _ := ctx.Value(ctxKey{}).(string)
-	return id
+// requestIDAttr names the request in a log line: statusd's own id, and the
+// caller's when it sent one.
+func requestIDAttr(ctx context.Context) slog.Attr {
+	ids, _ := ctx.Value(ctxKey{}).(requestIDs)
+	if ids.caller == "" {
+		return slog.String("request_id", ids.own)
+	}
+	return slog.Group("", slog.String("request_id", ids.own), slog.String("caller_request_id", ids.caller))
 }
 
 type statusRecorder struct {
@@ -128,7 +138,7 @@ func accessLog(log *slog.Logger, obs RequestObserver) middleware {
 			}
 			log.Log(r.Context(), level, "request",
 				slog.String("method", r.Method), slog.String("route", route), slog.Int("status", rec.code),
-				slog.Duration("took", took), slog.String("request_id", requestIDFrom(r.Context())))
+				slog.Duration("took", took), requestIDAttr(r.Context()))
 		})
 	}
 }
@@ -192,7 +202,7 @@ func originLock(required map[string]string, log *slog.Logger, obs RequestObserve
 					log.DebugContext(r.Context(), "request",
 						slog.String("method", r.Method), slog.String("route", "unmatched"),
 						slog.Int("status", http.StatusForbidden), slog.Duration("took", 0),
-						slog.String("request_id", requestIDFrom(r.Context())))
+						requestIDAttr(r.Context()))
 					return
 				}
 			}
@@ -221,6 +231,7 @@ func securityHeaders(next http.Handler) http.Handler {
 		h.Set("Content-Security-Policy", "default-src 'none'; frame-ancestors 'none'; upgrade-insecure-requests")
 		h.Set("Referrer-Policy", "no-referrer")
 		h.Set("Cross-Origin-Resource-Policy", "cross-origin")
+		h.Set("X-Robots-Tag", "noindex") // the API's JSON is not for search results
 		next.ServeHTTP(w, r)
 	})
 }

@@ -408,6 +408,7 @@ func TestSecurityHeadersOnEveryResponse(t *testing.T) {
 			"Content-Security-Policy":   "default-src 'none'; frame-ancestors 'none'; upgrade-insecure-requests",
 			"X-Content-Type-Options":    "nosniff",
 			"Referrer-Policy":           "no-referrer",
+			"X-Robots-Tag":              "noindex",
 		} {
 			if got := rec.Header().Get(header); got != want {
 				t.Errorf("%s (%d): %s = %q, want %q", name, rec.Code, header, got, want)
@@ -432,14 +433,23 @@ func TestDefaultCacheControl(t *testing.T) {
 	}
 }
 
-func TestRequestIDPropagation(t *testing.T) {
+// TestRequestIDIsOurOwn: every response carries an id of statusd's own, so a
+// cached copy never carries one a reader chose; a caller's well-formed id is
+// logged beside it.
+func TestRequestIDIsOurOwn(t *testing.T) {
 	t.Parallel()
-	h, _, _ := newTestHandler(t, true)
-	if got := do(h, http.MethodGet, "/healthz", map[string]string{"X-Request-ID": "abc-123"}).Header().Get("X-Request-ID"); got != "abc-123" {
-		t.Fatalf("well-formed id: %q", got)
+	var logs bytes.Buffer
+	log := slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelDebug}))
+	h := withMiddleware(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) }),
+		Options{Logger: log, Observer: &codes{}})
+	for _, sent := range []string{"abc-123", "bad id\n", ""} {
+		got := do(h, http.MethodGet, "/x", map[string]string{"X-Request-ID": sent}).Header().Get("X-Request-ID")
+		if got == sent || len(got) != 32 {
+			t.Errorf("sent %q, answered %q; want an id of statusd's own", sent, got)
+		}
 	}
-	if got := do(h, http.MethodGet, "/healthz", map[string]string{"X-Request-ID": "bad id\n"}).Header().Get("X-Request-ID"); got == "bad id\n" || len(got) != 32 {
-		t.Fatalf("malformed id must be replaced, got %q", got)
+	if !strings.Contains(logs.String(), "caller_request_id=abc-123") || strings.Contains(logs.String(), "bad id") {
+		t.Errorf("logs %q; want the well-formed caller id only", logs.String())
 	}
 }
 

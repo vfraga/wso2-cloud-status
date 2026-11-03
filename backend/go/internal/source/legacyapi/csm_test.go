@@ -190,6 +190,30 @@ func TestCSMEnvelopeWithoutDataIsAFailedFetch(t *testing.T) {
 	}
 }
 
+// TestCSMFailureTextIsBounded: a failure's message and cloud reach the log
+// cut to a bounded length, however long the upstream makes them.
+func TestCSMFailureTextIsBounded(t *testing.T) {
+	t.Parallel()
+	long := strings.Repeat("m", 10_000)
+	for name, body := range map[string]string{
+		"message": `{"result":{"code":1,"message":"` + long + `","cloud":"choreo","data":{}}}`,
+		"cloud":   `{"result":{"code":0,"message":"success","cloud":"` + long + `","data":{"x":[]}}}`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			f := newFakeCSM(t)
+			f.answer = func(w http.ResponseWriter, _, _ string) bool {
+				_, _ = w.Write([]byte(body))
+				return true
+			}
+			_, err := csmSource(t, f, "choreo").Components(context.Background())
+			if !errors.Is(err, ErrEnvelope) || len(err.Error()) > 500 {
+				t.Errorf("err of %d bytes: %.120v", len(err.Error()), err)
+			}
+		})
+	}
+}
+
 func TestCSMThrottleHoldsEveryCloudOfTheBackend(t *testing.T) {
 	t.Parallel()
 	f := newFakeCSM(t)

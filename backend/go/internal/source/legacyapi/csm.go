@@ -30,6 +30,7 @@ import (
 	"strconv"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"github.com/wso2/wso2-cloud-status/backend/go/internal/config"
 	"github.com/wso2/wso2-cloud-status/backend/go/internal/source"
@@ -177,9 +178,9 @@ func (r *result) problem(cloud string) string {
 	data := bytes.TrimSpace(r.Data)
 	switch {
 	case r.Code == nil || *r.Code != 0 || r.Message != "success":
-		return fmt.Sprintf("reports code %s, message %q", codeOf(r.Code), r.Message)
+		return fmt.Sprintf("reports code %s, message %q", codeOf(r.Code), clip(r.Message))
 	case r.Cloud != cloud:
-		return fmt.Sprintf("answered for cloud %q", r.Cloud)
+		return fmt.Sprintf("answered for cloud %q", clip(r.Cloud))
 	case len(data) == 0 || bytes.Equal(data, []byte("null")):
 		return "has no data"
 	}
@@ -278,6 +279,15 @@ func unwrap(body io.Reader, kind, cloud string, out any) error {
 		return fmt.Errorf("legacyapi: decode cloud-status/%s?cloud=%s data: %w", kind, cloud, err)
 	}
 	return nil
+}
+
+// clip bounds text the upstream chose before it reaches a log line.
+func clip(s string) string {
+	const most = 200 // characters
+	if utf8.RuneCountInString(s) <= most {
+		return s
+	}
+	return string([]rune(s)[:most]) + "..."
 }
 
 func codeOf(code *int) string {
