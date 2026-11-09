@@ -232,6 +232,10 @@ section here, or while the Unreleased section still holds entries. The public AP
 
 ### Security
 
+- The lint tools run minimatch 11.0.4, which fixes a denial of service
+  through a crafted glob, through an npm override until they accept
+  minimatch 11. CI's dependency scan covers development dependencies,
+  which it skipped before, so such a finding fails the nightly run.
 - statusd answers with an `X-Request-ID` of its own and logs a caller's
   well-formed one beside it as `caller_request_id`, instead of echoing it:
   a response the edge caches no longer carries a value one reader chose to

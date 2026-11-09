@@ -233,8 +233,12 @@ jobs:
       - name: Dependency vulnerabilities, report only (Grype)
         continue-on-error: true
         run: scripts/grype-report.sh repo
+      # Development dependencies too, which Trivy skips by default: the build
+      # and lint tools run in CI and on developers' machines.
       - name: Dependency vulnerabilities (Trivy)
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        env:
+          TRIVY_INCLUDE_DEV_DEPS: "true"
         with:
           version: ${{ env.TRIVY_VERSION }}
           cache: ${{ env.CACHE }}
