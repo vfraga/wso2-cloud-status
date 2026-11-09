@@ -50,5 +50,9 @@
     "test:watch": "vitest",
     "e2e:install": "playwright install chromium",
     "e2e": "bash scripts/e2e.sh"
+  },
+  "overrides": {
+    "minimatch": "11.0.4",
+    "@isaacs/nonrecursive-glob-match": "1.0.3"
   }
 }

@@ -153,3 +153,8 @@ Development:
 | `eslint`, `@eslint/js`, `typescript-eslint`, `globals`    | Linting                                                                                                         |
 | `eslint-plugin-react-hooks`, `-sonarjs`                   | Hook rules, cognitive complexity. Accessibility is checked by axe in e2e and role-based Testing Library queries |
 | `prettier`                                                | Formatting                                                                                                      |
+
+`package.json` overrides `minimatch` to 11.0.4, and its dependency `@isaacs/nonrecursive-glob-match` to
+1.0.3, the version it was released with: `eslint`, `typescript-eslint` and `eslint-plugin-sonarjs` still
+ask for minimatch 10, which a crafted glob can slow to a denial of service. Remove the override once all
+three accept minimatch 11.
