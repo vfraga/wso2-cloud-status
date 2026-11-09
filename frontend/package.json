@@ -43,7 +43,7 @@
     "build": "tsc -p . && vite build",
     "preview": "vite preview",
     "typecheck": "tsc -p .",
-    "lint": "eslint . --max-warnings 0 && prettier --check .",
+    "lint": "eslint . --max-warnings 0 && node scripts/lint-coverage.mjs && prettier --check .",
     "format": "prettier --write .",
     "test": "vitest run --coverage && npm run test:zones",
     "test:zones": "VITEST_TZ=Asia/Colombo vitest run && VITEST_TZ=America/Sao_Paulo vitest run && VITEST_LOCALE=de LC_ALL=de_DE.UTF-8 LANG=de_DE.UTF-8 vitest run src/lib/locale.test.ts",

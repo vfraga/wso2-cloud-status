@@ -232,6 +232,9 @@ section here, or while the Unreleased section still holds entries. The public AP
 
 ### Security
 
+- CI checks every installed npm package's registry signature, and the lint
+  fails when ESLint would skip a source file Git tracks, which it otherwise
+  does without a word.
 - The lint tools run minimatch 11.0.4, which fixes a denial of service
   through a crafted glob, through an npm override until they accept
   minimatch 11. CI's dependency scan covers development dependencies,

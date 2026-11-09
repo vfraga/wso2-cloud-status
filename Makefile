@@ -111,7 +111,7 @@ web-install: ## Frontend dependencies (Node per frontend/.nvmrc)
 	cd frontend && npm ci
 
 web-check: ## Frontend lint, types, tests with coverage, build, audit
-	cd frontend && npm run lint && npm run typecheck && npm test && npm run build && npm audit --audit-level=high
+	cd frontend && npm run lint && npm run typecheck && npm test && npm run build && npm audit --audit-level=high && npm audit signatures
 
 web-licenses: ## Licence allow-list for the npm packages the frontend ships (needs jq)
 	scripts/npm-licenses.sh frontend/package-lock.json

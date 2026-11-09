@@ -8,12 +8,13 @@ API in `../backend/go` (contract: `../api/openapi.yaml`).
 
 ## Run
 
-Node 24.22.1 (`.nvmrc`).
+Node at the version in `.nvmrc`, which the Dockerfile's build image matches.
 
 ```sh
 npm ci
 npm run dev            # http://localhost:5173, proxies /api to http://localhost:8080
-npm run lint           # eslint (zero warnings) and prettier
+npm run lint           # eslint (zero warnings), a check that it lints every tracked source file,
+                       # and prettier
 npm run typecheck
 npm test               # vitest in UTC with coverage gates (85% lines, statements, functions;
                        # 80% branches), then again in Asia/Colombo and America/Sao_Paulo

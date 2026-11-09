@@ -159,6 +159,9 @@ jobs:
       - name: Licence allow-list for the packages the frontend ships
         run: ../scripts/npm-licenses.sh package-lock.json
       - run: npm ci
+      # Every installed package carries a valid signature from the registry.
+      - name: Registry signatures
+        run: npm audit signatures
       - run: npm run lint
       - run: npm run typecheck
       - name: Unit and component tests (coverage thresholds enforced)
