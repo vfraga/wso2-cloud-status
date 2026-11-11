@@ -395,8 +395,9 @@ else
   bad "/.well-known/security.txt lacks: $(printf '%s; ' "${missing_fields[@]}")"
 fi
 
-# The origin lock: only requests carrying this Front Door profile's ID.
-for path in / "${assets[0]:-/}" /.well-known/security.txt /api/x; do
+# The origin lock: only requests carrying this Front Door profile's ID. The
+# icons are files the catch-all location serves.
+for path in / "${assets[0]:-/}" /favicon.ico /icon.svg /.well-known/security.txt /api/x; do
   NO_FDID=1 get refused "$path"
   expect refused "$path without the Front Door ID" 403 "no-store"
   names_server refused "the 403 for $path"

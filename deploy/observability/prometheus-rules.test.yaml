@@ -3,7 +3,8 @@ rule_files:
   - prometheus-rules.yaml
 evaluation_interval: 1m
 tests:
-  - name: a silent upstream alerts after 5 minutes for components and incidents, 15 for uptime
+  # The Go test TestCopiesOfTheStalenessMatchTheShippedConfiguration checks the thresholds against the shipped configuration.
+  - name: a silent upstream alerts once per source and kind, labelled with both, for 1m after passing its kind's threshold
     interval: 1m
     input_series:
       # Last success at t=0 for choreo (never refreshed: also what a source
@@ -21,6 +22,10 @@ tests:
         values: "0+60x20"
     alert_rule_test:
       - eval_time: 4m
+        alertname: StatusdUpstreamFailing
+        exp_alerts: []
+      # Past the components and incidents threshold from t=6m: pending until 7m.
+      - eval_time: 6m
         alertname: StatusdUpstreamFailing
         exp_alerts: []
       - eval_time: 7m
@@ -110,10 +115,11 @@ tests:
       - series: 'statusd_product_status{instance="d", product="moesif", status="unknown"}'
         values: "0x20"
     alert_rule_test:
+      # Unknown from t=0: firing at 5m.
       - eval_time: 4m
         alertname: StatusdNoProductData
         exp_alerts: []
-      - eval_time: 6m
+      - eval_time: 5m
         alertname: StatusdNoProductData
         exp_alerts:
           - exp_labels: { severity: critical, instance: a }
@@ -281,17 +287,21 @@ tests:
       - series: 'statusd_upstream_last_success_timestamp_seconds{instance="a", source="cloudservices/moesif", kind="components"}'
         values: "0+60x30"
     alert_rule_test:
-      - eval_time: 10m
+      # Incomplete from t=0: firing at 15m.
+      - eval_time: 14m
         alertname: StatusdDataIncomplete
         exp_alerts: []
-      - eval_time: 20m
+      - eval_time: 15m
         alertname: StatusdDataIncomplete
-        exp_alerts:
+        exp_alerts: &incomplete
           - exp_labels: { severity: warning, instance: a, product: identity-platform }
             exp_annotations:
               runbook_url: docs/operations/runbook.md#statusddataincomplete
               summary: "identity-platform has shown unknown statuses for 15 minutes while its sources answer"
               description: "Its sources return component statuses, but some region or component reads unknown. Most likely an upstream region key no longer matches the configuration: see statusd_source_region_keys and the 'upstream region keys differ' log line."
+      - eval_time: 20m
+        alertname: StatusdDataIncomplete
+        exp_alerts: *incomplete
 
   - name: a product that becomes complete again stops alerting
     interval: 1m
@@ -352,10 +362,11 @@ tests:
       - eval_time: 2m
         alertname: StatusdTargetMissing
         exp_alerts: []
+      # Absent from t=3m: firing at 8m.
       - eval_time: 7m
         alertname: StatusdTargetMissing
         exp_alerts: []
-      - eval_time: 9m
+      - eval_time: 8m
         alertname: StatusdTargetMissing
         exp_alerts:
           - exp_labels: { severity: critical, job: statusd }
@@ -412,16 +423,20 @@ tests:
       - series: 'statusd_http_requests_total{instance="b", route="shed", code="503"}'
         values: "0+50x30"
     alert_rule_test:
-      - eval_time: 8m
+      # A rate needs two samples, so the ratio exists from t=1m: firing at 11m.
+      - eval_time: 10m
         alertname: StatusdServerErrors
         exp_alerts: []
-      - eval_time: 20m
+      - eval_time: 11m
         alertname: StatusdServerErrors
-        exp_alerts:
+        exp_alerts: &servererrors
           - exp_labels: { severity: warning, instance: a }
             exp_annotations:
               runbook_url: docs/operations/runbook.md#statusdservererrors
               summary: "statusd a answers more than 1% 5xx"
+      - eval_time: 20m
+        alertname: StatusdServerErrors
+        exp_alerts: *servererrors
 
   # A replica answers its readiness probe with 503 until its first poll round
   # has finished; that is not a server error.
@@ -529,17 +544,21 @@ tests:
       - series: 'statusd_http_requests_total{instance="c", route="unmatched", code="403"}'
         values: "0+2x30"
     alert_rule_test:
-      - eval_time: 8m
+      # A rate needs two samples, so the ratio exists from t=1m: firing at 11m.
+      - eval_time: 10m
         alertname: StatusdClientErrors
         exp_alerts: []
-      - eval_time: 20m
+      - eval_time: 11m
         alertname: StatusdClientErrors
-        exp_alerts:
+        exp_alerts: &clienterrors
           - exp_labels: { severity: warning, instance: a }
             exp_annotations:
               runbook_url: docs/operations/runbook.md#statusdclienterrors
               summary: "statusd a refuses more than 5% of requests with 4xx (not 404 or 405)"
               description: "Most likely the origin lock answering 403: check that FRONT_DOOR_ID matches the Front Door profile the requests come through."
+      - eval_time: 20m
+        alertname: StatusdClientErrors
+        exp_alerts: *clienterrors
 
   - name: a p99 above 100 ms for ten minutes alerts
     interval: 1m
@@ -571,12 +590,13 @@ tests:
       - series: 'statusd_http_request_duration_seconds_bucket{instance="c", route="GET /api/v1/summary", le="+Inf"}'
         values: "0+100x30"
     alert_rule_test:
-      - eval_time: 8m
+      # A rate needs two samples, so the quantile exists from t=1m: firing at 11m.
+      - eval_time: 10m
         alertname: StatusdLatencyHigh
         exp_alerts: []
-      - eval_time: 20m
+      - eval_time: 11m
         alertname: StatusdLatencyHigh
-        exp_alerts:
+        exp_alerts: &latency
           - exp_labels: { severity: warning, instance: a }
             exp_annotations:
               runbook_url: docs/operations/runbook.md#statusdlatencyhigh
@@ -585,6 +605,9 @@ tests:
             exp_annotations:
               runbook_url: docs/operations/runbook.md#statusdlatencyhigh
               summary: "statusd c p99 latency above 100 ms"
+      - eval_time: 20m
+        alertname: StatusdLatencyHigh
+        exp_alerts: *latency
 
   - name: shedding for five minutes alerts
     interval: 1m
@@ -592,17 +615,21 @@ tests:
       - series: 'statusd_http_requests_total{instance="a", route="shed", code="503"}'
         values: "0+10x10"
     alert_rule_test:
-      - eval_time: 3m
+      # A rate needs two samples, so it exists from t=1m: firing at 6m.
+      - eval_time: 5m
         alertname: StatusdShedding
         exp_alerts: []
-      - eval_time: 10m
+      - eval_time: 6m
         alertname: StatusdShedding
-        exp_alerts:
+        exp_alerts: &shedding
           - exp_labels: { severity: warning, instance: a }
             exp_annotations:
               runbook_url: docs/operations/runbook.md#statusdshedding
               summary: "statusd a is shedding load"
               description: "Traffic is reaching the origin past the CDN, or the deployment is undersized."
+      - eval_time: 10m
+        alertname: StatusdShedding
+        exp_alerts: *shedding
 
   - name: an invalid configuration file alerts until it is fixed
     interval: 1m
@@ -640,10 +667,11 @@ tests:
       - series: 'statusd_origin_lock_enabled{instance="b"}'
         values: "1x10"
     alert_rule_test:
+      # Off from t=0: firing at 5m.
       - eval_time: 4m
         alertname: StatusdOriginLockOff
         exp_alerts: []
-      - eval_time: 6m
+      - eval_time: 5m
         alertname: StatusdOriginLockOff
         exp_alerts:
           - exp_labels: { severity: critical, instance: a }

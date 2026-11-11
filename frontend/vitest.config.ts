@@ -48,7 +48,7 @@ export default defineConfig({
         "src/vite-env.d.ts",
       ],
       reporter: ["text", "html", "json-summary"],
-      thresholds: { lines: 85, statements: 85, functions: 85, branches: 80 },
+      thresholds: { lines: 90, statements: 90, functions: 90, branches: 90 },
     },
   },
 });
