@@ -117,11 +117,15 @@ pack's paths unchanged.
   grid, date pickers or tree view without removing it. The same bundle keeps about
   40 kB gzip of MUI components the page never renders; only an ES module build of
   Oxygen UI would drop them.
-- Oxygen UI inlines its Inter font as `data:` URIs in its JavaScript. `build/externalize-fonts.ts`
-  moves each into a content-hashed `.woff2` under `/assets/` and preloads the Latin subset.
-- The build has three chunks: `index` (app code, about 23 kB gzip), `vendor`
-  (React, MUI, Oxygen, about 180 kB gzip; cached long-term) and a small
-  `rolldown-runtime` (under 1 kB). The image compresses each file once at
+- Oxygen UI inlines its fonts as `data:` URIs in its JavaScript: Inter, which its WSO2 theme
+  uses, and Sora, which only another of its themes uses. `build/externalize-fonts.ts` moves each
+  into a content-hashed `.woff2` under `/assets/`, named after its family (`inter-*`, `sora-*`),
+  and preloads the Latin subset of the theme's font (`PAGE_FONT`, checked against the theme by
+  a test). A browser fetches Sora only if something renders in it; nothing on this page does.
+  The build fails when the theme font's Latin subset is missing.
+- The build has three chunks: `index` (app code), `vendor` (React, MUI,
+  Oxygen; cached long-term) and a small `rolldown-runtime`. `npm run build`
+  prints each one's size. The image compresses each file once at
   level 9 and nginx sends the `.gz` copy (`gzip_static`).
 - The API is not preloaded from the HTML. Chromium hands a preloaded response
   to the page's first matching request however late it comes (a tab opened in

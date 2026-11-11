@@ -42,7 +42,7 @@ lock="${1:-$root/frontend/package-lock.json}"
 
 allowed='["Apache-2.0", "MIT", "MIT-0", "BSD-2-Clause", "BSD-3-Clause", "ISC", "CC0-1.0", "BlueOak-1.0.0"]'
 # Named exceptions: package name and the one licence it may carry.
-exceptions='{"@fontsource-variable/inter": "OFL-1.1"}'
+exceptions='{"@fontsource-variable/inter": "OFL-1.1", "@fontsource-variable/sora": "OFL-1.1"}'
 
 command -v jq >/dev/null 2>&1 || {
   echo "npm-licenses: jq is required" >&2

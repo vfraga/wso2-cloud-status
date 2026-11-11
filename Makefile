@@ -191,11 +191,17 @@ workflow-cache: ## No workflow job with secrets or id-token: write uses an actio
 	    print "no job with secrets or id-token: write uses an action with its cache on"; \
 	  }' .github/workflows/*.yml
 
-pins: workflow-cache ## The tool versions copied from ci.yml still match it; the Dockerfiles build with go.mod's Go and .nvmrc's Node; no privileged job uses a cache
+pins: workflow-cache ## The tool versions and licence exceptions copied from ci.yml still match it; the Dockerfiles build with go.mod's Go and .nvmrc's Node; no privileged job uses a cache
 	@status=0; \
 	for pin in '$(GOVULNCHECK)' '$(GOLICENSES)' '$(LICENSES_OK)' '$(PROMETHEUS)' '$(SHELLCHECK)' '$(SPECTRAL)' '$(ACTIONLINT)'; do \
 	  awk -v p=": $$pin" 'substr($$0, length($$0) - length(p) + 1) == p { found = 1 } END { exit !found }' .github/workflows/ci.yml \
 	    || { echo "Makefile pin not in ci.yml: $$pin"; status=1; }; \
+	done; \
+	exceptions="$$(sed -nE "s/^exceptions='(.*)'$$/\1/p" scripts/npm-licenses.sh | jq -r 'keys[]')"; \
+	[[ -n "$$exceptions" ]] || { echo "no licence exceptions read from scripts/npm-licenses.sh"; status=1; }; \
+	for pkg in $$exceptions; do \
+	  awk -v p="pkg:npm/$${pkg/@/%40}" '{ sub(/^ +/, ""); sub(/,$$/, "") } $$0 == p { found = 1 } END { exit !found }' .github/workflows/ci.yml \
+	    || { echo "scripts/npm-licenses.sh names $$pkg as a licence exception; ci.yml's dependency review does not"; status=1; }; \
 	done; \
 	eye='$(LICENSE_EYE)'; eye="$${eye#*:}"; eye="$${eye%%@*}"; \
 	eye_uses="$$(grep -E 'uses: apache/skywalking-eyes/header@' .github/workflows/ci.yml || true)"; \

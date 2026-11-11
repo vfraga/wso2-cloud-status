@@ -81,6 +81,38 @@ test.describe("all operational", () => {
     await page.screenshot({ path: shotPath("e2e-light"), fullPage: true, animations: "disabled" });
   });
 
+  test("fetches only the theme's font files", async ({ page }) => {
+    const fonts: string[] = [];
+    page.on("request", (request) => {
+      if (request.resourceType() === "font") fonts.push(new URL(request.url()).pathname);
+    });
+    await ready(page);
+    await readyProduct(page, "api-platform", "API Platform");
+    await page.evaluate(() => document.fonts.ready);
+    expect(fonts.length).toBeGreaterThan(0);
+    expect(fonts.filter((path) => !/^\/assets\/inter-[0-9a-f]{8}\.woff2$/.test(path))).toEqual([]);
+  });
+
+  test("preloads the file the page's Latin text is drawn with", async ({ page }) => {
+    const html = await (await page.request.get("/")).text();
+    const link = html.split('rel="preload" as="font"')[1] ?? "";
+    const preloaded = /href="([^"]+)"/.exec(link)?.[1];
+    expect(preloaded).toBeDefined();
+    // Every other font file fails, so Latin text in the theme's font loads
+    // only if the preloaded file is that font's Latin subset.
+    await page.route("**/*.woff2", (route) =>
+      new URL(route.request().url()).pathname === preloaded ? route.continue() : route.abort(),
+    );
+    await ready(page);
+    const loaded = await page.evaluate(() =>
+      document.fonts.load('16px "Inter Variable"', "A").then(
+        (faces) => faces.map((face) => face.status),
+        () => ["error"],
+      ),
+    );
+    expect(loaded).toEqual(["loaded"]);
+  });
+
   test("opens a product from its name, or from anywhere on its row", async ({ page }) => {
     await ready(page);
     const first = productRows(page).first();

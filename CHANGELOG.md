@@ -130,6 +130,11 @@ Unreleased section still holds entries. The public API has its own version, in `
 - CI installs Chromium for the end-to-end tests with Playwright alone: the
   runner image has every library it needs, so the job does not depend on
   Ubuntu's package mirror.
+- Oxygen UI 0.20.0. It embeds a second font, Sora (OFL-1.1, a named licence
+  exception like Inter), for a theme the page does not use. The build names
+  each font file after its family and preloads only the Latin subset of the
+  theme's font, and fails without it; the licence check of the build and
+  CI's dependency review name the same exceptions.
 
 ### Fixed
 

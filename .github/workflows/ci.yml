@@ -262,12 +262,13 @@ jobs:
           # everywhere, because a dev package can leak into a bundle.
           fail-on-scopes: runtime, development
           allow-licenses: Apache-2.0, MIT, MIT-0, BSD-2-Clause, BSD-3-Clause, ISC, CC0-1.0, BlueOak-1.0.0
-          # Named exceptions: a font (OFL-1.1), and
+          # Named exceptions: the fonts Oxygen UI embeds (OFL-1.1), and
           # development-only tools that are never shipped: lint rules
           # (LGPL-3.0), accessibility testing and the CSS minifier (MPL-2.0),
           # and browser-support data (CC-BY-4.0).
           allow-dependencies-licenses: >-
             pkg:npm/%40fontsource-variable/inter,
+            pkg:npm/%40fontsource-variable/sora,
             pkg:npm/eslint-plugin-sonarjs,
             pkg:npm/%40sonarsource/analyzer-commons-configurations,
             pkg:npm/axe-core,
