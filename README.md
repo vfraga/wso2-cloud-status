@@ -53,7 +53,7 @@ cd frontend && nvm use && npm ci && npm run dev   # http://localhost:5173, proxi
 | `make ci` | the CI go job: lint (backend and contract tests), cover, vuln, licenses, check-config, contract, contract-edge, contract-csm, synthetic-selftest, gates-selftest |
 | `make lint` | vet, staticcheck, gosec, cyclomatic (10) and cognitive (15) complexity, license headers |
 | `make test` | unit and integration tests with the race detector |
-| `make cover` | tests plus the coverage gate (85%) |
+| `make cover` | tests plus the coverage gate (`COVERAGE_MIN` in `.github/workflows/ci.yml`) |
 | `make check-config` | every file in `config/` validated as a start would read it (`statusd -check-config`) |
 | `make contract`, `make contract-edge`, `make contract-csm` | contract tests against replayed upstream data: normal, edge cases, and every backend read through the CSM adapter |
 | `make live` | smoke test against the real upstream APIs |
@@ -66,7 +66,7 @@ cd frontend && nvm use && npm ci && npm run dev   # http://localhost:5173, proxi
 
 ## Quality gates (CI)
 
-Lint and complexity, race-detector tests, coverage at or above 85%,
+Lint and complexity, race-detector tests, coverage at or above `COVERAGE_MIN`,
 govulncheck, licence allow-lists for Go packages (go-licenses) and shipped
 npm packages, every configuration file checked with `statusd -check-config`,
 contract tests, OpenAPI lint, alert-rule unit tests, license headers,

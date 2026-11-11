@@ -135,6 +135,8 @@ Unreleased section still holds entries. The public API has its own version, in `
   each font file after its family and preloads only the Latin subset of the
   theme's font, and fails without it; the licence check of the build and
   CI's dependency review name the same exceptions.
+- The coverage gates are 90%: statusd's total, and the page's lines,
+  statements, functions and branches.
 
 ### Fixed
 

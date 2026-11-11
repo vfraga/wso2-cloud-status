@@ -16,8 +16,8 @@ npm run dev            # http://localhost:5173, proxies /api to http://localhost
 npm run lint           # eslint (zero warnings), a check that it lints every tracked source file,
                        # and prettier
 npm run typecheck
-npm test               # vitest in UTC with coverage gates (85% lines, statements, functions;
-                       # 80% branches), then again in Asia/Colombo and America/Sao_Paulo
+npm test               # vitest in UTC with the coverage gates in vitest.config.ts, then
+                       # again in Asia/Colombo and America/Sao_Paulo
 npm run build          # dist/
 npm run e2e:install    # once: downloads Chromium for Playwright
 npm run e2e            # builds the backend and site, runs Playwright against the real backend
