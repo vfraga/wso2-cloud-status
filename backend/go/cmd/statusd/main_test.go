@@ -149,7 +149,7 @@ func TestCheckConfigCSMSecret(t *testing.T) {
 	for _, tt := range []struct{ secret, env, want string }{
 		{`"${CSM_CLIENT_SECRET}"`, "s3cret", ""},
 		{`s3cret`, "s3cret", "CSM option client_secret must be one ${NAME} reference to the environment, not a value in the file"},
-		{`"x-${CSM_CLIENT_SECRET}"`, "s3cret", "allowed only as the whole value of a backend option"},
+		{`"x-${CSM_CLIENT_SECRET}"`, "s3cret", "allowed only as the whole value of a backend's client_id"},
 		{`"${CSM_CLIENT_SECRET}"`, "s3cret\n", "CSM option client_secret has surrounding spaces or a control character"},
 	} {
 		secret, want := tt.secret, tt.want

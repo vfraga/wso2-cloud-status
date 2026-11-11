@@ -14,9 +14,9 @@ Prometheus alerting rules for statusd (`prometheus-rules.yaml`) and their unit t
 - The staleness thresholds (5 minutes for components and incidents, 15 for uptime) copy
   the shipped configuration's; a Go test
   (`TestCopiesOfTheStalenessMatchTheShippedConfiguration`) fails when they differ.
-- Each alert's `runbook_url` is `docs/operations/runbook.md#<alert name in lower case>`,
-  the runbook's path in the repository that holds it; the deployment that loads the
-  rules prefixes that repository's address.
+- Each alert's `runbook_url` annotation is a path with the alert's name in lower case as
+  its anchor; the deployment that loads the rules prefixes the address where the
+  operations guide is published.
 
 ## Severities
 
