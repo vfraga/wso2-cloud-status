@@ -23,6 +23,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -469,9 +470,10 @@ func uptime(regions, figures int) string {
 	return "{" + strings.Join(rs, ",") + "}"
 }
 
-// TestLimitsLeaveRoomAboveTheCapturedAnswers: every limit, and the body cap,
-// is at least ten times what the largest captured real answer holds, so a
-// heavy stretch of real data is never rejected.
+// TestLimitsLeaveRoomAboveTheCapturedAnswers: every limit is at least ten
+// times what the largest captured real answer holds, and every captured
+// answer is under a tenth of maxBody, so a heavy stretch of real data is
+// never rejected. TestOversizedAnswersFail checks that the cap is applied.
 func TestLimitsLeaveRoomAboveTheCapturedAnswers(t *testing.T) {
 	t.Parallel()
 	names, err := filepath.Glob(filepath.Join(fixtureDir, "*.json"))
@@ -508,6 +510,50 @@ func TestLimitsLeaveRoomAboveTheCapturedAnswers(t *testing.T) {
 		if 2*m.longestID > MaxID {
 			t.Errorf("%s: an incident id of %d characters, more than half of MaxID %d", name, m.longestID, MaxID)
 		}
+	}
+}
+
+// TestOversizedAnswersFail: each reader stops at maxBody, so an answer
+// longer than that fails even when it would decode. The padding sits inside
+// a string value the decoder ignores: a decoder stops at the end of the
+// first complete value, so padding after it would prove nothing. The same
+// answer with little padding is read.
+func TestOversizedAnswersFail(t *testing.T) {
+	t.Parallel()
+	figure := func(padding string) string {
+		return `{"us":[{"availability":"99.5","duration":"Last 7 days","padding":"` + padding + `"}]}`
+	}
+	for name, read := range map[string]func(t *testing.T, padding string) error{
+		"legacy": func(t *testing.T, padding string) error {
+			return uptimeCall(NewSource(newTestClient(t, serveJSON(t, http.StatusOK, figure(padding)).URL, nil), "c"))
+		},
+		"csm": func(t *testing.T, padding string) error {
+			f := newFakeCSM(t)
+			f.answer = func(w http.ResponseWriter, _, cloud string) bool {
+				_, _ = fmt.Fprintf(w, `{"result":{"code":0,"message":"success","cloud":%q,"data":%s}}`, cloud, figure(padding))
+				return true
+			}
+			return uptimeCall(csmSource(t, f, "moesif"))
+		},
+		"token": func(t *testing.T, padding string) error {
+			srv := serveJSON(t, http.StatusOK, `{"access_token":"x","token_type":"Bearer","expires_in":100,"padding":"`+padding+`"}`)
+			u, err := url.Parse(srv.URL)
+			if err != nil {
+				t.Fatal(err)
+			}
+			_, err = newTokenSource(u, "id", "secret", srv.Client()).token(context.Background())
+			return err
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			if err := read(t, strings.Repeat(" ", 1000)); err != nil {
+				t.Fatalf("an answer well under the cap: %v", err)
+			}
+			if err := read(t, strings.Repeat(" ", maxBody+1000)); err == nil {
+				t.Fatalf("an answer above the %d byte cap was read", maxBody)
+			}
+		})
 	}
 }
 

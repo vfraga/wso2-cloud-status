@@ -279,7 +279,8 @@ func parseCoding(entry string) (coding string, q float64, ok bool) {
 }
 
 // problem writes an RFC 9457 problem document. No error is cached: a CDN
-// could keep one in place of a real answer.
+// could keep one in place of a real answer. It replaces any Cache-Control a
+// handler set before it failed.
 func problem(w http.ResponseWriter, code int, title, detail string) {
 	w.Header().Set("Content-Type", "application/problem+json")
 	w.Header().Set("Cache-Control", noStore)

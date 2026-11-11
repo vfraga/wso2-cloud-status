@@ -175,10 +175,12 @@ var (
 )
 
 // EnvNames are the only environment variables the file may read, by where
-// the reference sits: a backend option reads the CSM client's credentials,
-// a server.required_headers entry the origin lock's ID. A fixed list, so
-// the file cannot send any other variable of the container (a platform
-// secret, an identity endpoint) to a host it names.
+// the reference sits. A backend option reads the CSM client's credentials,
+// which the backend sends to the token_url the file names: the fixed list
+// keeps the file from sending any other variable of the container (a
+// platform secret, an identity endpoint) to a host of its choosing. A
+// server.required_headers entry reads the origin lock's ID, which is only
+// compared with the headers of incoming requests and never sent anywhere.
 var EnvNames = map[string][]string{
 	"backends.<name>.options.<key>":    {"CSM_CLIENT_ID", "CSM_CLIENT_SECRET"},
 	"server.required_headers.<header>": {"FRONT_DOOR_ID"},

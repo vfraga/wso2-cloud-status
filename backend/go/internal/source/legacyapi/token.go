@@ -59,6 +59,10 @@ type tokenSource struct {
 	secret string
 	http   *http.Client
 	now    func() time.Time
+	// timeout bounds one token request (tokenTimeout): the request runs
+	// without its caller's cancellation, and the HTTP client may have no
+	// timeout of its own.
+	timeout time.Duration
 
 	mu        sync.Mutex
 	value     string
@@ -71,7 +75,7 @@ type tokenSource struct {
 }
 
 func newTokenSource(u *url.URL, id, secret string, client *http.Client) *tokenSource {
-	return &tokenSource{url: u, id: id, secret: secret, http: client, now: time.Now}
+	return &tokenSource{url: u, id: id, secret: secret, http: client, now: time.Now, timeout: tokenTimeout}
 }
 
 // token returns the cached token while it is valid, starting a background
@@ -121,7 +125,7 @@ func (t *tokenSource) next(ctx context.Context) (string, <-chan struct{}, error)
 // refresh asks the issuer and records the answer; a failure keeps the
 // cached token while it is valid. It closes done when it ends.
 func (t *tokenSource) refresh(parent context.Context, done chan struct{}) {
-	ctx, cancel := context.WithTimeout(parent, tokenTimeout)
+	ctx, cancel := context.WithTimeout(parent, t.timeout)
 	defer cancel()
 	value, lifetime, err := t.request(ctx)
 	t.mu.Lock()

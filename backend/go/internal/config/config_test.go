@@ -267,8 +267,16 @@ func TestBackendURLsAreHTTPS(t *testing.T) {
 // file cannot copy a secret into a URL or a published name, nor send any
 // other variable of the container to a host it names.
 func TestEnvironmentReferencesAreConfined(t *testing.T) {
+	want := map[string][]string{
+		"backends.<name>.options.<key>":    {"CSM_CLIENT_ID", "CSM_CLIENT_SECRET"},
+		"server.required_headers.<header>": {"FRONT_DOOR_ID"},
+	}
+	if !reflect.DeepEqual(EnvNames, want) {
+		t.Errorf("EnvNames = %v, want %v", EnvNames, want)
+	}
 	t.Setenv("CSM_CLIENT_SECRET", "s3cret")
 	t.Setenv("CSM_CLIENT_ID", "s3cret")
+	t.Setenv("HOME", "/home/statusd")
 	for _, value := range []string{"12345", "null"} {
 		t.Setenv("FRONT_DOOR_ID", value)
 		cfg, err := parse([]byte(minimal + `server:
@@ -299,6 +307,7 @@ func TestEnvironmentReferencesAreConfined(t *testing.T) {
 		"backends.b.options.client_secret": option("client_secret", "${HOME}"),
 		"backends.b.options.client_id":     option("client_id", "${FRONT_DOOR_ID}"),
 		"server.required_headers.E":        minimal + "server: { required_headers: { E: \"${CSM_CLIENT_SECRET}\" } }\n",
+		"server.required_headers.F":        minimal + "server: { required_headers: { F: \"${HOME}\" } }\n",
 	} {
 		_, err := parse([]byte(body))
 		if err == nil || !strings.Contains(err.Error(), "allowed only as the whole value") || !strings.Contains(err.Error(), place) {

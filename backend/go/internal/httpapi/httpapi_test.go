@@ -308,9 +308,12 @@ func TestEncodedPathsAreNotFound(t *testing.T) {
 	}
 }
 
+// TestWarmingUp: before the first build the API answers 503; a build that
+// is not ready yet is served, while /readyz answers 503 until a build is
+// ready.
 func TestWarmingUp(t *testing.T) {
 	t.Parallel()
-	h, _, _ := newTestHandler(t, false)
+	h, store, _ := newTestHandler(t, false)
 	if rec := do(h, http.MethodGet, "/api/v1/summary", nil); rec.Code != http.StatusServiceUnavailable {
 		t.Fatalf("summary before first build: %d", rec.Code)
 	}
@@ -319,6 +322,23 @@ func TestWarmingUp(t *testing.T) {
 	}
 	if rec := do(h, http.MethodGet, "/healthz", nil); rec.Code != http.StatusOK {
 		t.Fatalf("healthz: %d", rec.Code)
+	}
+	b := sampleBuild()
+	b.Ready = false
+	if err := store.Publish(b); err != nil {
+		t.Fatal(err)
+	}
+	if rec := do(h, http.MethodGet, "/readyz", nil); rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("readyz with a build that is not ready: %d, want 503", rec.Code)
+	}
+	if rec := do(h, http.MethodGet, "/api/v1/summary", nil); rec.Code != http.StatusOK {
+		t.Fatalf("summary with a build that is not ready: %d, want 200", rec.Code)
+	}
+	if err := store.Publish(sampleBuild()); err != nil {
+		t.Fatal(err)
+	}
+	if rec := do(h, http.MethodGet, "/readyz", nil); rec.Code != http.StatusOK {
+		t.Fatalf("readyz with a ready build: %d, want 200", rec.Code)
 	}
 }
 
@@ -669,6 +689,61 @@ func TestNotFoundIsNotCached(t *testing.T) {
 	}
 }
 
+// TestErrorsAreNeverCached: every error the public port answers carries
+// Cache-Control: no-store, whatever the data routes' Cache-Control, so a CDN
+// never keeps one in place of a real answer. That holds for a handler that
+// panics after setting a Cache-Control of its own, too.
+func TestErrorsAreNeverCached(t *testing.T) {
+	t.Parallel()
+	const public = "public, max-age=10"
+	store := &Store{}
+	if err := store.Publish(sampleBuild()); err != nil {
+		t.Fatal(err)
+	}
+	h := NewHandler(Options{Store: store, CacheControl: public})
+	cold := NewHandler(Options{Store: &Store{}, CacheControl: public})
+	locked := NewHandler(Options{Store: store, CacheControl: public, RequiredHeaders: map[string]string{"X-Azure-FDID": "id-1"}})
+	opts := Options{Logger: slog.New(slog.DiscardHandler), Observer: nopRequestObserver{}}
+	panics := withMiddleware(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { panic("boom") }), opts)
+	panicsLate := withMiddleware(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Cache-Control", public)
+		panic("boom")
+	}), opts)
+
+	release, entered, done := make(chan struct{}), make(chan struct{}), make(chan struct{})
+	opts.MaxInFlight = 1
+	busy := withMiddleware(http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {
+		close(entered)
+		<-release
+	}), opts)
+	go func() {
+		do(busy, http.MethodGet, "/api/v1/summary", nil)
+		close(done)
+	}()
+	<-entered
+	shed := do(busy, http.MethodGet, "/api/v1/summary", nil)
+	close(release)
+	<-done
+
+	for name, tc := range map[string]struct {
+		rec  *httptest.ResponseRecorder
+		code int
+	}{
+		"origin lock":               {do(locked, http.MethodGet, "/api/v1/summary", nil), http.StatusForbidden},
+		"unknown path":              {do(h, http.MethodGet, "/nope", nil), http.StatusNotFound},
+		"unknown product":           {do(h, http.MethodGet, "/api/v1/products/nope", nil), http.StatusNotFound},
+		"wrong method":              {do(h, http.MethodPost, "/api/v1/summary", nil), http.StatusMethodNotAllowed},
+		"panic":                     {do(panics, http.MethodGet, "/api/v1/summary", nil), http.StatusInternalServerError},
+		"panic after Cache-Control": {do(panicsLate, http.MethodGet, "/api/v1/summary", nil), http.StatusInternalServerError},
+		"warming up":                {do(cold, http.MethodGet, "/api/v1/summary", nil), http.StatusServiceUnavailable},
+		"shed":                      {shed, http.StatusServiceUnavailable},
+	} {
+		if got := tc.rec.Header().Values("Cache-Control"); tc.rec.Code != tc.code || !slices.Equal(got, []string{"no-store"}) {
+			t.Errorf("%s: %d with Cache-Control %q, want %d with no-store", name, tc.rec.Code, got, tc.code)
+		}
+	}
+}
+
 func TestShedBeyondMaxInFlight(t *testing.T) {
 	t.Parallel()
 	release := make(chan struct{})
@@ -724,6 +799,10 @@ func TestOriginLock(t *testing.T) {
 	if rec := do(h, http.MethodGet, "/api/v1/summary", map[string]string{"X-Azure-FDID": "id-1"}); rec.Code != http.StatusOK {
 		t.Fatalf("right value: %d, want 200", rec.Code)
 	}
+	// The value is compared exactly, letter case included.
+	if rec := do(h, http.MethodGet, "/api/v1/summary", map[string]string{"X-Azure-FDID": "ID-1"}); rec.Code != http.StatusForbidden {
+		t.Errorf("the value in another letter case: %d, want 403", rec.Code)
+	}
 	if rec := do(h, http.MethodGet, "/readyz", nil); rec.Code != http.StatusOK {
 		t.Fatalf("probes must stay open: %d", rec.Code)
 	}
@@ -741,6 +820,24 @@ func TestOriginLock(t *testing.T) {
 		h.ServeHTTP(rec, req)
 		if rec.Code != http.StatusForbidden {
 			t.Errorf("X-Azure-FDID %q: %d, want 403", values, rec.Code)
+		}
+	}
+	// With two required headers, each must arrive with its value.
+	both := NewHandler(Options{Store: store, RequiredHeaders: map[string]string{"X-Azure-FDID": "id-1", "X-Edge-Key": "key-1"}})
+	for name, tc := range map[string]struct {
+		headers map[string]string
+		code    int
+	}{
+		"both right":             {map[string]string{"X-Azure-FDID": "id-1", "X-Edge-Key": "key-1"}, http.StatusOK},
+		"first wrong":            {map[string]string{"X-Azure-FDID": "id-2", "X-Edge-Key": "key-1"}, http.StatusForbidden},
+		"second wrong":           {map[string]string{"X-Azure-FDID": "id-1", "X-Edge-Key": "key-2"}, http.StatusForbidden},
+		"first missing":          {map[string]string{"X-Edge-Key": "key-1"}, http.StatusForbidden},
+		"second missing":         {map[string]string{"X-Azure-FDID": "id-1"}, http.StatusForbidden},
+		"neither":                {nil, http.StatusForbidden},
+		"second in another case": {map[string]string{"X-Azure-FDID": "id-1", "X-Edge-Key": "KEY-1"}, http.StatusForbidden},
+	} {
+		if rec := do(both, http.MethodGet, "/api/v1/summary", tc.headers); rec.Code != tc.code {
+			t.Errorf("two required headers, %s: %d, want %d", name, rec.Code, tc.code)
 		}
 	}
 }

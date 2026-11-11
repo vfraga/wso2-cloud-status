@@ -220,7 +220,7 @@ func TestServerLimits(t *testing.T) {
 	}
 	for name, srv := range map[string]*http.Server{"public": a.public, "admin": a.admin} {
 		if srv.ReadHeaderTimeout != 5*time.Second || srv.ReadTimeout != 10*time.Second ||
-			srv.WriteTimeout != 10*time.Second || srv.IdleTimeout != time.Minute || srv.MaxHeaderBytes != maxHeaderBytes {
+			srv.WriteTimeout != 10*time.Second || srv.IdleTimeout != time.Minute || srv.MaxHeaderBytes != 128<<10 {
 			t.Errorf("%s server: header %s, read %s, write %s, idle %s, max header %d bytes", name,
 				srv.ReadHeaderTimeout, srv.ReadTimeout, srv.WriteTimeout, srv.IdleTimeout, srv.MaxHeaderBytes)
 		}

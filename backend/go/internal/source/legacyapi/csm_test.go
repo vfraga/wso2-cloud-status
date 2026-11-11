@@ -264,10 +264,14 @@ func TestRetryAfter(t *testing.T) {
 		"99999999999999999999": MaxRetryAfter,
 		now.Add(90 * time.Second).Format(http.TimeFormat): 90 * time.Second,
 		now.Add(-time.Hour).Format(http.TimeFormat):       defaultRetryAfter,
+		now.Add(24 * time.Hour).Format(http.TimeFormat):   MaxRetryAfter,
 	} {
 		if got := retryAfter(header, now); got != want {
 			t.Errorf("retryAfter(%q) = %s, want %s", header, got, want)
 		}
+	}
+	if defaultRetryAfter > MaxRetryAfter {
+		t.Errorf("defaultRetryAfter %s is above MaxRetryAfter %s", defaultRetryAfter, MaxRetryAfter)
 	}
 }
 
@@ -468,6 +472,68 @@ func TestCancelledCallerDoesNotFailTheOthers(t *testing.T) {
 	}
 }
 
+// TestStalledIssuerTimesOut: an issuer that takes the token request and
+// never answers fails it after the source's timeout, through an HTTP client
+// without a timeout of its own, and is asked again once tokenRetry has
+// passed. A stalled issuer holds every token request for tokenTimeout, which
+// stays at 30 seconds or less.
+func TestStalledIssuerTimesOut(t *testing.T) {
+	t.Parallel()
+	if tokenTimeout > 30*time.Second {
+		t.Errorf("tokenTimeout = %s, want at most 30s", tokenTimeout)
+	}
+	stop := make(chan struct{})
+	srv := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+		select {
+		case <-r.Context().Done():
+		case <-stop:
+		}
+	}))
+	t.Cleanup(srv.Close)
+	t.Cleanup(func() { close(stop) }) // runs first: Close waits for stalled answers
+	u, err := url.Parse(srv.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The requests are counted as the client sends them: one that times out
+	// before the server takes it still counts.
+	transport := &http.Transport{}
+	t.Cleanup(transport.CloseIdleConnections)
+	var requests atomic.Int32
+	client := &http.Client{Transport: roundTripper(func(r *http.Request) (*http.Response, error) {
+		requests.Add(1)
+		return transport.RoundTrip(r)
+	})}
+	ts := newTokenSource(u, "id", "secret", client)
+	if ts.timeout != tokenTimeout {
+		t.Fatalf("a new token source times out after %s, want tokenTimeout %s", ts.timeout, tokenTimeout)
+	}
+	clock := newFakeClock()
+	ts.now, ts.timeout = clock.now, 50*time.Millisecond
+	ask := func() {
+		t.Helper()
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
+		if _, err := ts.token(ctx); !errors.Is(err, ErrToken) {
+			t.Fatalf("token() from a stalled issuer: err = %v, want ErrToken within a second", err)
+		}
+	}
+	ask()
+	if n := requests.Load(); n != 1 {
+		t.Fatalf("requests = %d, want 1", n)
+	}
+	clock.add(tokenRetry)
+	ask()
+	if n := requests.Load(); n != 2 {
+		t.Errorf("requests = %d, want 2 (one, and one after tokenRetry)", n)
+	}
+}
+
+// roundTripper is an http.RoundTripper made of a function.
+type roundTripper func(*http.Request) (*http.Response, error)
+
+func (f roundTripper) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
+
 // TestHugeTokenLifetimeCountsAsADay: an expires_in that would overflow a
 // Duration, or an int64, counts as 24 hours, so the token is reused rather
 // than asked for again at every poll.
@@ -625,14 +691,22 @@ func TestRefusedTokensBackOff(t *testing.T) {
 	}
 }
 
-// TestCSMRequestsWaitForASlot: at most csmSlots reads of one backend are in
+// TestCSMRequestsWaitForASlot: at most two reads of one backend are in
 // flight, and a read that gets a slot after a 429 does not go out, so a
 // first round of polls against a throttling CSM sends no more than the
 // reads already in flight.
 func TestCSMRequestsWaitForASlot(t *testing.T) {
 	t.Parallel()
 	f := newFakeCSM(t)
+	var inFlight, most atomic.Int32
 	f.answer = func(w http.ResponseWriter, _, _ string) bool {
+		n := inFlight.Add(1)
+		defer inFlight.Add(-1)
+		for m := most.Load(); n > m; m = most.Load() {
+			if most.CompareAndSwap(m, n) {
+				break
+			}
+		}
 		time.Sleep(20 * time.Millisecond)
 		w.Header().Set("Retry-After", "120")
 		w.WriteHeader(http.StatusTooManyRequests)
@@ -651,8 +725,11 @@ func TestCSMRequestsWaitForASlot(t *testing.T) {
 		wg.Go(func() { _, _ = src.Incidents(ctx) })
 	}
 	wg.Wait()
-	if n := f.reads.Load(); n > csmSlots {
-		t.Errorf("%d reads reached CSM, want at most the %d in flight when the first 429 came", n, csmSlots)
+	if n := most.Load(); n > 2 {
+		t.Errorf("%d reads in flight at once, want at most 2", n)
+	}
+	if n := f.reads.Load(); n > 2 {
+		t.Errorf("%d reads reached CSM, want at most the 2 in flight when the first 429 came", n)
 	}
 }
 
