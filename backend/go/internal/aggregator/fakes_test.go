@@ -137,3 +137,40 @@ func params(state map[string]sourceState, now time.Time) buildParams {
 	cfg := testConfig()
 	return buildParams{products: cfg.Products, state: state, now: now, stale: stalenessOf(cfg.Polling), days: cfg.History.Days, polled: true}
 }
+
+func resolved(at time.Time) *time.Time { return &at }
+
+func idsOf(incidents []domain.Incident) []string {
+	out := make([]string, len(incidents))
+	for i, inc := range incidents {
+		out[i] = inc.ID
+	}
+	return out
+}
+
+// locatedProduct has two locations whose regions come from two sources,
+// listed out of order, as Developer Platform's are: the US-managed EU data
+// plane is read from the US cloud.
+func locatedProduct() config.Product {
+	return config.Product{ID: "three", Name: "Three", Sources: []config.SourceRef{
+		{Backend: "b", Cloud: "s4", Regions: []config.RegionRef{
+			{Key: "dp", ID: "us-dp", Name: "US data plane", Location: "US"},
+			{Key: "cp", ID: "us-cp", Name: "US control plane", Location: "US"},
+			{Key: "eu-dp", ID: "eu-dp-us", Name: "EU data plane (US-managed)", Location: "EU"},
+		}},
+		{Backend: "b", Cloud: "s5", Regions: []config.RegionRef{
+			{Key: "cp", ID: "eu-cp", Name: "EU control plane", Location: "EU"},
+			{Key: "dp", ID: "eu-dp", Name: "EU data plane", Location: "EU"},
+		}},
+	}}
+}
+
+func locatedState() map[string]sourceState {
+	st := freshState()
+	up := fetched[source.Uptime]{data: source.Uptime{
+		"cp": {{Window: "90d", Percent: 99.994}}, "dp": {{Window: "90d", Percent: 100}}, "eu-dp": {{Window: "90d", Percent: 99.993}},
+	}, at: t0}
+	st["b/s4"] = sourceState{components: fetched[source.Components]{data: healthy("dp", "cp", "eu-dp"), at: t0}, uptime: up, incidents: st["b/s1"].incidents}
+	st["b/s5"] = sourceState{components: fetched[source.Components]{data: healthy("cp", "dp"), at: t0}, uptime: up, incidents: st["b/s1"].incidents}
+	return st
+}

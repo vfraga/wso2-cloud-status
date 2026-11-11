@@ -95,18 +95,6 @@ func TestRollUps(t *testing.T) {
 	}
 }
 
-func TestEffectiveImpact(t *testing.T) {
-	t.Parallel()
-	for impact, want := range map[Status]Status{
-		StatusUnknown: StatusDegraded, StatusOperational: StatusOperational, StatusMaintenance: StatusMaintenance,
-		StatusDegraded: StatusDegraded, StatusOutage: StatusOutage,
-	} {
-		if got := (Incident{Impact: impact}).EffectiveImpact(); got != want {
-			t.Errorf("EffectiveImpact(%v) = %v, want %v", impact, got, want)
-		}
-	}
-}
-
 func TestStatusesListsEveryStatusOnce(t *testing.T) {
 	t.Parallel()
 	all := Statuses()

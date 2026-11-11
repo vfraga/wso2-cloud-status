@@ -688,12 +688,11 @@ func productIncidents(p buildParams, prod config.Product, feed feed) ([]domain.I
 // may be for them to be one incident.
 const collapseWindow = time.Minute
 
-// incidentKind is what two records must share to be one incident: title,
-// impact, and whether they are open or resolved.
+// incidentKind is what two records must share to be one incident: title and
+// impact.
 type incidentKind struct {
-	title    string
-	impact   domain.Status
-	resolved bool
+	title  string
+	impact domain.Status
 }
 
 // collapseDuplicates lists records of one product as one incident when they
@@ -709,7 +708,7 @@ type incidentKind struct {
 func collapseDuplicates(incidents []domain.Incident) []domain.Incident {
 	byKind := map[incidentKind][]domain.Incident{}
 	for _, inc := range incidents {
-		kind := incidentKind{title: inc.Title, impact: inc.Impact, resolved: inc.ResolvedAt != nil}
+		kind := incidentKind{title: inc.Title, impact: inc.Impact}
 		byKind[kind] = append(byKind[kind], inc)
 	}
 	out := make([]domain.Incident, 0, len(incidents))
@@ -786,7 +785,8 @@ func (s disjointSets) union(i, j int) {
 }
 
 // sameEvent reports whether two records of one kind start, and end, within
-// collapseWindow of each other.
+// collapseWindow of each other. Two open records end together; an open and a
+// resolved one do not.
 func sameEvent(a, b *domain.Incident) bool {
 	if !near(a.StartedAt, b.StartedAt) {
 		return false
