@@ -28,7 +28,7 @@ The page publishes the same contact at `/.well-known/security.txt`
 ## Scope
 
 The status API (`backend/go`), the web frontend and its nginx image, the
-configuration in `config/`, and the build and release workflows in
+configuration in `config/`, and the build workflows in
 `.github/workflows/`. A vulnerability in a product whose status the page
 shows goes to the same address.
 

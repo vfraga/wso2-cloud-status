@@ -3,7 +3,7 @@
 # uses BuildKit's built-in Dockerfile frontend (RUN --mount needs nothing
 # newer), so no frontend image is pulled by tag.
 #
-# Build arguments (make docker and the release workflow set them):
+# Build arguments (make docker sets them):
 #   VERSION   the release (git describe --tags --match 'v*'), shown by
 #             statusd -version, statusd_build_info and the version label
 #   REVISION  the full commit id (label)

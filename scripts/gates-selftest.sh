@@ -146,7 +146,7 @@ YAML
 pins_tree() {
   rm -rf "${work:?}/${1:?}"
   mkdir -p "$work/$1/.github/workflows" "$work/$1/backend/go" "$work/$1/tests/contract" "$work/$1/frontend"
-  cp .github/workflows/ci.yml .github/workflows/release.yml "$work/$1/.github/workflows/"
+  cp .github/workflows/ci.yml "$work/$1/.github/workflows/"
   cp backend/go/go.mod backend/go/Dockerfile "$work/$1/backend/go/"
   cp tests/contract/go.mod "$work/$1/tests/contract/"
   cp frontend/.nvmrc frontend/Dockerfile "$work/$1/frontend/"
@@ -159,9 +159,6 @@ expect "pins: ci.yml moved to another hadolint-action" 1 gate "$work/drift" pins
 pins_tree drift
 sed -E 's/(skywalking-eyes\/header@[0-9a-f]+ # )v[0-9.]+$/\1v0.0.1/' .github/workflows/ci.yml >"$work/drift/.github/workflows/ci.yml"
 expect "pins: ci.yml moved to another skywalking-eyes" 1 gate "$work/drift" pins
-pins_tree drift
-sed 's/^  TRIVY_VERSION:/  TRIVY_RELEASE:/' .github/workflows/release.yml >"$work/drift/.github/workflows/release.yml"
-expect "pins: release.yml lost a pin line" 1 gate "$work/drift" pins
 pins_tree drift
 sed -E 's/^(FROM golang:)[0-9.]+-/\10.0.1-/' backend/go/Dockerfile >"$work/drift/backend/go/Dockerfile"
 expect "pins: the Go image is not go.mod's Go" 1 gate "$work/drift" pins

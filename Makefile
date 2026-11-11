@@ -191,22 +191,16 @@ workflow-cache: ## No workflow job with secrets or id-token: write uses an actio
 	    print "no job with secrets or id-token: write uses an action with its cache on"; \
 	  }' .github/workflows/*.yml
 
-pins: workflow-cache ## The tool versions copied from ci.yml, here and in release.yml, still match it; the Dockerfiles build with go.mod's Go and .nvmrc's Node; no privileged job uses a cache
+pins: workflow-cache ## The tool versions copied from ci.yml still match it; the Dockerfiles build with go.mod's Go and .nvmrc's Node; no privileged job uses a cache
 	@status=0; \
 	for pin in '$(GOVULNCHECK)' '$(GOLICENSES)' '$(LICENSES_OK)' '$(PROMETHEUS)' '$(SHELLCHECK)' '$(SPECTRAL)' '$(ACTIONLINT)'; do \
 	  awk -v p=": $$pin" 'substr($$0, length($$0) - length(p) + 1) == p { found = 1 } END { exit !found }' .github/workflows/ci.yml \
 	    || { echo "Makefile pin not in ci.yml: $$pin"; status=1; }; \
 	done; \
-	found=0; \
-	while IFS= read -r line; do \
-	  found=$$((found + 1)); \
-	  grep -qxF -- "$$line" .github/workflows/ci.yml || { echo "release.yml pin not in ci.yml: $$line"; status=1; }; \
-	done < <(grep -E '^  (TRIVY_VERSION|BUILDKIT_IMAGE):' .github/workflows/release.yml); \
-	[[ $$found == 2 ]] || { echo "release.yml has $$found of its two pins (TRIVY_VERSION, BUILDKIT_IMAGE)"; status=1; }; \
 	eye='$(LICENSE_EYE)'; eye="$${eye#*:}"; eye="$${eye%%@*}"; \
 	eye_uses="$$(grep -E 'uses: apache/skywalking-eyes/header@' .github/workflows/ci.yml || true)"; \
 	[[ -n "$$eye_uses" ]] && ! grep -vqE " # v$${eye}"'$$' <<<"$$eye_uses" \
-	  || { echo "ci.yml runs a skywalking-eyes/header other than v$$eye, the release LICENSE_EYE copies"; status=1; }; \
+	  || { echo "ci.yml runs a skywalking-eyes/header other than v$$eye, the version make headers runs (LICENSE_EYE)"; status=1; }; \
 	go_version="$$(awk '$$1 == "go" { print $$2 }' backend/go/go.mod)"; \
 	[[ "$$(awk '$$1 == "go" { print $$2 }' tests/contract/go.mod)" == "$$go_version" ]] \
 	  || { echo "tests/contract/go.mod is not on Go $$go_version like backend/go/go.mod"; status=1; }; \
@@ -226,6 +220,3 @@ verify: ci rules web-check web-licenses web-e2e web-docker-selftest dockerfile-l
 
 clean: ## Remove build outputs
 	rm -rf bin $(GO_DIR)/coverage.out
-
-# Local-only targets (the internal documents), when present.
--include local/docs.mk

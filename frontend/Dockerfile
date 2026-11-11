@@ -14,9 +14,8 @@
 #
 # VERSION, REVISION (the full commit id), CREATED (the commit time, RFC 3339
 # in UTC) and SOURCE (the repository URL) become the OCI labels; make
-# web-docker and the release workflow set them. SOURCE defaults to the
-# repository's planned home, the Go module's path; the release workflow passes
-# the repository it runs in. CREATED also dates /.well-known/security.txt: it
+# web-docker sets them. SOURCE defaults to the repository's planned home, the
+# Go module's path. CREATED also dates /.well-known/security.txt: it
 # expires 364 days later, under the year RFC 9116 recommends (the build time
 # when CREATED is empty).
 FROM node:24.22.2-alpine@sha256:8a32c8cf649a49915a66e81e7a609223c708d0adabf288ee3f4077d765542f85 AS build
