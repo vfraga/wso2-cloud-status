@@ -127,6 +127,9 @@ Unreleased section still holds entries. The public API has its own version, in `
 - Legend entries are buttons: Enter or Space shows a colour's description.
 - Every plane a home cell names has its status in text, for assistive
   technology.
+- CI installs Chromium for the end-to-end tests with Playwright alone: the
+  runner image has every library it needs, so the job does not depend on
+  Ubuntu's package mirror.
 
 ### Fixed
 

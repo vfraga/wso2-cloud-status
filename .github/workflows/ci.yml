@@ -155,9 +155,12 @@ jobs:
       - run: npm run build
       - name: Known vulnerabilities
         run: npm audit --audit-level=high
+      # The runner image has every library Chromium needs. Playwright's
+      # --with-deps would add only fonts for scripts the page does not use,
+      # from Ubuntu's package mirror, which the job then depends on.
       - name: End-to-end tests against the real backend
         run: |
-          npx playwright install --with-deps chromium
+          npx playwright install chromium
           npm run e2e
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: ${{ always() && !env.ACT }} # reports only; skipped under act, as go-coverage
