@@ -145,11 +145,12 @@ YAML
 # it with one of them drifted.
 pins_tree() {
   rm -rf "${work:?}/${1:?}"
-  mkdir -p "$work/$1/.github/workflows" "$work/$1/backend/go" "$work/$1/tests/contract" "$work/$1/frontend"
+  mkdir -p "$work/$1/.github/workflows" "$work/$1/backend/go" "$work/$1/tests/contract" "$work/$1/frontend" "$work/$1/scripts"
   cp .github/workflows/ci.yml "$work/$1/.github/workflows/"
   cp backend/go/go.mod backend/go/Dockerfile "$work/$1/backend/go/"
   cp tests/contract/go.mod "$work/$1/tests/contract/"
   cp frontend/.nvmrc frontend/Dockerfile "$work/$1/frontend/"
+  cp scripts/npm-licenses.sh "$work/$1/scripts/"
 }
 pins_tree pins
 expect "pins: the files as they are" 0 gate "$work/pins" pins
@@ -165,6 +166,12 @@ expect "pins: the Go image is not go.mod's Go" 1 gate "$work/drift" pins
 pins_tree drift
 echo 0.0.1 >"$work/drift/frontend/.nvmrc"
 expect "pins: .nvmrc is not the Node image's" 1 gate "$work/drift" pins
+pins_tree drift
+sed -E 's/^(exceptions=.*)\}'"'"'$/\1, "@example\/font": "OFL-1.1"}'"'"'/' scripts/npm-licenses.sh >"$work/drift/scripts/npm-licenses.sh"
+expect "pins: a licence exception the dependency review lacks" 1 gate "$work/drift" pins
+pins_tree drift
+sed -E 's/^exceptions=/exceptions= /' scripts/npm-licenses.sh >"$work/drift/scripts/npm-licenses.sh"
+expect "pins: licence exceptions it cannot read" 1 gate "$work/drift" pins
 
 if [[ "$failures" -gt 0 ]]; then
   echo "gates-selftest: $failures of $cases cases failed" >&2
