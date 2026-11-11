@@ -105,6 +105,15 @@ describe("summaryHeadline", () => {
     });
   });
 
+  it("names up to three unknown products in the headline", () => {
+    const unknown = ["A", "B", "C"].map((n) => p(n, ["US", "unknown"]));
+    expect(summaryHeadline(summary(ok("E"), ...unknown))).toEqual({
+      status: "unknown",
+      label: "Status unavailable for A, B and C",
+      detail: "The other product is operational.",
+    });
+  });
+
   it("counts more than three unknown products in the headline and names them below", () => {
     const unknown = ["A", "B", "C", "D"].map((n) => p(n, ["US", "unknown"]));
     expect(summaryHeadline(summary(ok("E"), ...unknown))).toEqual({

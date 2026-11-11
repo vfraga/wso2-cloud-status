@@ -879,19 +879,35 @@ describe("incidents", () => {
   });
 
   it("says how many more active incidents a product has than are listed, linking its page", () => {
-    const listed = [
-      incident({ id: "a", resolvedAt: null }),
-      incident({ id: "b", resolvedAt: null }),
-    ];
-    const products = new Map([
-      ["api-platform", product({ activeIncidentCount: 14 })],
-      ["moesif", product({ id: "moesif", name: "Moesif", activeIncidentCount: 0 })],
-    ]);
+    const listed = Array.from({ length: 10 }, (_, i) =>
+      incident({ id: `inc-${String(i)}`, resolvedAt: null }),
+    );
+    const withCount = (count: number) =>
+      new Map([
+        ["api-platform", product({ activeIncidentCount: count })],
+        ["moesif", product({ id: "moesif", name: "Moesif", activeIncidentCount: 0 })],
+      ]);
+    const products = withCount(12);
     const { rerender } = wrap(<ActiveIncidents incidents={listed} products={products} />);
     expect(
-      screen.getByRole("link", { name: "12 more active incidents for API Platform" }),
+      screen.getByRole("link", { name: "2 more active incidents for API Platform" }),
     ).toHaveAttribute("href", "/products/api-platform");
     expect(screen.queryByText(/for Moesif/)).not.toBeInTheDocument();
+    rerender(
+      <ThemeRoot>
+        <ActiveIncidents incidents={listed} products={withCount(11)} />
+      </ThemeRoot>,
+    );
+    expect(
+      screen.getByRole("link", { name: "1 more active incident for API Platform" }),
+    ).toHaveAttribute("href", "/products/api-platform");
+    // Every active incident is listed: no line.
+    rerender(
+      <ThemeRoot>
+        <ActiveIncidents incidents={listed} products={withCount(10)} />
+      </ThemeRoot>,
+    );
+    expect(screen.queryByText(/more active incident/)).not.toBeInTheDocument();
     // A product's own page lists every one, so it adds no such line.
     rerender(
       <ThemeRoot>

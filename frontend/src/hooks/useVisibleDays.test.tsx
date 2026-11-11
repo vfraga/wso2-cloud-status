@@ -106,6 +106,26 @@ describe("HistoryStrip range", () => {
     expect(screen.getByText(formatHistoryDate("2026-07-23"))).toBeInTheDocument();
   });
 
+  it("names the caption's span when it shows fewer days than the history holds", () => {
+    // The history holds an incident 80 days old (index 10), outside 30 and 60 days.
+    setViewportWidth(360);
+    const { unmount: unmount30 } = show();
+    expect(
+      screen.getByRole("button", { name: "1 incident in 30 days for API Platform" }),
+    ).toHaveTextContent("1 incident in 30 days");
+    unmount30();
+    setViewportWidth(700);
+    const { unmount: unmount60 } = show();
+    expect(
+      screen.getByRole("button", { name: "1 incident in 60 days for API Platform" }),
+    ).toHaveTextContent("1 incident in 60 days");
+    unmount60();
+    setViewportWidth(900);
+    show();
+    const caption = screen.getByRole("button", { name: "2 incidents for API Platform" });
+    expect(caption).not.toHaveTextContent(/ in \d+ days/);
+  });
+
   it("keeps roving focus inside the visible range and one tab stop", async () => {
     setViewportWidth(360);
     const user = userEvent.setup();

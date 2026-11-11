@@ -161,6 +161,34 @@ describe("incident history page", () => {
     expect(await screen.findByText("Delayed analytics")).toBeInTheDocument();
   });
 
+  it("follows the filter from one product to another, in the address and the list", async () => {
+    const user = userEvent.setup();
+    window.history.pushState(null, "", "/history?product=api-platform");
+    serve(listBody());
+    render(<App />);
+    expect(await screen.findByText("Old gateway errors")).toBeInTheDocument();
+    const filter = screen.getByRole("combobox", { name: "Product" });
+    expect(filter).toHaveDisplayValue("API Platform");
+    await user.selectOptions(filter, "Moesif");
+    expect(new URLSearchParams(window.location.search).get("product")).toBe("moesif");
+    expect(filter).toHaveDisplayValue("Moesif");
+    expect(await screen.findByText("Delayed analytics")).toBeInTheDocument();
+    expect(screen.queryByText("Old gateway errors")).toBeNull();
+  });
+
+  it("reads a product the list does not hold as every product", async () => {
+    window.history.pushState(null, "", "/history?product=no-such-product");
+    serve(listBody());
+    render(<App />);
+    expect(await screen.findByText("Old gateway errors")).toBeInTheDocument();
+    expect(screen.getByText("Delayed analytics")).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "Product" })).toHaveDisplayValue("All products");
+    expect(screen.getByRole("link", { name: "Moesif" })).toHaveAttribute(
+      "href",
+      "/products/moesif",
+    );
+  });
+
   it("names a product whose incidents are incomplete and calls no month quiet for it", async () => {
     window.history.pushState(null, "", "/history?product=moesif");
     const body = listBody();
