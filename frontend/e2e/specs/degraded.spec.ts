@@ -25,7 +25,6 @@ import {
   productRows,
   ready,
   readyProduct,
-  shotPath,
 } from "../helpers";
 
 /** API Platform's cell for its `n`th place in the home page's table (0 US, 1 EU). */
@@ -60,11 +59,6 @@ test.describe("outage, degraded and maintenance components in one place, and an 
         row.getByRole("cell").filter({ hasText: /outage|Degraded|maintenance/ }),
       ).toHaveCount(0);
     }
-    await page.screenshot({
-      path: shotPath("e2e-degraded"),
-      fullPage: true,
-      animations: "disabled",
-    });
   });
 
   test("the active incident is listed above the products, with UTC in the time title", async ({
@@ -151,11 +145,7 @@ test.describe("outage, degraded and maintenance components in one place, and an 
       const tip = await popper.boundingBox();
       const stripBox = await strip.boundingBox();
       expect(tip?.y).toBeGreaterThanOrEqual((stripBox?.y ?? Infinity) + (stripBox?.height ?? 0));
-    }).toPass();
-    await page.screenshot({
-      path: shotPath("e2e-degraded-tooltip-bottom"),
-      animations: "disabled",
-    });
+    }).toPass({ timeout: 2_000 });
     await context.close();
   });
 
@@ -167,11 +157,6 @@ test.describe("outage, degraded and maintenance components in one place, and an 
       () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
     );
     expect(overflow).toBeLessThanOrEqual(0);
-    await page.screenshot({
-      path: shotPath("e2e-degraded-mobile"),
-      fullPage: true,
-      animations: "disabled",
-    });
     await context.close();
   });
 
@@ -301,7 +286,6 @@ test.describe("outage, degraded and maintenance components in one place, and an 
     expect(m.share).toBeCloseTo(1, 2);
     expect(q.top).not.toBe("0px");
     expect(m.top).not.toBe("0px");
-    await api.screenshot({ path: shotPath("e2e-degraded-days"), animations: "disabled" });
   });
 
   test("axe finds no serious or critical issues at 360 px, home and product page", async ({
@@ -322,12 +306,6 @@ test.describe("outage, degraded and maintenance components in one place, and an 
       const page = await context.newPage();
       await ready(page);
       await expectNoSeriousViolations(page);
-      if (scheme === "dark")
-        await page.screenshot({
-          path: shotPath("e2e-degraded-dark"),
-          fullPage: true,
-          animations: "disabled",
-        });
       await context.close();
     }
   });

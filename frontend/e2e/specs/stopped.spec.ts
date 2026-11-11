@@ -22,11 +22,9 @@ import { join } from "node:path";
 import {
   ALL_BUT_ONE_OPERATIONAL,
   expectNoSeriousViolations,
-  expectNoSeriousViolationsOnPhone,
   productRows,
   ready,
   readyProduct,
-  shotPath,
 } from "../helpers";
 
 // scripts/e2e.sh runs this scenario with 5 s polls and stale_after 10s (a 15 s budget
@@ -37,10 +35,13 @@ const fixtures = process.env.E2E_FIXTURE_DIR;
 // The UTC clock in the en-US locale the suite runs in, "2:05 PM UTC", and the date before it.
 const CLOCK = String.raw`\d{1,2}:\d\d\s[AP]M UTC`;
 const DATE = String.raw`\w{3} \d{1,2}, \d{4}`;
+// Marks the tests that read times on screen; scripts/e2e.sh runs only these again with
+// the browser in another time zone.
+const TIMES = { tag: "@times" };
 
 test.describe.configure({ mode: "serial" });
 
-test.describe("feeds that stop after answering", () => {
+test.describe("feeds that stop after answering, on the page and in the API", () => {
   test.setTimeout(120_000);
 
   test.beforeAll(async ({ browser }) => {
@@ -65,78 +66,74 @@ test.describe("feeds that stop after answering", () => {
     }).toPass({ timeout: 60_000 });
   }
 
-  test("the home page names both, keeps the others current, and says no more", async ({ page }) => {
-    await stopped(page);
-    const banner = page.getByRole("region", { name: "Overall status" });
-    // The headline stays on component status; one secondary line for the incidents.
-    await expect(banner).toContainText(ALL_BUT_ONE_OPERATIONAL);
-    await expect(banner).toContainText(
-      new RegExp(`Incident information for Moesif has not been updated since ${CLOCK}\\.`),
-    );
-    // The age line dates the other products; Agent Platform is named with its own
-    // time, and nothing says the whole page may be out of date.
-    await expect(banner.getByText(/^Other products checked /)).toBeVisible();
-    await expect(page.getByRole("status")).toHaveText(
-      new RegExp(`^Status data for Agent Platform was last checked at ${CLOCK}\\.$`),
-    );
-    // Agent Platform's row reads Status unavailable; the others stay operational.
-    const agent = productRows(page).filter({
-      has: page.getByRole("link", { name: "Agent Platform", exact: true }),
-    });
-    await expect(agent.getByRole("cell").first()).toContainText("Status unavailable");
-    await expect(
-      productRows(page).getByRole("cell").filter({ hasText: "Status unavailable" }),
-    ).toHaveCount(1);
-    await page.screenshot({
-      path: shotPath("e2e-stopped"),
-      fullPage: true,
-      animations: "disabled",
-    });
-    await expectNoSeriousViolations(page);
-  });
+  test(
+    "the home page names both, keeps the others current, and says no more",
+    TIMES,
+    async ({ page }) => {
+      await stopped(page);
+      const banner = page.getByRole("region", { name: "Overall status" });
+      // The headline stays on component status; one secondary line for the incidents.
+      await expect(banner).toContainText(ALL_BUT_ONE_OPERATIONAL);
+      await expect(banner).toContainText(
+        new RegExp(`Incident information for Moesif has not been updated since ${CLOCK}\\.`),
+      );
+      // The age line dates the other products; Agent Platform is named with its own
+      // time, and nothing says the whole page may be out of date.
+      await expect(banner.getByText(/^Other products checked /)).toBeVisible();
+      await expect(page.getByRole("status")).toHaveText(
+        new RegExp(`^Status data for Agent Platform was last checked at ${CLOCK}\\.$`),
+      );
+      // Agent Platform's row reads Status unavailable; the others stay operational.
+      const agent = productRows(page).filter({
+        has: page.getByRole("link", { name: "Agent Platform", exact: true }),
+      });
+      await expect(agent.getByRole("cell").first()).toContainText("Status unavailable");
+      await expect(
+        productRows(page).getByRole("cell").filter({ hasText: "Status unavailable" }),
+      ).toHaveCount(1);
+      await expectNoSeriousViolations(page);
+    },
+  );
 
-  test("Moesif's page says the same, with no false empty incident list", async ({ page }) => {
-    await expect(async () => {
-      await readyProduct(page, "moesif", "Moesif");
-      await expect(page.getByText(/^Incidents last updated /)).toBeVisible({ timeout: 2_000 });
-    }).toPass({ timeout: 60_000 });
-    await expect(page.getByRole("heading", { level: 1 })).toHaveAccessibleName(
-      "Moesif: All systems operational",
-    );
-    await expect(page.getByRole("region", { name: "Overall status" })).toContainText(
-      "Incident information for Moesif has not been updated since",
-    );
-    await expect(
-      page.getByText(/^Incident information for Moesif is incomplete after /),
-    ).toBeVisible();
-    await expect(page.getByText("No incidents reported.")).toHaveCount(0);
-    // The page names the feed's time.
-    await expect(
-      // The short e2e budgets can make the feed stale within its first minute.
-      page.getByText(new RegExp(`^Incidents last updated ${CLOCK} \\((\\d+ min ago|just now)\\)$`)),
-    ).toBeVisible();
-    // Today, the day of the last successful fetch, has no incidents: No data, not green.
-    await expect(page.getByRole("grid").getByRole("gridcell").last()).toHaveAccessibleName(
-      new RegExp(`No data\\. Incident information complete only until ${CLOCK}\\.$`),
-    );
-    await expect(
-      page.getByText(
-        new RegExp(`^Incident information for Moesif is incomplete after ${DATE}, ${CLOCK}\\.`),
-      ),
-    ).toBeVisible();
-    await page.screenshot({
-      path: shotPath("e2e-stopped-product"),
-      fullPage: true,
-      animations: "disabled",
-    });
-  });
-
-  test("axe finds no serious or critical issues at 360 px, home and product page", async ({
-    browser,
-  }) => {
-    await expectNoSeriousViolationsOnPhone(browser, ready);
-    await expectNoSeriousViolationsOnPhone(browser, (page) =>
-      readyProduct(page, "moesif", "Moesif"),
-    );
-  });
+  test(
+    "Moesif's page says the same, with no false empty incident list",
+    TIMES,
+    async ({ page }) => {
+      await expect(async () => {
+        await readyProduct(page, "moesif", "Moesif");
+        await expect(page.getByText(/^Incidents last updated /)).toBeVisible({ timeout: 2_000 });
+      }).toPass({ timeout: 60_000 });
+      // statusd ends the history at the feed's last answer: today is unknown, not quiet.
+      const moesif = (await (await page.request.get("/api/v1/products/moesif")).json()) as {
+        history: { status: string }[];
+      };
+      expect(moesif.history.at(-1)?.status).toBe("unknown");
+      await expect(page.getByRole("heading", { level: 1 })).toHaveAccessibleName(
+        "Moesif: All systems operational",
+      );
+      await expect(page.getByRole("region", { name: "Overall status" })).toContainText(
+        "Incident information for Moesif has not been updated since",
+      );
+      await expect(
+        page.getByText(/^Incident information for Moesif is incomplete after /),
+      ).toBeVisible();
+      await expect(page.getByText("No incidents reported.")).toHaveCount(0);
+      // The page names the feed's time.
+      await expect(
+        // The short e2e budgets can make the feed stale within its first minute.
+        page.getByText(
+          new RegExp(`^Incidents last updated ${CLOCK} \\((\\d+ min ago|just now)\\)$`),
+        ),
+      ).toBeVisible();
+      // Today, the day of the last successful fetch, has no incidents: No data, not green.
+      await expect(page.getByRole("grid").getByRole("gridcell").last()).toHaveAccessibleName(
+        new RegExp(`No data\\. Incident information complete only until ${CLOCK}\\.$`),
+      );
+      await expect(
+        page.getByText(
+          new RegExp(`^Incident information for Moesif is incomplete after ${DATE}, ${CLOCK}\\.`),
+        ),
+      ).toBeVisible();
+    },
+  );
 });

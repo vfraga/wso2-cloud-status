@@ -28,6 +28,9 @@ export const PRODUCT_NAMES = FALLBACK_PRODUCTS.map((p) => p.name);
 /** "The other 5 products are operational." when one product is not. */
 export const ALL_BUT_ONE_OPERATIONAL = othersOperational(PRODUCTS - 1);
 
+/** The resolved outage the ok fixtures put 10 days back (e2e/fixtures/ok). */
+export const RECENT_INCIDENT = "Sign-in errors in the EU region";
+
 /** Fails on serious or critical axe violations in the page as currently rendered. */
 export async function expectNoSeriousViolations(page: Page): Promise<void> {
   const results = await new AxeBuilder({ page })
@@ -49,9 +52,6 @@ export function collectConsoleErrors(page: Page): string[] {
   page.on("pageerror", (error) => errors.push(String(error)));
   return errors;
 }
-
-export const shotPath = (name: string): string =>
-  `${process.env.SHOT_DIR ?? "test-results/shots"}/${name}.png`;
 
 /** The home page's table rows, one per product (the header row left out). */
 export const productRows = (page: Page) =>

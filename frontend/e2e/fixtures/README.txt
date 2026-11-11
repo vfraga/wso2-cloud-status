@@ -8,7 +8,8 @@ and expands time tokens:
 
 testdata/upstream is never modified.
 
-Scenarios (one spec each in e2e/specs/; scripts/e2e.sh runs them in turn):
+Scenarios (specs in e2e/specs/, <scenario>.spec.ts or <scenario>-*.spec.ts;
+scripts/e2e.sh runs them in turn):
 
   ok         testdata/upstream, with one resolved Identity Platform outage
              10 days ago ("Sign-in errors in the EU region"), so the strips

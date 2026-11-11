@@ -22,13 +22,13 @@
 #
 # Builds statusd and the fixture upstream into a temporary directory, builds the
 # site, serves it with `vite preview` (which proxies /api to statusd), and runs
-# one spec file per scenario against a freshly started backend. E2E_SCENARIOS
-# picks the scenarios (default: ok degraded stale outdated stopped
-# stopped@Asia/Colombo); "name@Zone" runs that spec with the browser in that
-# time zone instead of UTC. Ports 18190 to 18193 by default; the script stops
-# when one is already in use, since a process left there would answer in place
-# of this run's servers. Screenshots go to SHOT_DIR (default
-# test-results/shots), a zone's under a subdirectory. E2E_FIXTURE_DIR tells a
+# each scenario's specs (e2e/specs/<name>.spec.ts, or <name>-*.spec.ts when one
+# is split by subject) against a freshly started backend. E2E_SCENARIOS picks
+# the scenarios (default: ok degraded stale outdated stopped
+# stopped@Asia/Colombo); "name@Zone" runs that scenario's tests tagged @times
+# with the browser in that time zone instead of UTC. Ports 18190 to 18193 by
+# default; the script stops when one is already in use, since a process left
+# there would answer in place of this run's servers. E2E_FIXTURE_DIR tells a
 # spec where the running upstream reads its files, so it can remove one mid-run.
 set -euo pipefail
 
@@ -40,8 +40,6 @@ admin_port="${E2E_ADMIN_PORT:-18192}"
 web_port="${E2E_WEB_PORT:-18193}"
 work="$(mktemp -d)"
 pids=()
-export SHOT_DIR="${SHOT_DIR:-$frontend/test-results/shots}"
-mkdir -p "$SHOT_DIR"
 
 stop_backend() {
   local pid
@@ -132,18 +130,16 @@ wait_for "http://127.0.0.1:${web_port}/" "$web_pid" || { echo "e2e: preview did 
 export E2E_BASE_URL="http://127.0.0.1:${web_port}"
 export E2E_FIXTURE_DIR="$work/fixtures"
 read -r -a scenarios <<<"${E2E_SCENARIOS:-ok degraded stale outdated stopped stopped@Asia/Colombo}"
-shots="$SHOT_DIR"
 status=0
 for entry in "${scenarios[@]}"; do
   scenario="${entry%%@*}"
   zone=UTC
-  [[ "$entry" == *@* ]] && zone="${entry#*@}"
+  only=()
+  [[ "$entry" == *@* ]] && { zone="${entry#*@}"; only=(--grep @times); }
   echo "== scenario: $scenario (time zone $zone)"
-  shot_dir="$shots"
-  [[ "$zone" == UTC ]] || shot_dir="$shots/${zone//\//-}"
-  mkdir -p "$shot_dir"
   start_backend "$scenario"
-  E2E_TZ="$zone" SHOT_DIR="$shot_dir" npx playwright test "e2e/specs/${scenario}.spec.ts" "$@" || status=1
+  # <name>.spec.ts or <name>-*.spec.ts; a scenario with neither fails with no tests found.
+  E2E_TZ="$zone" npx playwright test "e2e/specs/${scenario}"[.-]*spec.ts ${only[@]+"${only[@]}"} "$@" || status=1
   stop_backend
 done
 exit "$status"

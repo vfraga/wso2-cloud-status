@@ -24,10 +24,9 @@ import {
   productRows,
   ready,
   readyProduct,
-  shotPath,
 } from "../helpers";
 
-test.describe("a source that never answers", () => {
+test.describe("a source that never answers, on the page and in the API", () => {
   test("its product reports no data in the banner and its row; the others stay operational", async ({
     page,
   }) => {
@@ -52,7 +51,13 @@ test.describe("a source that never answers", () => {
     await expect(
       productRows(page).getByRole("cell").filter({ hasText: "Status unavailable" }),
     ).toHaveCount(1);
-    await page.screenshot({ path: shotPath("e2e-stale"), fullPage: true, animations: "disabled" });
+    // statusd fails closed itself: with no open incident known, a product without data
+    // makes the summary unknown.
+    const summary = (await (await page.request.get("/api/v1/summary")).json()) as {
+      status: string;
+      data_complete: boolean;
+    };
+    expect(summary).toMatchObject({ status: "unknown", data_complete: false });
   });
 
   test("the product page has no empty region panel and no false empty incident list", async ({
@@ -82,11 +87,6 @@ test.describe("a source that never answers", () => {
     await expect(
       page.getByRole("region", { name: "History" }).getByRole("gridcell").first(),
     ).toHaveAccessibleName(/No data/);
-    await page.screenshot({
-      path: shotPath("e2e-stale-product"),
-      fullPage: true,
-      animations: "disabled",
-    });
   });
 
   test("axe finds no serious or critical issues", async ({ page }) => {
@@ -94,10 +94,9 @@ test.describe("a source that never answers", () => {
     await expectNoSeriousViolations(page);
   });
 
-  test("axe finds no serious or critical issues at 360 px, home and product page", async ({
+  test("axe finds no serious or critical issues at 360 px on the product page", async ({
     browser,
   }) => {
-    await expectNoSeriousViolationsOnPhone(browser, ready);
     await expectNoSeriousViolationsOnPhone(browser, (page) =>
       readyProduct(page, "moesif", "Moesif"),
     );

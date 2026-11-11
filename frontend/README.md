@@ -84,17 +84,19 @@ How the frontend behaves in each state, data missing included:
 
 `scripts/e2e.sh` builds `statusd` and the fixture upstream into a temp directory,
 builds the site, serves it with `vite preview` (which sends the Content-Security-Policy
-of `docker/nginx.conf`, so a violation fails the console checks) and runs one spec per
-scenario against a freshly started backend: `ok`, `degraded`, `stale`, `outdated` and `stopped`, then
-`stopped` again with the browser in Asia/Colombo (pick some with
-`E2E_SCENARIOS="ok stale degraded@America/Sao_Paulo"`; the others run in UTC).
+of `docker/nginx.conf`, so a violation fails the console checks) and runs each
+scenario's specs (`e2e/specs/<scenario>.spec.ts`, or `<scenario>-*.spec.ts` for `ok`, split by
+subject) against a freshly started backend: `ok`, `degraded`, `stale`, `outdated` and `stopped`, then
+`stopped`'s tests tagged `@times`, which read times on screen, again with the browser in
+Asia/Colombo (pick some with `E2E_SCENARIOS="ok stale stopped@America/Sao_Paulo"`; a zoned
+entry runs only the `@times` tests, the others run in UTC).
 `stopped` removes two fixture files once every source has answered
 (`E2E_FIXTURE_DIR`), so an incident feed and a component feed stop after answering.
 Ports 18190 to 18193 (override with `E2E_*_PORT`); the script stops at once when one
 is already in use, and fails when a server it started exits.
 Scenario data lives in `e2e/fixtures/<scenario>/` as overlays on
 `../testdata/upstream` (see `e2e/fixtures/README.txt`); that directory is never
-modified. Screenshots go to `SHOT_DIR`, a zone's run under a subdirectory.
+modified.
 
 ## Deployment
 

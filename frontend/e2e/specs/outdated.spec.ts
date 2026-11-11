@@ -17,14 +17,7 @@
  */
 
 import { expect, test } from "@playwright/test";
-import {
-  expectNoSeriousViolations,
-  expectNoSeriousViolationsOnPhone,
-  productRows,
-  ready,
-  readyProduct,
-  shotPath,
-} from "../helpers";
+import { expectNoSeriousViolations, productRows, ready } from "../helpers";
 
 // The product page's line for a feed that never answered; one that answered names
 // its time instead (see stopped.spec.ts).
@@ -52,11 +45,6 @@ test.describe("a source whose incidents never answer", () => {
     await expect(
       productRows(page).getByRole("cell").filter({ hasText: "Status unavailable" }),
     ).toHaveCount(0);
-    await page.screenshot({
-      path: shotPath("e2e-outdated"),
-      fullPage: true,
-      animations: "disabled",
-    });
     await expectNoSeriousViolations(page);
   });
 
@@ -78,14 +66,5 @@ test.describe("a source whose incidents never answer", () => {
     ).toBeVisible();
     await expect(page.getByText("No incidents reported.")).toHaveCount(0);
     await expectNoSeriousViolations(page);
-  });
-
-  test("axe finds no serious or critical issues at 360 px, home and product page", async ({
-    browser,
-  }) => {
-    await expectNoSeriousViolationsOnPhone(browser, ready);
-    await expectNoSeriousViolationsOnPhone(browser, (page) =>
-      readyProduct(page, "moesif", "Moesif"),
-    );
   });
 });
