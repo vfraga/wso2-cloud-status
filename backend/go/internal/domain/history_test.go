@@ -36,17 +36,22 @@ func at(s string) time.Time {
 
 func ptr(t time.Time) *time.Time { return &t }
 
+// TestDailyHistoryShapeAndOrder: one day per UTC date, oldest first, the
+// same for one instant whatever the clock's time zone.
 func TestDailyHistoryShapeAndOrder(t *testing.T) {
 	t.Parallel()
 	now := at("2026-10-20 12:00:00")
-	got := DailyHistory(nil, 3, Coverage{From: at("2026-01-01 00:00:00")}, now)
 	want := []string{"2026-10-18", "2026-10-19", "2026-10-20"}
-	if len(got) != len(want) {
-		t.Fatalf("len = %d, want %d", len(got), len(want))
-	}
-	for i, d := range got {
-		if d.Date != want[i] || d.Status != StatusOperational || d.Minutes != nil {
-			t.Fatalf("day %d = %+v, want %s operational with no minutes", i, d, want[i])
+	for _, offset := range []int{-5, 0, 5, 13} {
+		clock := now.In(time.FixedZone(fmt.Sprintf("UTC%+d", offset), offset*3600))
+		got := DailyHistory(nil, 3, Coverage{From: at("2026-01-01 00:00:00")}, clock)
+		if len(got) != len(want) {
+			t.Fatalf("UTC%+d: len = %d, want %d", offset, len(got), len(want))
+		}
+		for i, d := range got {
+			if d.Date != want[i] || d.Status != StatusOperational || d.Minutes != nil {
+				t.Fatalf("UTC%+d: day %d = %+v, want %s operational with no minutes", offset, i, d, want[i])
+			}
 		}
 	}
 }
@@ -262,6 +267,7 @@ func TestDailyHistoryCoverageEnd(t *testing.T) {
 		{ID: "before", Impact: StatusMaintenance, StartedAt: at("2026-10-17 10:00:00"), ResolvedAt: ptr(at("2026-10-17 11:00:00"))},
 		{ID: "same-day", Impact: StatusDegraded, StartedAt: at("2026-10-18 09:00:00"), ResolvedAt: ptr(at("2026-10-18 09:30:00"))},
 		{ID: "open", Impact: StatusOutage, StartedAt: at("2026-10-18 13:00:00")},
+		{ID: "after", Impact: StatusOutage, StartedAt: at("2026-10-19 09:00:00"), ResolvedAt: ptr(at("2026-10-19 09:30:00"))},
 	}
 	got := DailyHistory(incs, 5, Coverage{From: from, Until: until}, now)
 	partial := got[2]
@@ -276,7 +282,7 @@ func TestDailyHistoryCoverageEnd(t *testing.T) {
 	}
 	for _, d := range got[3:] {
 		if d.Status != StatusUnknown || d.IncidentIDs != nil || d.Minutes != nil {
-			t.Fatalf("day %s after the coverage end = %+v, want unknown with no incidents, even with one still open", d.Date, d)
+			t.Fatalf("day %s after the coverage end = %+v, want unknown with no incidents, even with one still open or one resolved there", d.Date, d)
 		}
 	}
 }
@@ -328,33 +334,34 @@ func TestDailyHistoryKnownIncidentBeforeCoverage(t *testing.T) {
 	}
 }
 
-// TestRaiseToday: today takes the current status when it is a problem worse
-// than its incidents; an operational or unknown current status changes
-// nothing, so a day without data is never made quiet.
-// TestDailyHistoryListsAFewIncidentsPerDay: a day that many incidents touch
-// lists MaxDayIncidents ids, in the incidents' order, the most severe kept
-// first, while its status and minutes still count every incident.
+// TestDailyHistoryListsAFewIncidentsPerDay: a day that more than
+// MaxDayIncidents incidents touch lists MaxDayIncidents ids, in the
+// incidents' order, the most severe kept first, while its status and
+// minutes still count every incident; a day with MaxDayIncidents lists
+// them all.
 func TestDailyHistoryListsAFewIncidentsPerDay(t *testing.T) {
 	t.Parallel()
 	now := at("2026-10-20 12:00:00")
-	incidents := make([]Incident, 0, MaxDayIncidents+6)
-	for i := range MaxDayIncidents + 5 {
-		start := now.Add(-time.Duration(i+1) * time.Minute)
-		incidents = append(incidents, Incident{ID: fmt.Sprintf("d%02d", i), Impact: StatusDegraded, StartedAt: start, ResolvedAt: ptr(start.Add(30 * time.Second))})
-	}
-	// The oldest, and the only outage: kept although the newest come first.
-	incidents = append(incidents, Incident{ID: "worst", Impact: StatusOutage, StartedAt: at("2026-10-20 01:00:00"), ResolvedAt: ptr(at("2026-10-20 02:00:00"))})
-	today := DailyHistory(incidents, 1, Coverage{From: at("2026-01-01 00:00:00")}, now)[0]
-	want := make([]string, 0, MaxDayIncidents)
-	for i := range MaxDayIncidents - 1 {
-		want = append(want, fmt.Sprintf("d%02d", i))
-	}
-	want = append(want, "worst")
-	if !slices.Equal(today.IncidentIDs, want) {
-		t.Errorf("ids %v, want %v", today.IncidentIDs, want)
-	}
-	if today.Status != StatusOutage || today.Minutes[StatusOutage] != 60 || today.Minutes[StatusDegraded] == 0 {
-		t.Errorf("status %v, minutes %v; want outage with every incident's minutes", today.Status, today.Minutes)
+	for _, n := range []int{MaxDayIncidents, MaxDayIncidents + 1, MaxDayIncidents + 6} {
+		incidents := make([]Incident, 0, n)
+		for i := range n - 1 {
+			start := now.Add(-time.Duration(i+1) * time.Minute)
+			incidents = append(incidents, Incident{ID: fmt.Sprintf("d%02d", i), Impact: StatusDegraded, StartedAt: start, ResolvedAt: ptr(start.Add(30 * time.Second))})
+		}
+		// The oldest, and the only outage: kept although the newest come first.
+		incidents = append(incidents, Incident{ID: "worst", Impact: StatusOutage, StartedAt: at("2026-10-20 01:00:00"), ResolvedAt: ptr(at("2026-10-20 02:00:00"))})
+		today := DailyHistory(incidents, 1, Coverage{From: at("2026-01-01 00:00:00")}, now)[0]
+		want := make([]string, 0, MaxDayIncidents)
+		for i := range min(n, MaxDayIncidents) - 1 {
+			want = append(want, fmt.Sprintf("d%02d", i))
+		}
+		want = append(want, "worst")
+		if !slices.Equal(today.IncidentIDs, want) {
+			t.Errorf("%d incidents: ids %v, want %v", n, today.IncidentIDs, want)
+		}
+		if today.Status != StatusOutage || today.Minutes[StatusOutage] != 60 || today.Minutes[StatusDegraded] == 0 {
+			t.Errorf("%d incidents: status %v, minutes %v; want outage with every incident's minutes", n, today.Status, today.Minutes)
+		}
 	}
 }
 
@@ -399,6 +406,9 @@ func TestLaterIsOrderFree(t *testing.T) {
 	}
 }
 
+// TestRaiseToday: today takes the current status when it is a problem worse
+// than its incidents; an operational or unknown current status changes
+// nothing, so a day without data is never made quiet.
 func TestRaiseToday(t *testing.T) {
 	t.Parallel()
 	days := func() []Day {

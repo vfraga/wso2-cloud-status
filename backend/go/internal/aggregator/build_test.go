@@ -17,6 +17,7 @@
 package aggregator
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -28,6 +29,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	_ "time/tzdata" // TestHistoryDaysAreUTCWhateverTheClock needs a zone with daylight saving time.
 
 	"github.com/wso2/wso2-cloud-status/backend/go/internal/config"
 	"github.com/wso2/wso2-cloud-status/backend/go/internal/config/configtest"
@@ -315,15 +317,23 @@ func TestCheckedAtMovesWithTheMinute(t *testing.T) {
 	s3.uptime = fetched[source.Uptime]{data: source.Uptime{}, at: t0.Add(time.Minute + 20*time.Second)}
 	st["b/s3"] = s3
 	p.now, p.held = t0.Add(time.Minute+25*time.Second), sixth.held
-	if got := build(p).Products["two"].CheckedAt.Uptime; sixth.Products["two"].CheckedAt.Uptime != nil || got == nil {
+	seventh := build(p)
+	if got := seventh.Products["two"].CheckedAt.Uptime; sixth.Products["two"].CheckedAt.Uptime != nil || got == nil {
 		t.Fatalf("first answer within the minute: uptime %v then %v, want null then a time", sixth.Products["two"].CheckedAt.Uptime, got)
 	}
 
-	// Different sources: derived again.
+	// Different sources, with the same stale flags and null kinds: derived
+	// again.
 	setAt("b/s2", t0.Add(time.Minute+20*time.Second), t0)
 	p.products = slices.Clone(p.products)
 	p.products[1].Sources = p.products[1].Sources[:1]
-	if got := build(p).Products["two"].CheckedAt; !equalMinute(got.Components, t0.Add(time.Minute)) {
+	p.held = seventh.held
+	held, eighth := seventh.Products["two"], build(p).Products["two"]
+	if held.Stale != eighth.Stale || nullKinds(held.CheckedAt) != nullKinds(eighth.CheckedAt) {
+		t.Fatalf("sources changed: stale %+v then %+v, checked_at %s then %s; want only the sources to differ",
+			held.Stale, eighth.Stale, formatCheckedAt(held.CheckedAt), formatCheckedAt(eighth.CheckedAt))
+	}
+	if got := eighth.CheckedAt; !equalMinute(got.Components, t0.Add(time.Minute)) {
 		t.Fatalf("sources changed: two checked_at = %s, want only s2's 12:01", formatCheckedAt(got))
 	}
 }
@@ -394,7 +404,8 @@ func TestStaleDataNeverReadsHealthy(t *testing.T) {
 }
 
 // TestExtentSaysHowMuchCarriesTheStatus: a product or the whole page is
-// "all" only when every one of its regions has its status.
+// "all" only when every one of its regions has its status, whatever raised
+// the product statuses.
 func TestExtentSaysHowMuchCarriesTheStatus(t *testing.T) {
 	t.Parallel()
 	down := source.Components{"cp": []domain.Group{group(domain.StatusOutage)}}
@@ -422,6 +433,29 @@ func TestExtentSaysHowMuchCarriesTheStatus(t *testing.T) {
 	st["b/s1"] = s1
 	if all := build(params(st, t0)).Summary; all.Extent != domain.ExtentAll {
 		t.Fatalf("summary = %s, want all when every region of every product is out", all.Extent)
+	}
+
+	// Every product in outage, two of them only by an open incident: the
+	// summary's extent follows the regions, not the product statuses.
+	st = locatedState()
+	s1 = st["b/s1"]
+	s1.components.data = source.Components{"us": []domain.Group{group(domain.StatusOutage)}, "eu": []domain.Group{group(domain.StatusOperational)}}
+	st["b/s1"] = s1
+	for _, key := range []string{"b/s2", "b/s4"} {
+		s := st[key]
+		s.incidents.data.Items = []domain.Incident{{ID: "open-" + key, Title: "Outage", Impact: domain.StatusOutage, StartedAt: t0.Add(-time.Hour)}}
+		st[key] = s
+	}
+	p := params(st, t0)
+	p.products = append(p.products, locatedProduct())
+	b = build(p)
+	for _, id := range []string{"one", "two", "three"} {
+		if got := b.Products[id]; got.Status != domain.StatusOutage || got.Extent != domain.ExtentSome {
+			t.Fatalf("%s = %v %s, want outage in some of its regions", id, got.Status, got.Extent)
+		}
+	}
+	if b.Summary.Status != domain.StatusOutage || b.Summary.Extent != domain.ExtentSome {
+		t.Fatalf("summary = %v %s, want outage in some: most regions are operational", b.Summary.Status, b.Summary.Extent)
 	}
 }
 
@@ -915,31 +949,43 @@ var sourcesByProduct = map[string][]string{"one": {"b/s1"}, "two": {"b/s2", "b/s
 
 // TestSummaryListsAFewActiveIncidentsPerProduct: the summary lists a
 // product's newest MaxSummaryIncidents active incidents and counts them
-// all; the product's own route lists every one.
+// all; the product's own route lists every one. Another product's fewer
+// incidents are all listed beside them.
 func TestSummaryListsAFewActiveIncidentsPerProduct(t *testing.T) {
 	t.Parallel()
 	st := freshState()
-	s1 := st["b/s1"]
-	total := MaxSummaryIncidents + 5
-	for i := range total {
-		s1.incidents.data.Items = append(s1.incidents.data.Items, domain.Incident{
-			ID: fmt.Sprintf("open-%02d", i), Title: fmt.Sprintf("Outage %d", i), Impact: domain.StatusDegraded,
-			StartedAt: t0.Add(-time.Duration(i+1) * time.Hour),
-		})
+	totals := map[string]int{"one": MaxSummaryIncidents + 5, "two": 3}
+	for id, total := range totals {
+		key := sourcesByProduct[id][0]
+		s := st[key]
+		for i := range total {
+			s.incidents.data.Items = append(s.incidents.data.Items, domain.Incident{
+				ID: fmt.Sprintf("%s-open-%02d", id, i), Title: fmt.Sprintf("Outage %d", i), Impact: domain.StatusDegraded,
+				StartedAt: t0.Add(-time.Duration(i+1) * time.Hour),
+			})
+		}
+		st[key] = s
 	}
-	st["b/s1"] = s1
 	b := build(params(st, t0))
-	if got := len(b.Summary.ActiveIncidents); got != MaxSummaryIncidents {
-		t.Fatalf("summary lists %d, want %d", got, MaxSummaryIncidents)
+	if got, want := len(b.Summary.ActiveIncidents), MaxSummaryIncidents+totals["two"]; got != want {
+		t.Fatalf("summary lists %d, want %d: %d of one's and all %d of two's", got, want, MaxSummaryIncidents, totals["two"])
 	}
-	if newest, last := b.Summary.ActiveIncidents[0].ID, b.Summary.ActiveIncidents[MaxSummaryIncidents-1].ID; newest != "open-00" || last != fmt.Sprintf("open-%02d", MaxSummaryIncidents-1) {
-		t.Errorf("summary lists %s to %s, want the newest", newest, last)
+	var listed []string
+	for _, inc := range b.Summary.ActiveIncidents {
+		if inc.ProductID == "one" {
+			listed = append(listed, inc.ID)
+		}
 	}
-	if got := b.Summary.Products[0].ActiveIncidentCount; got != total {
-		t.Errorf("active_incident_count %d, want %d", got, total)
+	if len(listed) != MaxSummaryIncidents || listed[0] != "one-open-00" || listed[len(listed)-1] != fmt.Sprintf("one-open-%02d", MaxSummaryIncidents-1) {
+		t.Errorf("summary lists %v of one's, want its %d newest", listed, MaxSummaryIncidents)
 	}
-	if got := len(b.Products["one"].Incidents); got != total {
-		t.Errorf("the product's route lists %d, want every one, %d", got, total)
+	for _, sp := range b.Summary.Products {
+		if sp.ActiveIncidentCount != totals[sp.ID] {
+			t.Errorf("%s: active_incident_count %d, want %d", sp.ID, sp.ActiveIncidentCount, totals[sp.ID])
+		}
+		if got := len(b.Products[sp.ID].Incidents); got != totals[sp.ID] {
+			t.Errorf("%s: the product's route lists %d, want every one, %d", sp.ID, got, totals[sp.ID])
+		}
 	}
 }
 
@@ -990,27 +1036,37 @@ func TestSharedIDKeepsTheOpenCopy(t *testing.T) {
 	}
 }
 
-// TestIncidentNotStartedYetIsLeftOut: an open incident whose start is ahead
-// is in no view (no status, no active list, no history, no list) until its
-// start, and then counts at once.
+// TestIncidentNotStartedYetIsLeftOut: an open incident whose start is ahead,
+// by a second or by days, is in no view (no status, no active list, no
+// history, no list) until its start, and then counts at once.
 func TestIncidentNotStartedYetIsLeftOut(t *testing.T) {
 	t.Parallel()
-	st := freshState()
-	s1 := st["b/s1"]
-	s1.incidents.data.Items = []domain.Incident{{
-		ID: "ahead", Title: "Maintenance", Impact: domain.StatusMaintenance, State: "scheduled", StartedAt: t0.Add(48 * time.Hour),
-	}}
-	st["b/s1"] = s1
-	b := build(params(st, t0))
-	one := b.Products["one"]
-	if one.Status != domain.StatusOperational || one.ActiveIncidentCount != 0 || len(one.Incidents) != 0 ||
-		len(b.Summary.ActiveIncidents) != 0 || len(b.Incidents.Incidents) != 0 || b.Summary.Status != domain.StatusOperational {
-		t.Fatalf("before its start: status %v, count %d, listed %d, summary %v with %d active, list %d",
-			one.Status, one.ActiveIncidentCount, len(one.Incidents), b.Summary.Status, len(b.Summary.ActiveIncidents), len(b.Incidents.Incidents))
-	}
-	b = build(params(st, t0.Add(48*time.Hour)))
-	if one := b.Products["one"]; one.Status != domain.StatusMaintenance || len(b.Summary.ActiveIncidents) != 1 {
-		t.Fatalf("at its start: status %v, %d active", one.Status, len(b.Summary.ActiveIncidents))
+	for _, ahead := range []time.Duration{time.Second, 59 * time.Second, time.Minute, 48 * time.Hour} {
+		t.Run(ahead.String(), func(t *testing.T) {
+			t.Parallel()
+			st := freshState()
+			s1 := st["b/s1"]
+			s1.incidents.data.Items = []domain.Incident{{
+				ID: "ahead", Title: "Maintenance", Impact: domain.StatusMaintenance, State: "scheduled", StartedAt: t0.Add(ahead),
+			}}
+			st["b/s1"] = s1
+			b := build(params(st, t0))
+			one := b.Products["one"]
+			if one.Status != domain.StatusOperational || one.ActiveIncidentCount != 0 || len(one.Incidents) != 0 ||
+				len(b.Summary.ActiveIncidents) != 0 || len(b.Incidents.Incidents) != 0 || b.Summary.Status != domain.StatusOperational {
+				t.Fatalf("before its start: status %v, count %d, listed %d, summary %v with %d active, list %d",
+					one.Status, one.ActiveIncidentCount, len(one.Incidents), b.Summary.Status, len(b.Summary.ActiveIncidents), len(b.Incidents.Incidents))
+			}
+			for _, d := range one.History {
+				if d.IncidentIDs != nil || d.Status != domain.StatusOperational {
+					t.Fatalf("before its start: day %s = %+v, want operational with no incidents", d.Date, d)
+				}
+			}
+			b = build(params(st, t0.Add(ahead)))
+			if one := b.Products["one"]; one.Status != domain.StatusMaintenance || len(b.Summary.ActiveIncidents) != 1 {
+				t.Fatalf("at its start: status %v, %d active", one.Status, len(b.Summary.ActiveIncidents))
+			}
+		})
 	}
 }
 
@@ -1115,6 +1171,10 @@ func TestStaleIncidentFeedEndsCoverage(t *testing.T) {
 		}, []domain.Status{op, op, op, op, deg, unk, unk}},
 		{"an incident from the other source after the end", &domain.Incident{
 			ID: "later", Impact: domain.StatusOutage, StartedAt: time.Date(2026, 10, 19, 9, 0, 0, 0, time.UTC),
+		}, []domain.Status{op, op, op, op, unk, unk, unk}},
+		{"a resolved incident from the other source after the end", &domain.Incident{
+			ID: "later-resolved", Impact: domain.StatusOutage,
+			StartedAt: time.Date(2026, 10, 19, 9, 0, 0, 0, time.UTC), ResolvedAt: resolved(time.Date(2026, 10, 19, 9, 30, 0, 0, time.UTC)),
 		}, []domain.Status{op, op, op, op, unk, unk, unk}},
 	}
 	for _, tt := range tests {
@@ -1235,6 +1295,45 @@ func TestStaleIncidentFeedBackFills(t *testing.T) {
 	b := build(params(st, t0.Add(time.Minute)))
 	if got := historyStatuses(b.Products["two"].History); !slices.Equal(got, []domain.Status{op, op, op, op, op, op, op}) || b.Products["two"].Outdated {
 		t.Fatalf("after the source answered: history = %v, outdated %v; want every day operational again", got, b.Products["two"].Outdated)
+	}
+}
+
+// TestHistoryDaysAreUTCWhateverTheClock: with a clock in New York, UTC-5 at
+// now and UTC-4 at the window's start, the history's days and the product's
+// incident window are UTC days: the last day is now's UTC date, and the
+// window starts at 00:00 UTC six days before it, not an hour earlier as the
+// change of offset would make it in local time.
+func TestHistoryDaysAreUTCWhateverTheClock(t *testing.T) {
+	t.Parallel()
+	newYork, err := time.LoadLocation("America/New_York")
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Date(2026, 11, 5, 3, 0, 0, 0, time.UTC).In(newYork)
+	windowStart := time.Date(2026, 10, 30, 0, 0, 0, 0, time.UTC)
+	bindings, raw := fakes()
+	raw["b/s2"].set(func(f *fakeSource) {
+		f.incidents = source.Incidents{CoverageStart: now.AddDate(0, -6, 0), Items: []domain.Incident{
+			{ID: "before", Title: "Before", Impact: domain.StatusDegraded, StartedAt: windowStart.Add(-2 * time.Hour), ResolvedAt: resolved(windowStart.Add(-30 * time.Minute))},
+			{ID: "across", Title: "Across", Impact: domain.StatusDegraded, StartedAt: windowStart.Add(-time.Hour), ResolvedAt: resolved(windowStart.Add(30 * time.Minute))},
+		}}
+	})
+	rec := &recorder{}
+	a, err := New(slowConfig(), bindings, Options{Publish: rec.publish, Clock: func() time.Time { return now }})
+	if err != nil {
+		t.Fatal(err)
+	}
+	a.RefreshAll(context.Background())
+	b := rec.last()
+	two := b.Products["two"]
+	if first, last := two.History[0].Date, two.History[len(two.History)-1].Date; first != "2026-10-30" || last != "2026-11-05" {
+		t.Fatalf("history from %s to %s, want 2026-10-30 to 2026-11-05", first, last)
+	}
+	if got := idsOf(two.Incidents); !slices.Equal(got, []string{"across"}) {
+		t.Fatalf("two lists %v, want only across: before ended before 00:00 UTC on the window's first day", got)
+	}
+	if got := idsOf(b.Incidents.Incidents); !slices.Equal(got, []string{"across", "before"}) {
+		t.Fatalf("incident list = %v, want both", got)
 	}
 }
 

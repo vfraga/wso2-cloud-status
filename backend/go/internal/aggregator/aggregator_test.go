@@ -497,21 +497,16 @@ func TestApplyRejectsMissingBindingAndKeepsServing(t *testing.T) {
 	}
 }
 
-// gatedSource blocks Components until released, to race a poll with Apply.
-type gatedSource struct {
-	fakeSource
-	gate chan struct{}
-}
-
-func (g *gatedSource) Components(ctx context.Context) (source.Components, error) {
-	<-g.gate
-	return g.fakeSource.Components(ctx)
-}
-
+// TestPollFromReplacedSourceIsDiscarded: a poll that started before Apply
+// replaced its source and answers after it does not overwrite the new
+// source's data.
 func TestPollFromReplacedSourceIsDiscarded(t *testing.T) {
 	t.Parallel()
 	bindings, _ := fakes()
-	old := &gatedSource{fakeSource: fakeSource{components: source.Components{"us": {group(domain.StatusOutage)}}}, gate: make(chan struct{})}
+	old := &slowSource{
+		fakeSource: fakeSource{components: source.Components{"us": {group(domain.StatusOutage)}}},
+		gate:       make(chan struct{}), entered: make(chan struct{}),
+	}
 	bindings["b/s1"] = Binding{Source: old, Fingerprint: "old"}
 	rec := &recorder{}
 	cfg := slowConfig()
@@ -524,7 +519,7 @@ func TestPollFromReplacedSourceIsDiscarded(t *testing.T) {
 		_ = a.poll(context.Background(), "b/s1", KindComponents)
 		close(polled)
 	}()
-	time.Sleep(20 * time.Millisecond)
+	<-old.entered
 	bindings["b/s1"] = Binding{Source: &fakeSource{components: healthy("us", "eu")}, Fingerprint: "new"}
 	if err := a.Apply(context.Background(), cfg, bindings); err != nil {
 		t.Fatal(err)
