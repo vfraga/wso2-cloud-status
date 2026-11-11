@@ -760,99 +760,14 @@ func TestEncodedPaths(t *testing.T) {
 	}
 }
 
-// TestAcceptEncoding runs the content negotiation table the handler tests share.
-func TestAcceptEncoding(t *testing.T) {
-	base := baseURL(t)
-	raw, err := os.ReadFile("../../testdata/http/accept-encoding.json")
-	if err != nil {
-		t.Fatal(err)
-	}
-	var table struct {
-		Cases []struct {
-			Header string `json:"header"`
-			Gzip   bool   `json:"gzip"`
-		} `json:"cases"`
-	}
-	if err := json.Unmarshal(raw, &table); err != nil || len(table.Cases) == 0 {
-		t.Fatalf("accept-encoding table: %v", err)
-	}
-	for _, c := range table.Cases {
-		r := probe{method: http.MethodGet, path: "/api/v1/summary", headers: map[string]string{"Accept-Encoding": c.Header}}.send(t, base)
-		if got := r.header.Get("Content-Encoding") == "gzip"; got != c.Gzip {
-			t.Errorf("Accept-Encoding %q: gzip = %v, want %v", c.Header, got, c.Gzip)
-		}
-		if _, ok := decodedBody(t, r).(map[string]any); !ok {
-			t.Errorf("Accept-Encoding %q: body is not a JSON object", c.Header)
-		}
-	}
-	summaryURL := base + "/api/v1/summary"
-	whileUnchanged(t, summaryURL, func(found *problems) { checkETagPerEncoding(t, base, found) })
-}
-
-// checkETagPerEncoding: the plain and gzip bodies are two representations
-// with distinct strong ETags (RFC 9110 section 8.8.3.3), and If-None-Match
-// answers 304 only with the selected representation's tag.
-func checkETagPerEncoding(t *testing.T, base string, found *problems) {
-	t.Helper()
-	const path = "/api/v1/summary"
-	plainTag := probe{method: http.MethodGet, path: path}.send(t, base).header.Get("ETag")
-	gzipTag := probe{method: http.MethodGet, path: path, headers: map[string]string{"Accept-Encoding": "gzip"}}.send(t, base).header.Get("ETag")
-	if plainTag == "" || gzipTag == plainTag || strings.HasPrefix(gzipTag, "W/") || strings.HasPrefix(plainTag, "W/") {
-		found.add("plain ETag %s, gzip ETag %s: want two distinct strong tags", plainTag, gzipTag)
-		return
-	}
-	cases := []struct {
-		accept, inm string
-		code        int
-	}{
-		{"gzip", gzipTag, http.StatusNotModified},
-		{"gzip", plainTag, http.StatusOK},
-		{"identity", plainTag, http.StatusNotModified},
-		{"identity", gzipTag, http.StatusOK},
-	}
-	for _, c := range cases {
-		p := probe{method: http.MethodGet, path: path, headers: map[string]string{"Accept-Encoding": c.accept, "If-None-Match": c.inm}}
-		if r := p.send(t, base); r.code != c.code {
-			found.add("%s: %d, want %d", p, r.code, c.code)
-		}
-	}
-}
-
-// TestRepeatedHeaderLines: a list header sent as several lines means the
-// same as one line with the values joined by commas (RFC 9110 section 5.3).
-// The shared accept-encoding table holds one line per case, so these cases
-// live here.
+// TestRepeatedHeaderLines: a list header sent as two lines reaches statusd as
+// both lines. gzip is named on the second line only, so a server that read
+// only the first would answer the plain body. The handler tests hold the
+// other cases.
 func TestRepeatedHeaderLines(t *testing.T) {
 	base := baseURL(t)
-	summaryURL := base + "/api/v1/summary"
-	whileUnchanged(t, summaryURL, func(found *problems) { checkRepeatedHeaderLines(t, summaryURL, found) })
-}
-
-func checkRepeatedHeaderLines(t *testing.T, summaryURL string, found *problems) {
-	t.Helper()
-	// sendLines sends no Accept-Encoding, so the plain body's tag applies.
-	etag := sendLines(t, summaryURL, "Accept-Encoding", nil).header.Get("ETag")
-	cases := []struct {
-		header string
-		lines  []string
-		code   int
-		gzip   bool
-	}{
-		{"Accept-Encoding", []string{"br", "gzip"}, http.StatusOK, true},
-		{"Accept-Encoding", []string{"*", "gzip;q=0"}, http.StatusOK, false},
-		{"Accept-Encoding", []string{"br", "deflate"}, http.StatusOK, false},
-		{"If-None-Match", []string{`"other"`, etag}, http.StatusNotModified, false},
-		{"If-None-Match", []string{`"a"`, `"b"`}, http.StatusOK, false},
-	}
-	for _, c := range cases {
-		r := sendLines(t, summaryURL, c.header, c.lines)
-		if gz := r.header.Get("Content-Encoding") == "gzip"; r.code != c.code || gz != c.gzip {
-			found.add("%s %q: %d gzip=%v, want %d gzip=%v", c.header, c.lines, r.code, gz, c.code, c.gzip)
-			continue
-		}
-		if _, ok := decodedBody(t, r).(map[string]any); c.code == http.StatusOK && !ok {
-			found.add("%s %q: body is not a JSON object", c.header, c.lines)
-		}
+	if r := sendLines(t, base+"/api/v1/summary", "Accept-Encoding", []string{"br", "gzip"}); r.code != http.StatusOK || r.header.Get("Content-Encoding") != "gzip" {
+		t.Errorf("Accept-Encoding sent as br, then gzip: %d with Content-Encoding %q, want 200 gzip", r.code, r.header.Get("Content-Encoding"))
 	}
 }
 
@@ -876,47 +791,6 @@ func sendLines(t *testing.T, url, name string, lines []string) response {
 		t.Fatal(err)
 	}
 	return response{resp.StatusCode, resp.Header, body}
-}
-
-// TestIfModifiedSince covers the validator Azure Front Door uses: it
-// revalidates with If-Modified-Since only. A 304 carries the headers a cache
-// refreshes its copy with.
-func TestIfModifiedSince(t *testing.T) {
-	base := baseURL(t)
-	summaryURL := base + "/api/v1/summary"
-	whileUnchanged(t, summaryURL, func(found *problems) { checkIfModifiedSince(t, summaryURL, found) })
-}
-
-func checkIfModifiedSince(t *testing.T, summaryURL string, found *problems) {
-	t.Helper()
-	lastModified, err := http.ParseTime(call(t, http.MethodGet, summaryURL, nil).header.Get("Last-Modified"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	cases := []struct {
-		name, value string
-		want        int
-	}{
-		{"equal", lastModified.Format(http.TimeFormat), http.StatusNotModified},
-		{"earlier", lastModified.Add(-time.Second).Format(http.TimeFormat), http.StatusOK},
-		{"future", lastModified.Add(24 * time.Hour).Format(http.TimeFormat), http.StatusNotModified},
-		{"garbage", "not a date", http.StatusOK},
-	}
-	for _, c := range cases {
-		r := call(t, http.MethodGet, summaryURL, map[string]string{"If-Modified-Since": c.value})
-		if r.code != c.want {
-			found.add("If-Modified-Since %s: %d, want %d", c.name, r.code, c.want)
-			continue
-		}
-		if r.code != http.StatusNotModified {
-			continue
-		}
-		for _, h := range []string{"ETag", "Cache-Control", "Vary"} {
-			if r.header.Get(h) == "" {
-				found.add("If-Modified-Since %s: 304 without %s", c.name, h)
-			}
-		}
-	}
 }
 
 // TestPreflight is the browser's CORS preflight for a conditional request.
@@ -1393,28 +1267,4 @@ func (p probe) send(t *testing.T, base string) response {
 		t.Fatal(err)
 	}
 	return response{resp.StatusCode, resp.Header, body}
-}
-
-// decodedBody is the body as JSON when it is JSON, its text otherwise, and
-// nil when there is none. A gzip body is decompressed first.
-func decodedBody(t *testing.T, r response) any {
-	t.Helper()
-	body := r.body
-	if r.header.Get("Content-Encoding") == "gzip" && len(body) > 0 {
-		zr, err := gzip.NewReader(bytes.NewReader(body))
-		if err != nil {
-			t.Fatalf("gzip body: %v", err)
-		}
-		if body, err = io.ReadAll(zr); err != nil {
-			t.Fatalf("gzip body: %v", err)
-		}
-	}
-	if len(body) == 0 {
-		return nil
-	}
-	var v any
-	if err := json.Unmarshal(body, &v); err != nil {
-		return string(body)
-	}
-	return v
 }

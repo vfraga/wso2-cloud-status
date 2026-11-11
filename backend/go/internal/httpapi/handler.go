@@ -239,7 +239,7 @@ func etagMatches(header, etag string) bool {
 // acceptsGzip reports whether the client accepts gzip (RFC 9110 section
 // 12.5.3): an explicit gzip entry decides, otherwise "*" does, and a quality
 // of 0 refuses. Malformed entries are ignored. testdata/http/
-// accept-encoding.json holds the cases the handler and contract tests share.
+// accept-encoding.json holds the cases the handler tests run.
 func acceptsGzip(header string) bool {
 	star, starSeen := false, false
 	for entry := range strings.SplitSeq(header, ",") {

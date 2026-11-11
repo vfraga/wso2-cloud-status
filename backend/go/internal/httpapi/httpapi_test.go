@@ -149,7 +149,7 @@ func TestGzip(t *testing.T) {
 	// only the selected one's.
 	plainTag := do(h, http.MethodGet, "/api/v1/summary", nil).Header().Get("ETag")
 	gzipTag := rec.Header().Get("ETag")
-	if plainTag == "" || gzipTag == plainTag || strings.HasPrefix(gzipTag, "W/") {
+	if plainTag == "" || gzipTag == plainTag || strings.HasPrefix(gzipTag, "W/") || strings.HasPrefix(plainTag, "W/") {
 		t.Fatalf("plain ETag %s, gzip ETag %s: want two distinct strong tags", plainTag, gzipTag)
 	}
 	for _, c := range []struct {
@@ -168,12 +168,10 @@ func TestGzip(t *testing.T) {
 	}
 }
 
-// acceptEncodingCases is the table the handler and the contract tests share.
-func acceptEncodingCases(t *testing.T) []struct {
-	Header string `json:"header"`
-	Gzip   bool   `json:"gzip"`
-} {
-	t.Helper()
+// TestAcceptsGzip runs the Accept-Encoding table in
+// testdata/http/accept-encoding.json.
+func TestAcceptsGzip(t *testing.T) {
+	t.Parallel()
 	raw, err := os.ReadFile(testutil.RepoPath("testdata", "http", "accept-encoding.json"))
 	if err != nil {
 		t.Fatal(err)
@@ -187,12 +185,7 @@ func acceptEncodingCases(t *testing.T) []struct {
 	if err := json.Unmarshal(raw, &table); err != nil || len(table.Cases) == 0 {
 		t.Fatalf("accept-encoding table: %v", err)
 	}
-	return table.Cases
-}
-
-func TestAcceptsGzip(t *testing.T) {
-	t.Parallel()
-	for _, c := range acceptEncodingCases(t) {
+	for _, c := range table.Cases {
 		if got := acceptsGzip(c.Header); got != c.Gzip {
 			t.Errorf("acceptsGzip(%q) = %v, want %v", c.Header, got, c.Gzip)
 		}
@@ -215,6 +208,7 @@ func TestRepeatedHeaderLines(t *testing.T) {
 	}{
 		{"gzip on the second Accept-Encoding line", "Accept-Encoding", []string{"br", "gzip"}, http.StatusOK, true},
 		{"gzip refused on the second line", "Accept-Encoding", []string{"*", "gzip;q=0"}, http.StatusOK, false},
+		{"gzip on neither Accept-Encoding line", "Accept-Encoding", []string{"br", "deflate"}, http.StatusOK, false},
 		{"an empty Accept-Encoding line adds nothing", "Accept-Encoding", []string{"", "gzip"}, http.StatusOK, true},
 		{"the ETag on the second If-None-Match line", "If-None-Match", []string{`"other"`, etag}, http.StatusNotModified, false},
 		{"no ETag on any If-None-Match line", "If-None-Match", []string{`"a"`, `"b"`}, http.StatusOK, false},
@@ -652,16 +646,39 @@ func TestLastModifiedNeverAfterDate(t *testing.T) {
 	}
 }
 
+// TestIfModifiedSince covers the validator Azure Front Door uses: it
+// revalidates with If-Modified-Since only. A 304 carries the headers a cache
+// refreshes its copy with.
 func TestIfModifiedSince(t *testing.T) {
 	t.Parallel()
 	h, _, _ := newTestHandler(t, true)
 	lm := do(h, http.MethodGet, "/api/v1/summary", nil).Header().Get("Last-Modified")
-	if rec := do(h, http.MethodGet, "/api/v1/summary", map[string]string{"If-Modified-Since": lm}); rec.Code != http.StatusNotModified {
-		t.Fatalf("If-Modified-Since = Last-Modified: %d, want 304", rec.Code)
+	at, err := http.ParseTime(lm)
+	if err != nil {
+		t.Fatalf("Last-Modified %q: %v", lm, err)
 	}
-	old := time.Date(2000, 1, 1, 0, 0, 0, 0, time.UTC).Format(http.TimeFormat)
-	if rec := do(h, http.MethodGet, "/api/v1/summary", map[string]string{"If-Modified-Since": old}); rec.Code != http.StatusOK {
-		t.Fatalf("older If-Modified-Since: %d, want 200", rec.Code)
+	for _, c := range []struct {
+		name, value string
+		want        int
+	}{
+		{"equal", lm, http.StatusNotModified},
+		{"earlier", at.Add(-time.Second).Format(http.TimeFormat), http.StatusOK},
+		{"future", at.Add(24 * time.Hour).Format(http.TimeFormat), http.StatusNotModified},
+		{"unparsable", "not a date", http.StatusOK},
+	} {
+		rec := do(h, http.MethodGet, "/api/v1/summary", map[string]string{"If-Modified-Since": c.value})
+		if rec.Code != c.want {
+			t.Errorf("If-Modified-Since %s: %d, want %d", c.name, rec.Code, c.want)
+			continue
+		}
+		if rec.Code != http.StatusNotModified {
+			continue
+		}
+		for _, header := range []string{"ETag", "Cache-Control", "Vary"} {
+			if rec.Header().Get(header) == "" {
+				t.Errorf("If-Modified-Since %s: 304 without %s", c.name, header)
+			}
+		}
 	}
 	both := map[string]string{"If-Modified-Since": lm, "If-None-Match": `"different"`}
 	if rec := do(h, http.MethodGet, "/api/v1/summary", both); rec.Code != http.StatusOK {
