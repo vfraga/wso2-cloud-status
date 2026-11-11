@@ -1,6 +1,6 @@
 module github.com/wso2/wso2-cloud-status/backend/go
 
-go 1.27.3
+go 1.27.4
 
 require (
 	github.com/prometheus/client_golang v1.25.0

@@ -11,7 +11,7 @@
 #   SOURCE    the repository URL (label); the default is its planned home,
 #             the Go module's path
 
-FROM golang:1.27.3-alpine@sha256:d200d2dd76b03a99b52651fd1325aff7dcd35422c35c01bac56571b0507f3deb AS build
+FROM golang:1.27.4-alpine@sha256:0a5f7fe796599ff487605987432e7619ae45beeb2fba4c2ce0b907879932aebf AS build
 WORKDIR /src
 COPY backend/go/go.mod backend/go/go.sum ./
 RUN --mount=type=cache,target=/go/pkg/mod go mod download && go mod verify
