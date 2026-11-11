@@ -127,6 +127,11 @@ Unreleased section still holds entries. The public API has its own version, in `
 - Legend entries are buttons: Enter or Space shows a colour's description.
 - Every plane a home cell names has its status in text, for assistive
   technology.
+- The pre-push hook and the images' source label work from any clone,
+  inside a larger repository too; an image built without make is labelled
+  with an unknown source. statusd reads an upstream answer's headers up to
+  64 KiB, the external check refuses a product id that is not a slug, and
+  the page's lint refuses HTML and code sinks.
 - CI installs Chromium for the end-to-end tests with Playwright alone: the
   runner image has every library it needs, so the job does not depend on
   Ubuntu's package mirror.
@@ -268,10 +273,15 @@ Unreleased section still holds entries. The public API has its own version, in `
 
 ### Security
 
-- `${NAME}` reads only `CSM_CLIENT_ID` and `CSM_CLIENT_SECRET` in a backend
-  option and `FRONT_DOOR_ID` in `server.required_headers`, so the file
-  cannot send any other variable of the container to a host it names; a
-  file with a second YAML document is refused.
+- `${NAME}` reads only `CSM_CLIENT_ID` in a backend's `client_id` option,
+  `CSM_CLIENT_SECRET` in its `client_secret` option and `FRONT_DOOR_ID` in
+  `server.required_headers`, so the file cannot send any other variable of
+  the container to a host it names nor put the secret in another option;
+  an error never quotes the value it refuses; a file with a second YAML
+  document is refused.
+- make stamps builds and images with the nearest v tag only when its name
+  is a version, and with the commit id otherwise, so a tag's name cannot
+  run a command when make reads it.
 - statusd ignores proxy variables, so the environment cannot route its
   reads and the token request through another host.
 

@@ -17,7 +17,7 @@
 package config
 
 import (
-	"fmt"
+	"errors"
 	"maps"
 	"net"
 	"net/url"
@@ -378,13 +378,12 @@ func (c *Config) readsOf(s SourceRef) string {
 // check their URLs with it.
 func SecureURL(raw string) (*url.URL, error) {
 	u, err := url.Parse(raw)
-	if err != nil {
-		return nil, err
-	}
-	if u.Host != "" && (u.Scheme == "https" || (u.Scheme == "http" && loopback(u.Hostname()))) {
+	if err == nil && u.Host != "" && (u.Scheme == "https" || (u.Scheme == "http" && loopback(u.Hostname()))) {
 		return u, nil
 	}
-	return nil, fmt.Errorf("%q must be an absolute https URL (http only on a loopback host)", raw)
+	// The error never quotes the value: the callers name the field, and a
+	// value that is not a URL may be a credential set in the wrong place.
+	return nil, errors.New("must be an absolute https URL (http only on a loopback host)")
 }
 
 func loopback(host string) bool {

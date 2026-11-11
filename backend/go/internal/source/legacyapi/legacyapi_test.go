@@ -790,3 +790,20 @@ func TestIncidentOrderIsDeterministic(t *testing.T) {
 		}
 	}
 }
+
+// TestUpstreamTextInErrorsIsClipped: a time the upstream sends that is not
+// one reaches the log clipped, however long it is.
+func TestUpstreamTextInErrorsIsClipped(t *testing.T) {
+	t.Parallel()
+	long := strings.Repeat("x", MaxText-1)
+	for name, w := range map[string]wireIncident{
+		"begin": {ID: "a", Begin: long},
+		"no id": {Begin: long},
+		"end":   {ID: "a", Begin: "2026-10-01 10:00:00", End: &long},
+	} {
+		_, err := toIncident(w, time.UTC)
+		if err == nil || len(err.Error()) > 300 || !strings.Contains(err.Error(), "...") {
+			t.Errorf("%s: err = %.120q (%d characters), want it clipped", name, err, len(fmt.Sprint(err)))
+		}
+	}
+}

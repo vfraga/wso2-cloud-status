@@ -175,20 +175,24 @@ var (
 )
 
 // EnvNames are the only environment variables the file may read, by where
-// the reference sits. A backend option reads the CSM client's credentials,
-// which the backend sends to the token_url the file names: the fixed list
-// keeps the file from sending any other variable of the container (a
-// platform secret, an identity endpoint) to a host of its choosing. A
+// the reference sits. A backend's client_id and client_secret options read
+// the CSM client's credentials, each its own variable only: the backend
+// sends them to the token_url the file names, so the fixed list keeps the
+// file from sending any other variable of the container (a platform secret,
+// an identity endpoint) to a host of its choosing, and keeps the secret out
+// of every other option, where a validation error could show it. A
 // server.required_headers entry reads the origin lock's ID, which is only
 // compared with the headers of incoming requests and never sent anywhere.
 var EnvNames = map[string][]string{
-	"backends.<name>.options.<key>":    {"CSM_CLIENT_ID", "CSM_CLIENT_SECRET"},
-	"server.required_headers.<header>": {"FRONT_DOOR_ID"},
+	"backends.<name>.options.client_id":     {"CSM_CLIENT_ID"},
+	"backends.<name>.options.client_secret": {"CSM_CLIENT_SECRET"},
+	"server.required_headers.<header>":      {"FRONT_DOOR_ID"},
 }
 
 // expandEnv replaces ${NAME} with the environment value where a reference
-// is allowed: as the whole value of a backend option (a credential) or of a
-// server.required_headers entry (the origin lock's ID), naming a variable
+// is allowed: as the whole value of a backend's client_id or client_secret
+// option (a credential) or of a server.required_headers entry (the origin
+// lock's ID), naming a variable
 // EnvNames lists for that place. Anywhere else, as part of a longer value,
 // or naming another variable, a reference is an error, as is a YAML alias
 // and a second YAML document: otherwise whoever can change the file could
@@ -249,8 +253,9 @@ func (e *envExpansion) visit(n *yaml.Node, path []string) {
 func (e *envExpansion) err() error {
 	var errs []error
 	if len(e.misplaced) > 0 {
-		errs = append(errs, fmt.Errorf("config: ${NAME} is allowed only as the whole value of a backend option (%s) or a server.required_headers entry (%s): %v",
-			strings.Join(EnvNames["backends.<name>.options.<key>"], ", "), strings.Join(EnvNames["server.required_headers.<header>"], ", "), e.misplaced))
+		errs = append(errs, fmt.Errorf("config: ${NAME} is allowed only as the whole value of a backend's client_id (%s) or client_secret (%s) option, or of a server.required_headers entry (%s): %v",
+			strings.Join(EnvNames["backends.<name>.options.client_id"], ", "), strings.Join(EnvNames["backends.<name>.options.client_secret"], ", "),
+			strings.Join(EnvNames["server.required_headers.<header>"], ", "), e.misplaced))
 	}
 	if len(e.missing) > 0 {
 		slices.Sort(e.missing)
@@ -260,11 +265,12 @@ func (e *envExpansion) err() error {
 }
 
 // envNamesAt is the variables a value at path may read (EnvNames), none
-// outside backends.<name>.options.<key> and server.required_headers.<header>.
+// outside a backend's client_id and client_secret options and
+// server.required_headers.<header>.
 func envNamesAt(path []string) []string {
 	switch {
 	case len(path) == 4 && path[0] == "backends" && path[2] == "options":
-		return EnvNames["backends.<name>.options.<key>"]
+		return EnvNames["backends.<name>.options."+path[3]]
 	case len(path) == 3 && path[0] == "server" && path[1] == "required_headers":
 		return EnvNames["server.required_headers.<header>"]
 	}

@@ -23,11 +23,13 @@ SPECTRAL     := stoplight/spectral:6.17.0@sha256:c8ffae6ee561b70e80402f1ea669e8b
 LICENSE_EYE  := apache/skywalking-eyes:0.9.0@sha256:cd89ccbbcba2e87d3fb0e34b156b1da208d6c5ac1ada4e2d335e920022c765b8
 ACTIONLINT   := rhysd/actionlint:1.7.12@sha256:b1934ee5f1c509618f2508e6eb47ee0d3520686341fec936f3b79331f9315667
 # Releases are tagged v<semver> (v0.1.0); other tags never name a build.
-# Without a v tag the version is the commit id.
-VERSION      ?= $(shell git describe --tags --match 'v*' --always --dirty 2>/dev/null || echo dev)
+# Without a v tag the version is the commit id. A tag name can hold shell
+# syntax, so a version that is not a release tag or a commit id is never
+# used: the commit id takes its place.
+VERSION      ?= $(shell v="$$(git describe --tags --match 'v*' --always --dirty 2>/dev/null)"; printf '%s\n' "$$v" | grep -E '^(v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?(-[0-9]+-g[0-9a-f]+)?|[0-9a-f]{7,40})(-dirty)?$$' || git rev-parse --short HEAD 2>/dev/null || echo dev)
 REVISION     ?= $(shell git rev-parse HEAD 2>/dev/null || echo unknown)
 CREATED      ?= $(shell TZ=UTC0 git log -1 --date=format-local:%Y-%m-%dT%H:%M:%SZ --format=%cd 2>/dev/null)
-SOURCE       ?= $(shell git remote get-url origin 2>/dev/null | sed -E 's|^git@([^:]+):|https://\1/|; s|\.git$$||')
+SOURCE       ?= $(shell git remote get-url origin 2>/dev/null | sed -E 's|^git@([^:]+):|https://\1/|; s|\.git$$||' | grep -E '^https://[A-Za-z0-9./_-]+$$' || echo unknown)
 IMAGE        ?= wso2-cloud-statusd:$(VERSION)
 IMAGE_ARGS   := --build-arg VERSION=$(VERSION) --build-arg REVISION=$(REVISION) --build-arg CREATED=$(CREATED) --build-arg SOURCE=$(SOURCE)
 # Every ${NAME} the files in config/ use, set to a placeholder for check-config.
@@ -92,6 +94,9 @@ synthetic-selftest: ## The external check against a local statusd, passing and f
 gates-selftest: ## The licence and coverage gate scripts with inputs that must pass and must fail
 	scripts/gates-selftest.sh
 
+version: ## Print the version builds and images are stamped with
+	@echo $(VERSION)
+
 hooks: ## Install the pre-push hook: the quick gates for what a push changes (scripts/pre-push.sh)
 	ln -sf "$$PWD/scripts/pre-push.sh" "$$(git rev-parse --git-path hooks)/pre-push"
 
@@ -149,8 +154,8 @@ workflow-lint: ## Lint the GitHub workflows with actionlint, as CI does (Docker)
 workflow-cache: ## No workflow job with secrets or id-token: write uses an action with its cache on
 	@awk ' \
 	  BEGIN { \
-	    nocache = "^(actions/(checkout|upload-artifact|download-artifact|attest|dependency-review-action)" \
-	      "|docker/(login-action|setup-buildx-action)|sigstore/cosign-installer|github/codeql-action/[a-z-]+" \
+	    nocache = "^(actions/(checkout|upload-artifact|dependency-review-action)" \
+	      "|docker/setup-buildx-action|github/codeql-action/[a-z-]+" \
 	      "|apache/skywalking-eyes/header|hadolint/hadolint-action)$$"; \
 	  } \
 	  function end_step(  on) { \

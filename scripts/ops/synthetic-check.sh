@@ -393,6 +393,15 @@ check_product() {
     skip product "PRODUCT_ID is unset and there is no summary to take a product from"
     return
   fi
+  # A product id is a slug, as the configuration requires; anything else is
+  # never put into a URL or a command line.
+  case "$id" in
+    *[!a-z0-9-]* | -* | *- | *--*)
+      fail product "\"$id\" is not a product id (lowercase letters, digits and single hyphens)"
+      id=""
+      return
+      ;;
+  esac
   url="$api/api/v1/products/$id"
   if ! fetch product "$url"; then
     fail product "$url $fetch_error"

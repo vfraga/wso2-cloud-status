@@ -361,3 +361,41 @@ func TestParseLevel(t *testing.T) {
 		t.Fatal("expected an error")
 	}
 }
+
+// TestASecretInAnotherOptionIsNeverShown: a CSM backend's option that is
+// not a credential cannot read the client secret, so a configuration that
+// tries (by mistake or not) is refused with an error that names the place,
+// never the value: the error reaches the log at start and on every reload.
+func TestASecretInAnotherOptionIsNeverShown(t *testing.T) {
+	const secret = "s3cr3t-in-the-wrong-option"
+	t.Setenv("CSM_CLIENT_ID", "client")
+	t.Setenv("CSM_CLIENT_SECRET", secret)
+	file := filepath.Join(t.TempDir(), "statusd.yaml")
+	cfg := `backends:
+  csm:
+    type: csm-cloud-status
+    base_url: https://csm.example.com
+    options:
+      client_id: "${CSM_CLIENT_ID}"
+      client_secret: "${CSM_CLIENT_SECRET}"
+      token_url: "${CSM_CLIENT_SECRET}"
+products:
+  - id: p
+    name: P
+    sources:
+      - backend: csm
+        cloud: c
+        regions:
+          - { key: us, id: us, name: US }
+`
+	if err := os.WriteFile(file, []byte(cfg), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	_, _, err := Load(file, func(string) string { return "" })
+	if err == nil || !strings.Contains(err.Error(), "backends.csm.options.token_url") {
+		t.Fatalf("err = %v, want the reference in token_url refused", err)
+	}
+	if strings.Contains(err.Error(), secret) {
+		t.Fatalf("the error shows the client secret: %v", err)
+	}
+}

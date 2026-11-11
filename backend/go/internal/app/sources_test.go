@@ -58,11 +58,16 @@ func (b *lockedBuffer) String() string {
 // server holding valid data) fails the fetch instead of being followed, and
 // the failed-fetch log line names where the redirect pointed.
 // TestUpstreamClientUsesNoProxy: no proxy variable can route upstream reads
-// or the CSM token request through another host.
+// or the CSM token request through another host, and an answer's headers
+// are read up to 64 KiB.
 func TestUpstreamClientUsesNoProxy(t *testing.T) {
 	t.Parallel()
-	if upstreamClient().Transport.(*http.Transport).Proxy != nil {
+	transport := upstreamClient().Transport.(*http.Transport)
+	if transport.Proxy != nil {
 		t.Fatal("the upstream client takes a proxy from the environment")
+	}
+	if transport.MaxResponseHeaderBytes != 64<<10 {
+		t.Errorf("headers read up to %d bytes, want 64 KiB", transport.MaxResponseHeaderBytes)
 	}
 }
 

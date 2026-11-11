@@ -845,8 +845,8 @@ func TestCSMProviderOptions(t *testing.T) {
 	}{
 		"https":                     {"https://gw.example.com/csm/v1.0", ok, "", secretFromEnv},
 		"loopback http":             {"http://127.0.0.1:18090", with("token_url", "http://localhost:18090/oauth2/token"), "", secretFromEnv},
-		"plain http":                {"http://gw.example.com", ok, "base_url: \"http://gw.example.com\" " + https, secretFromEnv},
-		"plain http token":          {"https://gw.example.com", with("token_url", "http://sts.example.com/token"), "token_url: \"http://sts.example.com/token\" " + https, secretFromEnv},
+		"plain http":                {"http://gw.example.com", ok, "base_url: " + https, secretFromEnv},
+		"plain http token":          {"https://gw.example.com", with("token_url", "http://sts.example.com/token"), "token_url: " + https, secretFromEnv},
 		"no client secret":          {"https://gw.example.com", with("client_secret", ""), "client_secret is required", secretFromEnv},
 		"no token url":              {"https://gw.example.com", with("token_url", ""), "token_url is required", secretFromEnv},
 		"unknown option":            {"https://gw.example.com", with("scope", "read"), "unknown CSM options [scope]", secretFromEnv},
@@ -866,6 +866,8 @@ func TestCSMProviderOptions(t *testing.T) {
 				t.Errorf("err = %v", err)
 			case tc.wantErr != "" && (err == nil || !strings.Contains(err.Error(), tc.wantErr)):
 				t.Errorf("err = %v, want %q", err, tc.wantErr)
+			case err != nil && (strings.Contains(err.Error(), "sts.example.com") || strings.Contains(err.Error(), "gw.example.com")):
+				t.Errorf("err = %v, quotes the value it refuses", err)
 			}
 		})
 	}

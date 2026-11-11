@@ -173,6 +173,23 @@ pins_tree drift
 sed -E 's/^exceptions=/exceptions= /' scripts/npm-licenses.sh >"$work/drift/scripts/npm-licenses.sh"
 expect "pins: licence exceptions it cannot read" 1 gate "$work/drift" pins
 
+# version: a tag name may hold shell syntax; make reads the version from the
+# nearest v tag, and must neither run it nor stamp it on a build.
+hostile_tag() {
+  local repo="$work/tag"
+  rm -rf "${repo:?}"
+  mkdir -p "$repo"
+  git -C "$repo" init -q
+  git -C "$repo" -c user.name=selftest -c user.email=selftest@example.invalid -c commit.gpgsign=false \
+    commit -q --allow-empty -m one
+  # shellcheck disable=SC2016 # the tag's own text, not the shell's
+  git -C "$repo" tag 'v0.1.0$(touch${IFS}RAN)'
+  local got
+  got="$(make -s -C "$repo" -f "$root/Makefile" version 2>/dev/null)" || return 1
+  [[ ! -e "$repo/RAN" && "$got" == "$(git -C "$repo" rev-parse --short HEAD)" ]]
+}
+expect "version: a tag that holds shell syntax runs nothing and names no build" 0 hostile_tag
+
 if [[ "$failures" -gt 0 ]]; then
   echo "gates-selftest: $failures of $cases cases failed" >&2
   exit 1

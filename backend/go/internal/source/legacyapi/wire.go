@@ -352,7 +352,7 @@ func toIncidents(raw map[string]wireMonth, loc *time.Location) (source.Incidents
 func monthStart(month string, loc *time.Location) (time.Time, error) {
 	start, err := time.ParseInLocation("2006-1", month, loc)
 	if err != nil {
-		return time.Time{}, fmt.Errorf("legacyapi: incident month key %q: %w", month, err)
+		return time.Time{}, fmt.Errorf("legacyapi: incident month key %q is not a month", clip(month))
 	}
 	return start, checkTime("incident month", start)
 }
@@ -360,11 +360,11 @@ func monthStart(month string, loc *time.Location) (time.Time, error) {
 func toIncident(w wireIncident, loc *time.Location) (domain.Incident, error) {
 	id := strings.TrimSpace(w.ID)
 	if id == "" {
-		return domain.Incident{}, fmt.Errorf("legacyapi: incident with no id, begin %q", w.Begin)
+		return domain.Incident{}, fmt.Errorf("legacyapi: incident with no id, begin %q", clip(w.Begin))
 	}
 	started, err := time.ParseInLocation(time.DateTime, strings.TrimSpace(w.Begin), loc)
 	if err != nil {
-		return domain.Incident{}, fmt.Errorf("legacyapi: incident %s begin %q: %w", id, w.Begin, err)
+		return domain.Incident{}, fmt.Errorf("legacyapi: incident %s begin %q is not a time", id, clip(w.Begin))
 	}
 	if err := checkTime("incident "+id+" begin", started); err != nil {
 		return domain.Incident{}, err
@@ -399,7 +399,7 @@ func resolvedAt(w wireIncident, started time.Time, loc *time.Location) (time.Tim
 	}
 	end, err := time.ParseInLocation(time.DateTime, strings.TrimSpace(*w.End), loc)
 	if err != nil {
-		return time.Time{}, fmt.Errorf("legacyapi: incident %s end %q: %w", w.ID, *w.End, err)
+		return time.Time{}, fmt.Errorf("legacyapi: incident %s end %q is not a time", w.ID, clip(*w.End))
 	}
 	if err := checkTime("incident "+w.ID+" end", end); err != nil {
 		return time.Time{}, err

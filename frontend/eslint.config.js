@@ -42,6 +42,24 @@ export default tseslint.config(
       "sonarjs/prefer-read-only-props": "off",
       "sonarjs/cognitive-complexity": ["error", 15],
       "@typescript-eslint/restrict-template-expressions": ["error", { allowNumber: false }],
+      // Text from the status sources reaches the page: no HTML or code sink
+      // may take any string.
+      "no-eval": "error",
+      "no-new-func": "error",
+      "no-restricted-syntax": [
+        "error",
+        {
+          selector: "JSXAttribute[name.name='dangerouslySetInnerHTML']",
+          message: "Render text, never HTML.",
+        },
+      ],
+      "no-restricted-properties": [
+        "error",
+        { property: "innerHTML", message: "Set text, never HTML." },
+        { property: "outerHTML", message: "Set text, never HTML." },
+        { property: "insertAdjacentHTML", message: "Insert nodes, never HTML." },
+        { object: "document", property: "write", message: "Never write HTML into the document." },
+      ],
     },
   },
   {

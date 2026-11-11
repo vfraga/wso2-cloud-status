@@ -117,11 +117,13 @@ func fingerprint(b config.Backend, cloud string) string {
 // of the timeout taken at startup. It follows no redirect (refuseRedirect)
 // and uses no proxy: HTTPS_PROXY and the other proxy variables are ignored,
 // so the environment cannot route upstream reads and the CSM token request,
-// with its client secret, through another host.
+// with its client secret, through another host. An answer's headers are
+// read up to 64 KiB, as its body is up to 1 MiB.
 func upstreamClient() *http.Client {
 	t := http.DefaultTransport.(*http.Transport).Clone() //nolint:forcetypeassert // DefaultTransport is always *http.Transport.
 	t.MaxIdleConnsPerHost = 8
 	t.Proxy = nil
+	t.MaxResponseHeaderBytes = 64 << 10
 	return &http.Client{Transport: t, CheckRedirect: refuseRedirect}
 }
 

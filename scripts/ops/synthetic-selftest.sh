@@ -269,7 +269,8 @@ expect "generated_at older than the limit" 1 '^FAIL freshness +generated_at .* i
 # answers with another product; under /noincidents, the live API without its
 # incident list; under /hang, nothing for 3 seconds; under /inject, a 503
 # whose problem title holds newlines and workflow commands; under
-# /unknown<N>, the live summary with its first N products unknown.
+# /unknown<N>, the live summary with its first N products unknown; under
+# /badid, the live summary with a first product id that is not a slug.
 cat >"$work/copy.py" <<'PY'
 import http.server, json, os, sys, time
 
@@ -318,6 +319,10 @@ for dir in nocache wrongid noincidents; do
 done
 curl -fsS "http://127.0.0.1:${api_port}/api/v1/products/moesif" >"$work/copy/noincidents_api_v1_products_moesif"
 curl -fsS "http://127.0.0.1:${api_port}/api/v1/products/developer-platform" >"$work/copy/wrongid_api_v1_products_moesif"
+# A summary whose first product id would be two words on a command line.
+curl -fsS "http://127.0.0.1:${api_port}/api/v1/summary" | jq '.products[0].id = "moesif --verbose"' \
+  >"$work/copy/badid_api_v1_summary"
+curl -fsS "http://127.0.0.1:${api_port}/api/v1/incidents" >"$work/copy/badid_api_v1_incidents"
 # The critical alert's point: more than half the products unknown.
 half=$((total / 2))
 for n in "$half" "$((half + 1))"; do
@@ -413,6 +418,9 @@ expect "a stylesheet answers with HTML" 1 \
 expect "the page has no app root" 1 \
   '^FAIL page +http://127\.0\.0\.1:[0-9]+/no-root/ answered 200 but the HTML has no app root' \
   STATUS_BASE_URL="http://127.0.0.1:${page_port}/no-root"
+expect "the summary names a product id that is not a slug" 1 '^FAIL product +"moesif --verbose" is not a product id' \
+  STATUS_API_URL="http://127.0.0.1:${copy_port}/badid"
+[[ "$(grep -c '^FAIL' "$work/out")" == 1 ]] || broken "a product id that is not a slug: product should be the only failure"
 expect "a product's page answers 404" 1 \
   '^FAIL deep-link +http://127\.0\.0\.1:[0-9]+/no-deep-link/products/moesif answered HTTP 404, want 200' \
   STATUS_BASE_URL="http://127.0.0.1:${page_port}/no-deep-link" PRODUCT_ID=moesif

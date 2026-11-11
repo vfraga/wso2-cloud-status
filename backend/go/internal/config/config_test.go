@@ -214,18 +214,18 @@ func TestEnvOptionsRecordWholeReferences(t *testing.T) {
 	body := strings.Replace(minimal, `b: { base_url: "https://example.test" }`, `b:
     base_url: "https://example.test"
     options:
-      quoted: "${CSM_CLIENT_SECRET}"
-      plain: ${CSM_CLIENT_ID}
+      client_secret: "${CSM_CLIENT_SECRET}"
+      client_id: ${CSM_CLIENT_ID}
       literal: s3cret`, 1)
 	cfg, err := parse([]byte(body))
 	if err != nil {
 		t.Fatal(err)
 	}
 	b := cfg.Backends["b"]
-	if want := map[string]bool{"quoted": true, "plain": true}; !maps.Equal(b.EnvOptions, want) {
+	if want := map[string]bool{"client_secret": true, "client_id": true}; !maps.Equal(b.EnvOptions, want) {
 		t.Fatalf("EnvOptions = %v, want %v", b.EnvOptions, want)
 	}
-	if b.Options["quoted"] != "s3cret" || b.Options["plain"] != "s3cret" || b.Options["literal"] != "s3cret" {
+	if b.Options["client_secret"] != "s3cret" || b.Options["client_id"] != "s3cret" || b.Options["literal"] != "s3cret" {
 		t.Fatalf("options = %v, want each expanded", b.Options)
 	}
 }
@@ -239,7 +239,7 @@ func TestBackendURLsAreHTTPS(t *testing.T) {
 		"http://127.0.0.1:18090":       "",
 		"http://localhost:18090":       "",
 		"http://[::1]:18090":           "",
-		"http://example.test":          `backends.b.base_url: "http://example.test" must be an absolute https URL (http only on a loopback host)`,
+		"http://example.test":          "backends.b.base_url: must be an absolute https URL (http only on a loopback host)",
 		"http://10.0.0.1":              "must be an absolute https URL",
 		"http://localhost.example.com": "must be an absolute https URL",
 		"https:///no-host":             "must be an absolute https URL",
@@ -255,6 +255,9 @@ func TestBackendURLsAreHTTPS(t *testing.T) {
 			if want != "" && (err == nil || !strings.Contains(err.Error(), want)) {
 				t.Errorf("%s %s: err = %v, want it to contain %q", typ, url, err, want)
 			}
+			if want != "" && err != nil && strings.Contains(err.Error(), url) {
+				t.Errorf("%s %s: err = %v, quotes the value", typ, url, err)
+			}
 		}
 	}
 }
@@ -268,8 +271,9 @@ func TestBackendURLsAreHTTPS(t *testing.T) {
 // other variable of the container to a host it names.
 func TestEnvironmentReferencesAreConfined(t *testing.T) {
 	want := map[string][]string{
-		"backends.<name>.options.<key>":    {"CSM_CLIENT_ID", "CSM_CLIENT_SECRET"},
-		"server.required_headers.<header>": {"FRONT_DOOR_ID"},
+		"backends.<name>.options.client_id":     {"CSM_CLIENT_ID"},
+		"backends.<name>.options.client_secret": {"CSM_CLIENT_SECRET"},
+		"server.required_headers.<header>":      {"FRONT_DOOR_ID"},
 	}
 	if !reflect.DeepEqual(EnvNames, want) {
 		t.Errorf("EnvNames = %v, want %v", EnvNames, want)
@@ -296,22 +300,29 @@ func TestEnvironmentReferencesAreConfined(t *testing.T) {
 		return strings.Replace(minimal, `b: { base_url: "https://example.test" }`,
 			`b: { base_url: "https://example.test", options: { `+key+`: "`+value+`" } }`, 1)
 	}
-	for place, body := range map[string]string{
-		"history.days":                 minimal + "history:\n  days: ${FRONT_DOOR_ID}\n",
-		"server.max_in_flight":         minimal + "server:\n  max_in_flight: ${FRONT_DOOR_ID}\n",
-		"backends.b.base_url":          strings.Replace(minimal, `"https://example.test"`, `"https://example.test/${CSM_CLIENT_SECRET}"`, 1),
-		"products.0.description":       strings.Replace(minimal, "name: P\n", "name: P\n    description: \"${CSM_CLIENT_SECRET}\"\n", 1),
-		"backends.b.options.token_url": option("token_url", "https://t.test/${CSM_CLIENT_SECRET}"),
-		"server.required_headers.D":    minimal + "server: { required_headers: { D: \"${FRONT_DOOR_ID}${FRONT_DOOR_ID}\" } }\n",
-		// Variables the place does not list, set or not.
-		"backends.b.options.client_secret": option("client_secret", "${HOME}"),
-		"backends.b.options.client_id":     option("client_id", "${FRONT_DOOR_ID}"),
-		"server.required_headers.E":        minimal + "server: { required_headers: { E: \"${CSM_CLIENT_SECRET}\" } }\n",
-		"server.required_headers.F":        minimal + "server: { required_headers: { F: \"${HOME}\" } }\n",
+	for _, tc := range []struct{ place, body string }{
+		{"history.days", minimal + "history:\n  days: ${FRONT_DOOR_ID}\n"},
+		{"server.max_in_flight", minimal + "server:\n  max_in_flight: ${FRONT_DOOR_ID}\n"},
+		{"backends.b.base_url", strings.Replace(minimal, `"https://example.test"`, `"https://example.test/${CSM_CLIENT_SECRET}"`, 1)},
+		{"products.0.description", strings.Replace(minimal, "name: P\n", "name: P\n    description: \"${CSM_CLIENT_SECRET}\"\n", 1)},
+		{"backends.b.options.token_url", option("token_url", "https://t.test/${CSM_CLIENT_SECRET}")},
+		{"server.required_headers.D", minimal + "server: { required_headers: { D: \"${FRONT_DOOR_ID}${FRONT_DOOR_ID}\" } }\n"},
+		// Variables the place does not list, set or not; a credential only
+		// in its own option, so no other option's error can show it.
+		{"backends.b.options.client_secret", option("client_secret", "${HOME}")},
+		{"backends.b.options.client_secret", option("client_secret", "${CSM_CLIENT_ID}")},
+		{"backends.b.options.client_id", option("client_id", "${FRONT_DOOR_ID}")},
+		{"backends.b.options.client_id", option("client_id", "${CSM_CLIENT_SECRET}")},
+		{"backends.b.options.token_url", option("token_url", "${CSM_CLIENT_SECRET}")},
+		{"server.required_headers.E", minimal + "server: { required_headers: { E: \"${CSM_CLIENT_SECRET}\" } }\n"},
+		{"server.required_headers.F", minimal + "server: { required_headers: { F: \"${HOME}\" } }\n"},
 	} {
-		_, err := parse([]byte(body))
-		if err == nil || !strings.Contains(err.Error(), "allowed only as the whole value") || !strings.Contains(err.Error(), place) {
-			t.Errorf("%s: err = %v, want the reference refused there", place, err)
+		_, err := parse([]byte(tc.body))
+		if err == nil || !strings.Contains(err.Error(), "allowed only as the whole value") || !strings.Contains(err.Error(), tc.place) {
+			t.Errorf("%s: err = %v, want the reference refused there", tc.place, err)
+		}
+		if err != nil && strings.Contains(err.Error(), "s3cret") {
+			t.Errorf("%s: err = %v, shows the secret", tc.place, err)
 		}
 	}
 
