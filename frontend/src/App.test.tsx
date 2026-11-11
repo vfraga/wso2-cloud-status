@@ -81,14 +81,6 @@ function degradedSummary() {
           },
           { id: "eu", name: "EU", status: "degraded" },
         ],
-        history: [
-          {
-            date: "2026-10-20",
-            status: "degraded",
-            minutes: { degraded: 30 },
-            incident_ids: ["i1"],
-          },
-        ],
       },
       {
         id: "moesif",
@@ -105,7 +97,6 @@ function degradedSummary() {
             status: "operational",
           },
         ],
-        history: [],
       },
     ],
     active_incidents: [
@@ -254,7 +245,6 @@ describe("home page", () => {
                 status: "unknown",
               },
             ],
-            history: [{ date: "2026-10-20", status: "unknown" }],
           },
         ],
       }),

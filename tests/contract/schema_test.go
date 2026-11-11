@@ -32,10 +32,13 @@ func TestSchemaRejectsContractViolations(t *testing.T) {
 	checked := `"checked_at":{"components":"2026-10-21T14:05:00Z","incidents":null,"uptime":"2026-10-21T14:00:00Z"},"stale":{"components":false,"incidents":true,"uptime":false}`
 	locations := `"locations":[{"id":"us","name":"US","status":"operational"}]`
 	regions := `"regions":[{"id":"us-cp","location":"us","name":"US control plane","status":"operational","uptime":[{"window":"90d","percent":99.994}]}]`
-	row := `{"id":"p","name":"P","status":"operational","extent":"all","affected_regions":0,"data_complete":true,"outdated":true,` + checked + `,` + locations + `,` + regions + `,"history":[]}`
+	row := `{"id":"p","name":"P","status":"operational","extent":"all","affected_regions":0,"active_incident_count":0,"data_complete":true,"outdated":true,` + checked + `,` + locations + `,` + regions + `}`
 	generated := `"generated_at":"2026-10-21T14:06:00Z"`
 	valid := `{"status":"operational","extent":"all","data_complete":true,` + generated + `,"products":[` + row + `],"active_incidents":[]}`
-	detail := row[:len(row)-1] + `,` + generated + `,"region_details":[],"incidents":[]}`
+	ids := func(n int) string {
+		return `"history":[{"date":"2026-10-21","status":"outage","incident_ids":[` + strings.TrimSuffix(strings.Repeat(`"i",`, n), ",") + `]}]`
+	}
+	detail := row[:len(row)-1] + `,` + generated + `,` + ids(20) + `,"region_details":[],"incidents":[]}`
 	list := `{` + generated + `,"products":[{"id":"p","name":"P","covered_from":"2026-05-01T00:00:00Z","checked_at":"2026-10-21T14:05:00Z","stale":false}],"incidents":[]}`
 	for name, c := range map[string]struct{ schema, body string }{
 		"summary": {"Summary", valid}, "product": {"ProductDetail", detail}, "incident list": {"IncidentList", list},
@@ -77,6 +80,10 @@ func TestSchemaRejectsContractViolations(t *testing.T) {
 		"location without status":       {"Location", `{"id":"us","name":"US"}`},
 		"extra location field":          {"Location", `{"id":"us","name":"US","status":"operational","uptime":[]}`},
 		"extra detail field":            {"ProductDetail", detail[:len(detail)-1] + `,"surprise":true}`},
+		"history in the summary":        {"Summary", withRow(row[:len(row)-1] + `,"history":[]}`)},
+		"detail without history":        {"ProductDetail", strings.Replace(detail, ids(20)+",", "", 1)},
+		"day listing 21 incidents":      {"ProductDetail", strings.Replace(detail, ids(20), ids(21), 1)},
+		"missing active_incident_count": {"Summary", withRow(strings.Replace(row, `"active_incident_count":0,`, "", 1))},
 		"coverage without covered_from": {"IncidentList", strings.Replace(list, `"covered_from":"2026-05-01T00:00:00Z",`, "", 1)},
 		"bad date":                      {"IncidentList", `{` + generated + `,"products":[],"incidents":[{"id":"i","product_id":"p","title":"t","impact":"outage","state":"resolved","started_at":"yesterday","resolved_at":null}]}`},
 		"percent over 100":              {"Uptime", `{"window":"7d","percent":101}`},

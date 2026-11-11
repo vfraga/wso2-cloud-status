@@ -17,8 +17,10 @@
 package domain
 
 import (
+	"fmt"
 	"maps"
 	"math/rand/v2"
+	"reflect"
 	"slices"
 	"testing"
 	"time"
@@ -329,6 +331,74 @@ func TestDailyHistoryKnownIncidentBeforeCoverage(t *testing.T) {
 // TestRaiseToday: today takes the current status when it is a problem worse
 // than its incidents; an operational or unknown current status changes
 // nothing, so a day without data is never made quiet.
+// TestDailyHistoryListsAFewIncidentsPerDay: a day that many incidents touch
+// lists MaxDayIncidents ids, in the incidents' order, the most severe kept
+// first, while its status and minutes still count every incident.
+func TestDailyHistoryListsAFewIncidentsPerDay(t *testing.T) {
+	t.Parallel()
+	now := at("2026-10-20 12:00:00")
+	incidents := make([]Incident, 0, MaxDayIncidents+6)
+	for i := range MaxDayIncidents + 5 {
+		start := now.Add(-time.Duration(i+1) * time.Minute)
+		incidents = append(incidents, Incident{ID: fmt.Sprintf("d%02d", i), Impact: StatusDegraded, StartedAt: start, ResolvedAt: ptr(start.Add(30 * time.Second))})
+	}
+	// The oldest, and the only outage: kept although the newest come first.
+	incidents = append(incidents, Incident{ID: "worst", Impact: StatusOutage, StartedAt: at("2026-10-20 01:00:00"), ResolvedAt: ptr(at("2026-10-20 02:00:00"))})
+	today := DailyHistory(incidents, 1, Coverage{From: at("2026-01-01 00:00:00")}, now)[0]
+	want := make([]string, 0, MaxDayIncidents)
+	for i := range MaxDayIncidents - 1 {
+		want = append(want, fmt.Sprintf("d%02d", i))
+	}
+	want = append(want, "worst")
+	if !slices.Equal(today.IncidentIDs, want) {
+		t.Errorf("ids %v, want %v", today.IncidentIDs, want)
+	}
+	if today.Status != StatusOutage || today.Minutes[StatusOutage] != 60 || today.Minutes[StatusDegraded] == 0 {
+		t.Errorf("status %v, minutes %v; want outage with every incident's minutes", today.Status, today.Minutes)
+	}
+}
+
+// TestLaterIsOrderFree: of two copies of one incident, Later keeps the same
+// one whichever comes first, the open copy over a resolved one, the later end
+// among resolved copies and the more severe impact among open ones.
+func TestLaterIsOrderFree(t *testing.T) {
+	t.Parallel()
+	copies := make([]Incident, 0, 72)
+	for _, end := range []*time.Time{nil, ptr(at("2026-10-20 10:00:00")), ptr(at("2026-10-20 11:00:00"))} {
+		for _, impact := range []Status{StatusUnknown, StatusDegraded, StatusOutage} {
+			for _, start := range []time.Time{at("2026-10-20 08:00:00"), at("2026-10-20 09:00:00")} {
+				for _, title := range []string{"A", "B"} {
+					for _, state := range []string{"investigating", "resolved"} {
+						copies = append(copies, Incident{ID: "x", Title: title, Impact: impact, State: state, StartedAt: start, ResolvedAt: end})
+					}
+				}
+			}
+		}
+	}
+	for _, a := range copies {
+		for _, b := range copies {
+			ab, ba := Later(a, b), Later(b, a)
+			if !reflect.DeepEqual(ab, ba) {
+				t.Fatalf("Later(%+v, %+v) = %+v, but the other order keeps %+v", a, b, ab, ba)
+			}
+			switch {
+			case (a.ResolvedAt == nil) != (b.ResolvedAt == nil):
+				if ab.ResolvedAt != nil {
+					t.Fatalf("kept the resolved copy %+v over an open one", ab)
+				}
+			case a.ResolvedAt != nil && !a.ResolvedAt.Equal(*b.ResolvedAt):
+				if !ab.ResolvedAt.Equal(maxTime(*a.ResolvedAt, *b.ResolvedAt)) {
+					t.Fatalf("kept %+v, not the copy that ends later", ab)
+				}
+			case a.ResolvedAt == nil && a.EffectiveImpact() != b.EffectiveImpact():
+				if ab.EffectiveImpact() != Worst(a.EffectiveImpact(), b.EffectiveImpact()) {
+					t.Fatalf("kept %+v, not the more severe open copy", ab)
+				}
+			}
+		}
+	}
+}
+
 func TestRaiseToday(t *testing.T) {
 	t.Parallel()
 	days := func() []Day {

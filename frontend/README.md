@@ -33,6 +33,11 @@ Content-Security-Policy allows `connect-src 'self'` only, so a cross-origin
 
 How the frontend behaves in each state, data missing included:
 
+- The home page lists the active incidents the summary holds, at most the
+  10 newest per product; a product with more gets a line, "12 more active
+  incidents for API Platform", linking its page, which lists every one.
+- A history day's durations are the API's minutes for that day.
+
 - Polling, not push: the home page reads `/api/v1/summary` and a product's
   page `/api/v1/products/{id}`, each every 30 s (`src/config.ts`), with
   `cache: "no-cache"` so the browser revalidates with the ETag. Neither reads
@@ -128,6 +133,11 @@ pack's paths unchanged.
   (`npm run e2e:install`) and a running site, such as `npm run preview`.
 - Routing is 60 lines of History API code: the current `react-router` requires
   React 19.2.7 or later, and Oxygen UI pins React 19.2.3 exactly.
+- The page is public and reads a public API, so it has no sign-in, no
+  authentication provider and no API client library: `src/api/client.ts`
+  calls `fetch`, and the browser revalidates with the ETag. Each route polls
+  its own resource and keeps its data in its own state; there is no global
+  store.
 
 ## Direct dependencies
 

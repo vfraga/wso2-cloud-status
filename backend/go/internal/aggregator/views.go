@@ -50,6 +50,9 @@ type ProductSummary struct {
 	Extent domain.Extent `json:"extent"`
 	// AffectedRegions counts regions that are not operational.
 	AffectedRegions int `json:"affected_regions"`
+	// ActiveIncidentCount counts the product's active incidents; the
+	// summary lists at most MaxSummaryIncidents of them.
+	ActiveIncidentCount int `json:"active_incident_count"`
 	// DataComplete is false when the status of any region, or of any
 	// component in it, is unknown.
 	DataComplete bool `json:"data_complete"`
@@ -62,7 +65,6 @@ type ProductSummary struct {
 	// the product's regions are places themselves.
 	Locations []Location      `json:"locations"`
 	Regions   []RegionSummary `json:"regions"`
-	History   []domain.Day    `json:"history"`
 }
 
 // Location is a place a product runs in, such as US, whose regions are its
@@ -108,6 +110,7 @@ type ProductDetail struct {
 	ProductSummary
 	// GeneratedAt is Summary.GeneratedAt of the same snapshot.
 	GeneratedAt   time.Time         `json:"generated_at"`
+	History       []domain.Day      `json:"history"`
 	RegionDetails []RegionDetail    `json:"region_details"`
 	Incidents     []domain.Incident `json:"incidents"`
 }

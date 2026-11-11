@@ -37,8 +37,17 @@ describe("parseSummary", () => {
       description: "Bijira",
       dataComplete: true,
       freshness: { stale: { components: false, incidents: false, uptime: false } },
+      activeIncidentCount: 0,
     });
-    expect(s.products[0]?.history).toHaveLength(1);
+  });
+
+  it("reads active_incident_count as a count, else 0", () => {
+    const ok = (summaryBody().products as Record<string, unknown>[])[0] ?? {};
+    const read = (n: unknown) =>
+      parseSummary(summaryBody({ products: [{ ...ok, active_incident_count: n }] })).products[0]
+        ?.activeIncidentCount;
+    expect(read(12)).toBe(12);
+    for (const bad of [-1, 1.5, "3", null, undefined]) expect(read(bad)).toBe(0);
   });
 
   it("survives garbage", () => {
@@ -56,9 +65,7 @@ describe("parseSummary", () => {
   it("omits a missing description and tolerates missing optional fields", () => {
     const s = parseSummary({
       status: "weird",
-      products: [
-        { id: "x", regions: [{ id: "r" }, { name: "no id" }], history: [{ date: "bad" }] },
-      ],
+      products: [{ id: "x", regions: [{ id: "r" }, { name: "no id" }] }],
       active_incidents: [{ id: "i", started_at: "not a date" }],
     });
     const p = s.products[0];
@@ -68,7 +75,7 @@ describe("parseSummary", () => {
     expect(p?.name).toBe("x");
     expect(p?.regions).toEqual([{ id: "r", name: "r", status: "unknown", uptime: [] }]);
     expect(p?.locations).toEqual([]);
-    expect(p?.history).toEqual([]);
+    expect(p?.activeIncidentCount).toBe(0);
     expect(s.activeIncidents).toEqual([]);
   });
 
@@ -205,19 +212,19 @@ describe("parseSummary", () => {
       expect(stale(active).map(([, isStale]) => isStale)).toEqual([true, true]);
     }
   });
+});
 
+describe("parseProductDetail", () => {
   it("skips a history day that is not a calendar day", () => {
     const ok = (summaryBody().products as Record<string, unknown>[])[0] ?? {};
     const history = ["2026-10-20", "2026-13-45", "2026-02-30", "2026-00-10", "bad"].map((date) => ({
       date,
       status: "operational",
     }));
-    const s = parseSummary(summaryBody({ products: [{ ...ok, history }] }));
-    expect(s.products[0]?.history.map((d) => d.date)).toEqual(["2026-10-20"]);
+    const p = parseProductDetail({ ...ok, history });
+    expect(p?.history.map((d) => d.date)).toEqual(["2026-10-20"]);
   });
-});
 
-describe("parseProductDetail", () => {
   it("reads a product's unreadable incidents as not received", () => {
     const ok = (summaryBody().products as Record<string, unknown>[])[0] ?? {};
     const good = { id: "a", product_id: "api-platform", started_at: "2026-10-20T08:00:00Z" };

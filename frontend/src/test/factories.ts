@@ -88,7 +88,7 @@ export function product(overrides: Partial<ProductSummary> = {}): ProductSummary
         uptime: [],
       },
     ],
-    history: days(90),
+    activeIncidentCount: 0,
     ...overrides,
   };
   return {
@@ -199,7 +199,7 @@ export function summaryBody(
             status: "operational",
           },
         ],
-        history: [{ date: "2026-10-20", status: "operational" }],
+        active_incident_count: 0,
       },
     ],
     active_incidents: [],

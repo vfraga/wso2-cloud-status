@@ -32,7 +32,9 @@ import (
 
 	"github.com/wso2/wso2-cloud-status/backend/go/internal/aggregator"
 	"github.com/wso2/wso2-cloud-status/backend/go/internal/config"
+	"github.com/wso2/wso2-cloud-status/backend/go/internal/config/configtest"
 	"github.com/wso2/wso2-cloud-status/backend/go/internal/domain"
+	"github.com/wso2/wso2-cloud-status/backend/go/internal/testutil"
 )
 
 // upstream replays the captured responses of the real status API, for every
@@ -41,7 +43,7 @@ func upstream(t *testing.T) *httptest.Server {
 	t.Helper()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		name := r.URL.Query().Get("cloud") + "." + strings.TrimPrefix(r.URL.Path, "/api/v1/") + ".json"
-		body, err := os.ReadFile(filepath.Join("..", "..", "..", "..", "testdata", "upstream", filepath.Base(name)))
+		body, err := os.ReadFile(testutil.RepoPath("testdata", "upstream", filepath.Base(name)))
 		if err != nil {
 			http.NotFound(w, r)
 			return
@@ -54,10 +56,7 @@ func upstream(t *testing.T) *httptest.Server {
 
 func shippedConfig(t *testing.T, upstreamURL string) *config.Config {
 	t.Helper()
-	cfg, err := config.Load("../../../../config/statusd.yaml")
-	if err != nil {
-		t.Fatal(err)
-	}
+	cfg := configtest.Load(t, testutil.RepoPath("config", "statusd.yaml"))
 	for name, b := range cfg.Backends {
 		b.BaseURL = upstreamURL
 		cfg.Backends[name] = b
@@ -134,6 +133,47 @@ func TestServiceEndToEnd(t *testing.T) {
 	}
 }
 
+// TestReadyWhileEveryUpstreamIsDown: with no upstream answering, the
+// service is ready after its first poll round and serves every product as
+// unknown, so a restart during an upstream outage, when the page is needed
+// most, does not take it out of rotation.
+func TestReadyWhileEveryUpstreamIsDown(t *testing.T) {
+	t.Parallel()
+	down := httptest.NewServer(http.NotFoundHandler())
+	down.Close()
+	cfg := shippedConfig(t, down.URL)
+	a, err := New(cfg, slog.New(slog.DiscardHandler), "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := a.Listen(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	stopped := make(chan error, 1)
+	go func() { stopped <- a.Run(ctx) }()
+	defer func() {
+		cancel()
+		if err := <-stopped; err != nil {
+			t.Errorf("Run: %v", err)
+		}
+	}()
+	waitReady(t, "http://"+a.AdminAddr().String()+"/readyz")
+	_, body := get(t, "http://"+a.Addr().String()+"/api/v1/summary")
+	var summary aggregator.Summary
+	if err := json.Unmarshal(body, &summary); err != nil {
+		t.Fatal(err)
+	}
+	if summary.Status != domain.StatusUnknown || summary.DataComplete || len(summary.Products) != len(cfg.Products) {
+		t.Fatalf("summary %v, data_complete %v, %d products; want every configured product, unknown", summary.Status, summary.DataComplete, len(summary.Products))
+	}
+	for _, p := range summary.Products {
+		if p.Status != domain.StatusUnknown {
+			t.Errorf("%s is %v, want unknown", p.ID, p.Status)
+		}
+	}
+}
+
 func waitReady(t *testing.T, url string) {
 	t.Helper()
 	deadline := time.Now().Add(10 * time.Second)
@@ -164,8 +204,8 @@ func assertSummary(t *testing.T, s aggregator.Summary, cfg *config.Config) {
 		t.Fatalf("summary status %v with %d products", s.Status, len(s.Products))
 	}
 	for _, p := range s.Products {
-		if len(p.Regions) != regions[p.ID] || !p.DataComplete || p.Outdated || p.Status != domain.StatusOperational || len(p.History) != 90 {
-			t.Errorf("%s: %d regions (want %d), complete=%v, outdated=%v, status=%v, history=%d", p.ID, len(p.Regions), regions[p.ID], p.DataComplete, p.Outdated, p.Status, len(p.History))
+		if len(p.Regions) != regions[p.ID] || !p.DataComplete || p.Outdated || p.Status != domain.StatusOperational {
+			t.Errorf("%s: %d regions (want %d), complete=%v, outdated=%v, status=%v", p.ID, len(p.Regions), regions[p.ID], p.DataComplete, p.Outdated, p.Status)
 		}
 	}
 }

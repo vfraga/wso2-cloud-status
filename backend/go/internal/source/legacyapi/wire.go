@@ -18,7 +18,9 @@ package legacyapi
 
 import (
 	"fmt"
+	"maps"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -187,10 +189,13 @@ func toRegionUptime(raw map[string][]wireAvailability) source.Uptime {
 
 // Limits on one answer, each at least ten times what the largest captured
 // real answer holds. An answer above one is rejected like a malformed one:
-// only that source's data of that kind reads as not received, and a faulty
-// upstream cannot inflate every response or slow every product's build (each
-// build compares the records of one event with each other, and every region
-// key the upstream reports is shown).
+// only that source's data of that kind reads as not received. They bound
+// what one answer adds to every build (each build compares the records of
+// one event with each other, and every region key the upstream reports is
+// shown) and to each response, which then grows at most in proportion to
+// the answers: the summary lists a few active incidents per product
+// (aggregator.MaxSummaryIncidents) and no history, and a history day lists
+// a few incident ids (domain.MaxDayIncidents).
 const (
 	MaxIncidents  = 500  // incident records, across months
 	MaxRegions    = 50   // region keys
@@ -200,7 +205,7 @@ const (
 	MaxText       = 1000 // characters in one key, name, description, message, title or window
 	// MaxID is held to twice the 32 characters of every captured incident
 	// id, not ten times: the history lists an incident's id on every day it
-	// spans, so a long id is repeated up to 90 times per product.
+	// spans, so a long id is repeated on up to every day of the history.
 	MaxID = 64 // characters in one incident id
 )
 
@@ -311,8 +316,11 @@ func toIncidents(raw map[string]wireMonth, loc *time.Location) (source.Incidents
 		return source.Incidents{}, err
 	}
 	var res source.Incidents
-	seen := map[string]bool{}
-	for month, m := range raw {
+	seen := map[string]int{}
+	// Months in order, so an answer reads the same whatever the map's order
+	// (the first error it holds, for one).
+	for _, month := range slices.Sorted(maps.Keys(raw)) {
+		m := raw[month]
 		start, err := monthStart(month, loc)
 		if err != nil {
 			return source.Incidents{}, err
@@ -325,12 +333,14 @@ func toIncidents(raw map[string]wireMonth, loc *time.Location) (source.Incidents
 			if err != nil {
 				return source.Incidents{}, err
 			}
-			// Incidents are told apart by id downstream, so a repeated id
-			// would hide one of them.
-			if seen[inc.ID] {
-				return source.Incidents{}, fmt.Errorf("legacyapi: incident id %q appears twice", inc.ID)
+			// Incidents are told apart by id downstream: a repeated id
+			// (one record under two months, say) is one incident, the
+			// copy domain.Later keeps.
+			if i, ok := seen[inc.ID]; ok {
+				res.Items[i] = domain.Later(res.Items[i], inc)
+				continue
 			}
-			seen[inc.ID] = true
+			seen[inc.ID] = len(res.Items)
 			res.Items = append(res.Items, inc)
 		}
 	}

@@ -113,10 +113,12 @@ export interface ProductSummary {
   /** Empty when the regions are places themselves. */
   locations: Location[];
   regions: RegionSummary[];
-  history: Day[];
+  /** Its active incidents; the summary lists at most a few of them. */
+  activeIncidentCount: number;
 }
 
 export interface ProductDetail extends ProductSummary {
+  history: Day[];
   regionDetails: RegionDetail[];
   incidents: Incident[];
 }

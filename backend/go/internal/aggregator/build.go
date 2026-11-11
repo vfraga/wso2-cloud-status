@@ -55,7 +55,9 @@ type Built struct {
 	Summary   Summary
 	Products  map[string]ProductDetail
 	Incidents Incidents
-	// Ready is true once at least one source has answered for components.
+	// Ready is true once every source has been polled once, answered or
+	// not (buildParams.polled): from then on the views are as good as the
+	// sources allow, and they fail closed where a source is silent.
 	Ready bool
 	// RegionKeys compares, per source that has answered for components, the
 	// region keys its last answer holds with those the configuration names
@@ -108,6 +110,8 @@ type buildParams struct {
 	// held is the previous build's Built.held; nil derives every checked_at
 	// afresh.
 	held map[string]heldCheck
+	// polled is true once every source has been polled once.
+	polled bool
 }
 
 // staleness is how old each kind of data may be before it is stale:
@@ -145,6 +149,13 @@ func minuteOrNil(t time.Time) *time.Time {
 	m := minuteOf(t)
 	return &m
 }
+
+// MaxSummaryIncidents is how many of one product's active incidents the
+// summary lists, the newest; ProductSummary.ActiveIncidentCount counts them
+// all and the product's own route lists every one. Real products have a
+// few at a time; the limit keeps a faulty source from filling the most
+// polled response.
+const MaxSummaryIncidents = 10
 
 // build derives every view from the state. It is pure: same inputs, same
 // output.
@@ -185,11 +196,24 @@ func build(p buildParams) Built {
 	b.Summary.DataComplete = allComplete(b.Summary.Products)
 	b.Summary.Status = failClosed(statuses, b.Summary.DataComplete)
 	b.Summary.Extent = domain.ExtentOf(b.Summary.Status, regions...)
-	b.Summary.ActiveIncidents = filter(all, func(i domain.Incident) bool { return i.Active() })
+	b.Summary.ActiveIncidents = summaryIncidents(all)
 	b.Incidents.Incidents = all
-	b.Ready = ready(p.state)
+	b.Ready = p.polled
 	b.RegionKeys = regionKeys(p.state, configured)
 	return b
+}
+
+// summaryIncidents is the active incidents, in order, with at most
+// MaxSummaryIncidents of each product.
+func summaryIncidents(all []domain.Incident) []domain.Incident {
+	listed := map[string]int{}
+	return filter(all, func(i domain.Incident) bool {
+		if !i.Active() || listed[i.ProductID] == MaxSummaryIncidents {
+			return false
+		}
+		listed[i.ProductID]++
+		return true
+	})
 }
 
 // overlaps reports whether the incident is active or touches the history
@@ -317,7 +341,7 @@ func buildProduct(p buildParams, prod config.Product, configured map[string]map[
 	statuses := make([]domain.Status, 0, len(regions)+len(incidents))
 	regionStatuses := make([]domain.Status, 0, len(regions))
 	summaries := make([]RegionSummary, 0, len(regions))
-	affected, complete := 0, len(regions) > 0
+	affected, active, complete := 0, 0, len(regions) > 0
 	for _, r := range regions {
 		statuses = append(statuses, r.Status)
 		regionStatuses = append(regionStatuses, r.Status)
@@ -332,23 +356,25 @@ func buildProduct(p buildParams, prod config.Product, configured map[string]map[
 	for _, inc := range incidents {
 		if inc.Active() {
 			statuses = append(statuses, inc.EffectiveImpact())
+			active++
 		}
 	}
 	status := domain.Worst(statuses...)
 	detail := ProductDetail{
 		ProductSummary: ProductSummary{
 			ID: prod.ID, Name: prod.Name, Description: prod.Description,
-			Status:          status,
-			Extent:          domain.ExtentOf(status, regionStatuses...),
-			AffectedRegions: affected,
-			DataComplete:    complete,
-			Outdated:        inc.stale || up.stale,
-			CheckedAt:       CheckedAt{Components: minuteOrNil(comp.oldest), Incidents: minuteOrNil(inc.oldest), Uptime: minuteOrNil(up.oldest)},
-			Stale:           Stale{Components: comp.stale, Incidents: inc.stale, Uptime: up.stale},
-			Locations:       locations,
-			Regions:         summaries,
-			History:         history,
+			Status:              status,
+			Extent:              domain.ExtentOf(status, regionStatuses...),
+			AffectedRegions:     affected,
+			ActiveIncidentCount: active,
+			DataComplete:        complete,
+			Outdated:            inc.stale || up.stale,
+			CheckedAt:           CheckedAt{Components: minuteOrNil(comp.oldest), Incidents: minuteOrNil(inc.oldest), Uptime: minuteOrNil(up.oldest)},
+			Stale:               Stale{Components: comp.stale, Incidents: inc.stale, Uptime: up.stale},
+			Locations:           locations,
+			Regions:             summaries,
 		},
+		History:       history,
 		RegionDetails: regions,
 		Incidents:     incidents,
 	}
@@ -610,8 +636,11 @@ func unknownGroups(groups []domain.Group) []domain.Group {
 
 // productIncidents merges the incidents of the product's sources that have
 // answered, so one silent source does not hide another's open incident. The
-// same id from two sources is one incident (the first source's copy), and
-// records of one event are listed once (collapseDuplicates). History is
+// same id from two sources is one incident (domain.Later picks the copy, so
+// a resolved copy never hides an open one), and records of one event are
+// listed once (collapseDuplicates). An incident whose start is still ahead
+// is left out until it starts: it is not current, and the history does not
+// count it either (planned maintenance recorded ahead of time). History is
 // only as complete as the least complete source. Coverage starts at the latest
 // source's coverage start, and while any source has never answered it lies
 // in the future, so every day reads unknown. While the incident feed is
@@ -623,7 +652,7 @@ func productIncidents(p buildParams, prod config.Product, feed feed) ([]domain.I
 	incidents := []domain.Incident{}
 	var coverage domain.Coverage
 	missing := false
-	seen := map[string]bool{}
+	index := map[string]int{}
 	for _, ref := range prod.Sources {
 		st := p.state[SourceKey(ref)]
 		if !st.incidents.ok() {
@@ -634,11 +663,15 @@ func productIncidents(p buildParams, prod config.Product, feed feed) ([]domain.I
 			coverage.From = st.incidents.data.CoverageStart
 		}
 		for _, inc := range st.incidents.data.Items {
-			if seen[inc.ID] {
+			if inc.StartedAt.After(p.now) {
 				continue
 			}
-			seen[inc.ID] = true
 			inc.ProductID = prod.ID
+			if i, seen := index[inc.ID]; seen {
+				incidents[i] = domain.Later(incidents[i], inc)
+				continue
+			}
+			index[inc.ID] = len(incidents)
 			incidents = append(incidents, inc)
 		}
 	}
@@ -766,16 +799,6 @@ func sameEvent(a, b *domain.Incident) bool {
 
 func near(a, b time.Time) bool {
 	return a.Sub(b).Abs() <= collapseWindow
-}
-
-// ready reports whether at least one source has answered for components.
-func ready(state map[string]sourceState) bool {
-	for _, st := range state {
-		if st.components.ok() {
-			return true
-		}
-	}
-	return false
 }
 
 func filter(incidents []domain.Incident, keep func(domain.Incident) bool) []domain.Incident {

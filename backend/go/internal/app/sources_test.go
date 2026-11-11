@@ -31,7 +31,9 @@ import (
 	"testing"
 
 	"github.com/wso2/wso2-cloud-status/backend/go/internal/config"
+	"github.com/wso2/wso2-cloud-status/backend/go/internal/config/configtest"
 	"github.com/wso2/wso2-cloud-status/backend/go/internal/source"
+	"github.com/wso2/wso2-cloud-status/backend/go/internal/testutil"
 )
 
 // lockedBuffer collects log output from concurrent writers.
@@ -55,6 +57,15 @@ func (b *lockedBuffer) String() string {
 // TestUpstreamRedirectsAreRefused: an upstream that redirects (here to a
 // server holding valid data) fails the fetch instead of being followed, and
 // the failed-fetch log line names where the redirect pointed.
+// TestUpstreamClientUsesNoProxy: no proxy variable can route upstream reads
+// or the CSM token request through another host.
+func TestUpstreamClientUsesNoProxy(t *testing.T) {
+	t.Parallel()
+	if upstreamClient().Transport.(*http.Transport).Proxy != nil {
+		t.Fatal("the upstream client takes a proxy from the environment")
+	}
+}
+
 func TestUpstreamRedirectsAreRefused(t *testing.T) {
 	t.Parallel()
 	data := upstream(t)
@@ -160,7 +171,7 @@ func newCSMFake(t *testing.T) *csmFake {
 			return
 		}
 		name := filepath.Base(cloud + "." + r.PathValue("kind") + ".json")
-		data, err := os.ReadFile(filepath.Join("..", "..", "..", "..", "testdata", "upstream", name))
+		data, err := os.ReadFile(testutil.RepoPath("testdata", "upstream", name))
 		if err != nil {
 			http.NotFound(w, r)
 			return
@@ -188,7 +199,7 @@ backends:
   csm:
     type: csm-cloud-status
     base_url: %s
-    options: { token_url: "%s/oauth2/token", client_id: test, client_secret: "${STATUSD_TEST_CSM_SECRET}" }
+    options: { token_url: "%s/oauth2/token", client_id: test, client_secret: "${CSM_CLIENT_SECRET}" }
 products:
 `, baseURL, baseURL)
 	for _, cloud := range clouds {
@@ -202,16 +213,13 @@ products:
 // backend binds it to the backend's running provider, so the clouds bound
 // before and after the reload share one token and one throttling circuit.
 func TestReloadKeepsOneProviderPerBackend(t *testing.T) {
-	t.Setenv("STATUSD_TEST_CSM_SECRET", "secret")
+	t.Setenv("CSM_CLIENT_SECRET", "secret")
 	f := newCSMFake(t)
 	path := filepath.Join(t.TempDir(), "statusd.yaml")
 	if err := os.WriteFile(path, []byte(csmConfig(f.URL, "moesif")), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	cfg, err := config.Load(path)
-	if err != nil {
-		t.Fatal(err)
-	}
+	cfg := configtest.Load(t, path)
 	a, err := New(cfg, slog.New(slog.DiscardHandler), "test")
 	if err != nil {
 		t.Fatal(err)
@@ -244,17 +252,14 @@ func TestReloadKeepsOneProviderPerBackend(t *testing.T) {
 func TestReloadDoesNotMoveACredential(t *testing.T) {
 	for _, field := range []string{"token_url", "base_url"} {
 		t.Run(field, func(t *testing.T) {
-			t.Setenv("STATUSD_TEST_CSM_SECRET", "secret")
+			t.Setenv("CSM_CLIENT_SECRET", "secret")
 			f, other := newCSMFake(t), newCSMFake(t)
 			path := filepath.Join(t.TempDir(), "statusd.yaml")
 			text := csmConfig(f.URL, "moesif")
 			if err := os.WriteFile(path, []byte(text), 0o600); err != nil {
 				t.Fatal(err)
 			}
-			cfg, err := config.Load(path)
-			if err != nil {
-				t.Fatal(err)
-			}
+			cfg := configtest.Load(t, path)
 			var logs lockedBuffer
 			a, err := New(cfg, slog.New(slog.NewTextHandler(&logs, nil)), "test")
 			if err != nil {

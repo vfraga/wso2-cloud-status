@@ -4,12 +4,17 @@ Notable changes to the WSO2 Cloud status page: the status API (statusd),
 the web frontend and their images. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and releases follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html). A release is a
-tag `v<version>` on `main`; the release workflow refuses a tag without a
-section here, or while the Unreleased section still holds entries. The public API has its own version, in `api/openapi.yaml`.
+tag `v<version>` on `main` with a section here, and none while the
+Unreleased section still holds entries. The public API has its own version, in `api/openapi.yaml`.
 
 ## [Unreleased]
 
 ### Added
+
+- Each product in the API has `active_incident_count`; the summary lists
+  at most its 10 newest active incidents, and the home page adds "N more
+  active incidents for <product>", linking the product's page, when it
+  has more.
 
 - API 1.1.0: each product lists its `locations` (US, EU; none for a
   product whose regions name none) with a status that fails closed over
@@ -40,6 +45,17 @@ section here, or while the Unreleased section still holds entries. The public AP
   so a failure can be found in the upstream's logs.
 
 ### Changed
+
+- API 1.1.0: a product's daily history is on its own route only; the
+  summary, which every reader polls, no longer carries it. A history day
+  lists at most 20 incident ids, the most severe kept first; its status
+  and minutes still count every incident.
+- `/readyz` is ready once every source has been polled once, whether it
+  answered or not, so a restart while every upstream is down serves every
+  product as unknown instead of leaving the service out of rotation.
+- The page shows a history day's durations as the API's minutes.
+- The release workflow left the repository until a registry and a
+  deployer are chosen; CI no longer has its `workflow_call` entry.
 
 - statusd logs the configuration file's SHA-256 when it starts
   (`configuration loaded`) and with every reload it applies, so the running
@@ -113,6 +129,16 @@ section here, or while the Unreleased section still holds entries. The public AP
   technology.
 
 ### Fixed
+
+- When two sources of one product hold the same incident id, the open
+  copy is kept, else the one that ends later, then the more severe one,
+  whatever order they are read in; the first source's copy was kept, so a
+  resolved copy could hide an open incident.
+- An incident whose start is still ahead (planned work recorded early) is
+  left out of every response until it starts; it raised the product's
+  status at once.
+- An incident listed twice in one answer is one incident; it failed the
+  whole answer.
 
 - A product's page whose product sends no history days no longer reads
   "The last 0 days."
@@ -231,6 +257,13 @@ section here, or while the Unreleased section still holds entries. The public AP
   read (`s-maxage`, a repeated directive) and two listeners on one port.
 
 ### Security
+
+- `${NAME}` reads only `CSM_CLIENT_ID` and `CSM_CLIENT_SECRET` in a backend
+  option and `FRONT_DOOR_ID` in `server.required_headers`, so the file
+  cannot send any other variable of the container to a host it names; a
+  file with a second YAML document is refused.
+- statusd ignores proxy variables, so the environment cannot route its
+  reads and the token request through another host.
 
 - CI checks every installed npm package's registry signature, and the lint
   fails when ESLint would skip a source file Git tracks, which it otherwise

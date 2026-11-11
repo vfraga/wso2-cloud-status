@@ -24,6 +24,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"io"
 	"maps"
 	"net"
 	"os"
@@ -149,18 +150,6 @@ func Slugify(s string) string {
 	return strings.Join(fields, "-")
 }
 
-// Load reads, defaults and validates the configuration at path.
-func Load(path string) (*Config, error) {
-	cfg, _, err := Read(path)
-	if err != nil {
-		return nil, err
-	}
-	if err := cfg.Validate(); err != nil {
-		return nil, err
-	}
-	return cfg, nil
-}
-
 // Read reads and defaults the configuration at path without validating it,
 // for a caller that changes it (ApplyEnvOverrides) before validating. It
 // also returns the SHA-256 of the bytes it read, in hex, which names the
@@ -185,20 +174,40 @@ var (
 	wholeRef = regexp.MustCompile(`^` + envRef.String() + `$`)
 )
 
+// EnvNames are the only environment variables the file may read, by where
+// the reference sits: a backend option reads the CSM client's credentials,
+// a server.required_headers entry the origin lock's ID. A fixed list, so
+// the file cannot send any other variable of the container (a platform
+// secret, an identity endpoint) to a host it names.
+var EnvNames = map[string][]string{
+	"backends.<name>.options.<key>":    {"CSM_CLIENT_ID", "CSM_CLIENT_SECRET"},
+	"server.required_headers.<header>": {"FRONT_DOOR_ID"},
+}
+
 // expandEnv replaces ${NAME} with the environment value where a reference
 // is allowed: as the whole value of a backend option (a credential) or of a
-// server.required_headers entry (the origin lock's ID). Anywhere else, or
-// as part of a longer value, a reference is an error, as is a YAML alias:
-// otherwise whoever can change the file could copy a secret into a value
-// the service sends elsewhere or publishes (a base URL, a product's name).
+// server.required_headers entry (the origin lock's ID), naming a variable
+// EnvNames lists for that place. Anywhere else, as part of a longer value,
+// or naming another variable, a reference is an error, as is a YAML alias
+// and a second YAML document: otherwise whoever can change the file could
+// copy a secret into a value the service sends elsewhere or publishes (a
+// base URL, a product's name), or write settings that never apply.
 // A backend option that reads the environment makes its backend change only
 // on restart (RestartRequired), so a reload never reads a new variable. An
 // unset variable is an error, so a missing secret fails at startup, not at
 // the first request. Expanded values stay strings.
 func expandEnv(raw []byte) ([]byte, error) {
 	var doc yaml.Node
-	if err := yaml.Unmarshal(raw, &doc); err != nil {
+	dec := yaml.NewDecoder(bytes.NewReader(raw))
+	if err := dec.Decode(&doc); err != nil {
+		if errors.Is(err, io.EOF) {
+			return raw, nil
+		}
 		return nil, fmt.Errorf("config: decode: %w", err)
+	}
+	var next yaml.Node
+	if err := dec.Decode(&next); !errors.Is(err, io.EOF) {
+		return nil, errors.New("config: the file holds more than one YAML document; settings after a \"---\" line would never apply")
 	}
 	if len(doc.Content) == 0 {
 		return raw, nil
@@ -223,11 +232,11 @@ func (e *envExpansion) visit(n *yaml.Node, path []string) {
 	if !envRef.MatchString(n.Value) {
 		return
 	}
-	if !wholeRef.MatchString(n.Value) || !envAllowed(path) {
+	name := envRef.FindStringSubmatch(n.Value)[1]
+	if !wholeRef.MatchString(n.Value) || !slices.Contains(envNamesAt(path), name) {
 		e.misplaced = append(e.misplaced, strings.Join(path, "."))
 		return
 	}
-	name := envRef.FindStringSubmatch(n.Value)[1]
 	value, ok := os.LookupEnv(name)
 	if !ok {
 		e.missing = append(e.missing, name)
@@ -238,7 +247,8 @@ func (e *envExpansion) visit(n *yaml.Node, path []string) {
 func (e *envExpansion) err() error {
 	var errs []error
 	if len(e.misplaced) > 0 {
-		errs = append(errs, fmt.Errorf("config: ${NAME} is allowed only as the whole value of a backend option or a server.required_headers entry: %v", e.misplaced))
+		errs = append(errs, fmt.Errorf("config: ${NAME} is allowed only as the whole value of a backend option (%s) or a server.required_headers entry (%s): %v",
+			strings.Join(EnvNames["backends.<name>.options.<key>"], ", "), strings.Join(EnvNames["server.required_headers.<header>"], ", "), e.misplaced))
 	}
 	if len(e.missing) > 0 {
 		slices.Sort(e.missing)
@@ -247,11 +257,16 @@ func (e *envExpansion) err() error {
 	return errors.Join(errs...)
 }
 
-// envAllowed reports whether a value at path may be a ${NAME} reference:
-// backends.<name>.options.<key> or server.required_headers.<header>.
-func envAllowed(path []string) bool {
-	return (len(path) == 4 && path[0] == "backends" && path[2] == "options") ||
-		(len(path) == 3 && path[0] == "server" && path[1] == "required_headers")
+// envNamesAt is the variables a value at path may read (EnvNames), none
+// outside backends.<name>.options.<key> and server.required_headers.<header>.
+func envNamesAt(path []string) []string {
+	switch {
+	case len(path) == 4 && path[0] == "backends" && path[2] == "options":
+		return EnvNames["backends.<name>.options.<key>"]
+	case len(path) == 3 && path[0] == "server" && path[1] == "required_headers":
+		return EnvNames["server.required_headers.<header>"]
+	}
+	return nil
 }
 
 // walkValues visits every scalar that is a value, with its path of mapping
@@ -297,19 +312,6 @@ func children(n *yaml.Node) ([]*yaml.Node, []string) {
 		nodes, keys = n.Content, make([]string, len(n.Content))
 	}
 	return nodes, keys
-}
-
-// Parse decodes raw (decode) and validates it. Every validation problem is
-// reported, not only the first.
-func Parse(raw []byte) (*Config, error) {
-	cfg, err := decode(raw)
-	if err != nil {
-		return nil, err
-	}
-	if err := cfg.Validate(); err != nil {
-		return nil, err
-	}
-	return cfg, nil
 }
 
 // decode expands ${NAME} references, decodes YAML strictly (unknown keys are

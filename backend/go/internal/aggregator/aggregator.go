@@ -23,6 +23,7 @@
 package aggregator
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -55,55 +56,61 @@ func Kinds() []Kind {
 
 // Observer receives telemetry. Implementations must be safe for concurrent
 // use.
+//
+// FetchDone reports every poll of a source, and Published every build that
+// was published.
+//
+// SourceBound tells when a source is bound (at startup, or when a reload
+// adds or changes it) and SourceRemoved when a reload removes it.
+// SourceBound gives, per kind, when the source last succeeded: the fetch
+// time of the data a changed source keeps from its previous binding, or the
+// bind time for a kind with no data. These calls are serialized with
+// FetchDone for the same source, and FetchDone is never called for a source
+// after it was removed.
+//
+// ProductStatus tells a product's status when it is first published and
+// every time the published status changes, and ProductRemoved when a reload
+// removes a product.
+//
+// ProductData and SourceRegionKeys tell about published data that is
+// incomplete although every fetch may succeed. ProductData gives a
+// product's data_complete and the sources it reads (SourceKey), when first
+// published and whenever either changes. SourceRegionKeys gives how many
+// configured region keys a source's last answer lacks and how many it holds
+// that no product configures, when first known and whenever either
+// changes, never after SourceRemoved for that source. The product and data
+// calls are serialized.
 type Observer interface {
 	FetchDone(sourceKey string, kind Kind, took time.Duration, err error)
 	Published(at time.Time)
-}
-
-// SourceObserver is an optional extension of Observer, told when a source is
-// bound (at startup, or when a reload adds or changes it) and when a reload
-// removes it. SourceBound gives, per kind, when the source last succeeded:
-// the fetch time of the data a changed source keeps from its previous
-// binding, or the bind time for a kind with no data. Calls are serialized
-// with FetchDone for the same source, and FetchDone is never called for a
-// source after it was removed.
-type SourceObserver interface {
 	SourceBound(sourceKey string, lastSuccess map[Kind]time.Time)
 	SourceRemoved(sourceKey string)
-}
-
-// ProductObserver is an optional extension of Observer, told a product's
-// status when it is first published and every time the published status
-// changes, and told when a reload removes a product. Calls are serialized.
-type ProductObserver interface {
 	ProductStatus(productID string, status domain.Status)
 	ProductRemoved(productID string)
-}
-
-// DataObserver is an optional extension of Observer, told about published
-// data that is incomplete although every fetch may succeed. ProductData
-// gives a product's data_complete and the sources it reads (SourceKey),
-// when first published and whenever either changes; a removed product is
-// reported to ProductObserver.ProductRemoved. SourceRegionKeys gives how
-// many configured region keys a source's last answer lacks and how many it
-// holds that no product configures, when first known and whenever either
-// changes, never after SourceObserver.SourceRemoved for that source. Calls
-// are serialized.
-type DataObserver interface {
 	ProductData(productID string, complete bool, sources []string)
 	SourceRegionKeys(sourceKey string, missing, unmatched int)
 }
 
+// nopObserver ignores everything; tests embed it and override what they
+// record.
 type nopObserver struct{}
 
 func (nopObserver) FetchDone(string, Kind, time.Duration, error) {}
 func (nopObserver) Published(time.Time)                          {}
+func (nopObserver) SourceBound(string, map[Kind]time.Time)       {}
+func (nopObserver) SourceRemoved(string)                         {}
+func (nopObserver) ProductStatus(string, domain.Status)          {}
+func (nopObserver) ProductRemoved(string)                        {}
+func (nopObserver) ProductData(string, bool, []string)           {}
+func (nopObserver) SourceRegionKeys(string, int, int)            {}
 
 // Options tune an Aggregator; zero values take defaults.
 type Options struct {
 	Logger   *slog.Logger
 	Observer Observer
 	Clock    func() time.Time
+	// RetryBase is the first retry delay after a failed poll; 1 s when zero.
+	RetryBase time.Duration
 	// Publish receives every build, in order. Required. An error means the
 	// build was not published (the previous one is still served): the
 	// Observer is then told nothing, so a service that stops publishing
@@ -125,6 +132,8 @@ type Aggregator struct {
 	obs     Observer
 	now     func() time.Time
 	publish func(Built) error
+	// retryBase is Options.RetryBase.
+	retryBase time.Duration
 
 	mu       sync.Mutex
 	cfg      *config.Config
@@ -133,11 +142,13 @@ type Aggregator struct {
 	running  map[string]context.CancelFunc
 	runCtx   context.Context //nolint:containedctx // Parent for loops started by Apply while running.
 	stopped  bool
-	loops    sync.WaitGroup
-	buildMu  sync.Mutex
+	// polled is true once RefreshAll has polled every source once.
+	polled  bool
+	loops   sync.WaitGroup
+	buildMu sync.Mutex
 	// published is each product's last published status; buildMu guards it.
 	published map[string]domain.Status
-	// productData and regionKeys are what DataObserver was last told, per
+	// productData and regionKeys are what the Observer was last told, per
 	// product and per source; buildMu guards them.
 	productData map[string]productData
 	regionKeys  map[string]RegionKeys
@@ -146,7 +157,7 @@ type Aggregator struct {
 	held map[string]heldCheck
 }
 
-// productData is what DataObserver.ProductData reports for one product.
+// productData is what Observer.ProductData reports for one product.
 type productData struct {
 	complete bool
 	sources  []string
@@ -162,7 +173,7 @@ func New(cfg *config.Config, bindings map[string]Binding, opts Options) (*Aggreg
 		return nil, err
 	}
 	a := &Aggregator{
-		log: opts.Logger, obs: opts.Observer, now: opts.Clock, publish: opts.Publish,
+		log: opts.Logger, obs: opts.Observer, now: opts.Clock, publish: opts.Publish, retryBase: cmp.Or(opts.RetryBase, time.Second),
 		cfg: cfg, bindings: maps.Clone(bindings), running: map[string]context.CancelFunc{},
 		state: make(map[string]sourceState, len(bindings)),
 	}
@@ -186,7 +197,7 @@ func New(cfg *config.Config, bindings map[string]Binding, opts Options) (*Aggreg
 // A source whose binding changed keeps its last good data, marked as
 // inherited, until the new binding answers: each kind is replaced by that
 // kind's first successful fetch (fetchInto), and inherited data ages and
-// goes stale like any other. A SourceObserver is told, per kind, the fetch
+// goes stale like any other. The Observer is told, per kind, the fetch
 // time of the data kept, or the bind time for a kind with none, so a
 // rebind never makes a source look as if it had just answered.
 func (a *Aggregator) bindLocked(key string, at time.Time) {
@@ -195,17 +206,13 @@ func (a *Aggregator) bindLocked(key string, at time.Time) {
 	st.uptime.inherited = st.uptime.ok()
 	st.incidents.inherited = st.incidents.ok()
 	a.state[key] = st
-	so, ok := a.obs.(SourceObserver)
-	if !ok {
-		return
-	}
 	since := func(kept time.Time) time.Time {
 		if kept.IsZero() {
 			return at
 		}
 		return kept
 	}
-	so.SourceBound(key, map[Kind]time.Time{
+	a.obs.SourceBound(key, map[Kind]time.Time{
 		KindComponents: since(st.components.at),
 		KindUptime:     since(st.uptime.at),
 		KindIncidents:  since(st.incidents.at),
@@ -258,7 +265,6 @@ func (a *Aggregator) Apply(ctx context.Context, cfg *config.Config, bindings map
 // returns the bindings to keep and the keys that need an immediate poll.
 func (a *Aggregator) reconcileLocked(bindings map[string]Binding, now time.Time) (map[string]Binding, []string) {
 	next := maps.Clone(bindings)
-	so, observes := a.obs.(SourceObserver)
 	for key, old := range a.bindings {
 		nb, kept := next[key]
 		if !kept || nb.Fingerprint != old.Fingerprint {
@@ -266,9 +272,7 @@ func (a *Aggregator) reconcileLocked(bindings map[string]Binding, now time.Time)
 		}
 		if !kept {
 			delete(a.state, key)
-			if observes {
-				so.SourceRemoved(key)
-			}
+			a.obs.SourceRemoved(key)
 		}
 	}
 	var fresh []string
@@ -283,12 +287,18 @@ func (a *Aggregator) reconcileLocked(bindings map[string]Binding, now time.Time)
 	return next, fresh
 }
 
-// RefreshAll polls every source for every kind once, then publishes.
+// RefreshAll polls every source for every kind once, then publishes. From
+// then on every build is ready (Built.Ready), whether the sources answered
+// or not: a silent source reads unknown, which is what the service must
+// serve while an upstream is down.
 func (a *Aggregator) RefreshAll(ctx context.Context) {
 	a.mu.Lock()
 	keys := slices.Collect(maps.Keys(a.bindings))
 	a.mu.Unlock()
 	a.refresh(ctx, keys)
+	a.mu.Lock()
+	a.polled = true
+	a.mu.Unlock()
 	a.Rebuild()
 }
 
@@ -359,7 +369,7 @@ func (a *Aggregator) loop(ctx context.Context, key string, kind Kind, every time
 	if !a.succeeded(key, kind) {
 		failures = 1
 	}
-	timer := time.NewTimer(nextDelay(every, failures))
+	timer := time.NewTimer(nextDelay(every, failures, a.retryBase))
 	defer timer.Stop()
 	for {
 		select {
@@ -372,22 +382,20 @@ func (a *Aggregator) loop(ctx context.Context, key string, kind Kind, every time
 				failures = 0
 			}
 			a.rebuild(ctx.Done())
-			timer.Reset(nextDelay(every, failures))
+			timer.Reset(nextDelay(every, failures, a.retryBase))
 		}
 	}
 }
 
-// retryBase is the first retry delay after a failed poll.
-const retryBase = time.Second
-
 // nextDelay is the jittered interval after a success, and exponential
-// backoff from retryBase, capped at the interval, after failures. A source
-// that blips recovers in seconds instead of a full interval.
-func nextDelay(every time.Duration, failures int) time.Duration {
+// backoff from base (Options.RetryBase), capped at the interval, after
+// failures. A source that blips recovers in seconds instead of a full
+// interval.
+func nextDelay(every time.Duration, failures int, base time.Duration) time.Duration {
 	if failures == 0 {
 		return jitter(every)
 	}
-	backoff := retryBase << min(failures-1, 16)
+	backoff := base << min(failures-1, 16)
 	return jitter(min(backoff, every))
 }
 
@@ -507,7 +515,7 @@ func (a *Aggregator) rebuild(done <-chan struct{}) {
 	}
 	a.mu.Lock()
 	snapshot := maps.Clone(a.state)
-	cfg := a.cfg
+	cfg, polled := a.cfg, a.polled
 	a.mu.Unlock()
 	now := a.now()
 	built := build(buildParams{
@@ -517,6 +525,7 @@ func (a *Aggregator) rebuild(done <-chan struct{}) {
 		stale:    stalenessOf(cfg.Polling),
 		days:     cfg.History.Days,
 		held:     a.held,
+		polled:   polled,
 	})
 	if a.publish(built) != nil {
 		return
@@ -528,14 +537,10 @@ func (a *Aggregator) rebuild(done <-chan struct{}) {
 	a.trackRegionKeys(built.RegionKeys)
 }
 
-// trackProductData tells a DataObserver each published product's
+// trackProductData tells the Observer each published product's
 // data_complete and sources when they are new or changed. The caller holds
 // buildMu.
 func (a *Aggregator) trackProductData(products []ProductSummary, cfg *config.Config) {
-	do, observes := a.obs.(DataObserver)
-	if !observes {
-		return
-	}
 	sources := make(map[string][]string, len(cfg.Products))
 	for _, p := range cfg.Products {
 		for _, ref := range p.Sources {
@@ -549,18 +554,17 @@ func (a *Aggregator) trackProductData(products []ProductSummary, cfg *config.Con
 		if prev, seen := a.productData[p.ID]; seen && prev.complete == pd.complete && slices.Equal(prev.sources, pd.sources) {
 			continue
 		}
-		do.ProductData(p.ID, pd.complete, pd.sources)
+		a.obs.ProductData(p.ID, pd.complete, pd.sources)
 	}
 	a.productData = current
 }
 
 // trackRegionKeys logs, once per change, each source whose region keys
-// differ from the configuration (and when they match again), and tells a
-// DataObserver. It holds mu while reporting, so a source a reload removed
+// differ from the configuration (and when they match again), and tells the
+// Observer. It holds mu while reporting, so a source a reload removed
 // meanwhile is skipped rather than given new telemetry. The caller holds
 // buildMu.
 func (a *Aggregator) trackRegionKeys(keys map[string]RegionKeys) {
-	do, observes := a.obs.(DataObserver)
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	for key := range a.regionKeys {
@@ -579,9 +583,7 @@ func (a *Aggregator) trackRegionKeys(keys map[string]RegionKeys) {
 		}
 		a.regionKeys[key] = rk
 		a.logRegionKeys(key, rk, seen)
-		if observes {
-			do.SourceRegionKeys(key, len(rk.Missing), len(rk.Unmatched))
-		}
+		a.obs.SourceRegionKeys(key, len(rk.Missing), len(rk.Unmatched))
 	}
 }
 
@@ -600,9 +602,8 @@ func (a *Aggregator) logRegionKeys(key string, rk RegionKeys, before bool) {
 
 // trackStatuses logs every published product status that is new or
 // changed at info, so the logs show what the page said and when, and tells
-// a ProductObserver. The caller holds buildMu.
+// the Observer. The caller holds buildMu.
 func (a *Aggregator) trackStatuses(products []ProductSummary) {
-	po, observes := a.obs.(ProductObserver)
 	current := make(map[string]domain.Status, len(products))
 	for _, p := range products {
 		current[p.ID] = p.Status
@@ -611,13 +612,11 @@ func (a *Aggregator) trackStatuses(products []ProductSummary) {
 			continue
 		}
 		a.logStatus(p.ID, prev, seen, p.Status)
-		if observes {
-			po.ProductStatus(p.ID, p.Status)
-		}
+		a.obs.ProductStatus(p.ID, p.Status)
 	}
 	for id := range a.published {
-		if _, kept := current[id]; !kept && observes {
-			po.ProductRemoved(id)
+		if _, kept := current[id]; !kept {
+			a.obs.ProductRemoved(id)
 		}
 	}
 	a.published = current

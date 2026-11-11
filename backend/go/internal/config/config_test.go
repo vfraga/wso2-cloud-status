@@ -25,18 +25,44 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/wso2/wso2-cloud-status/backend/go/internal/testutil"
 )
 
-const (
-	repoConfig       = "../../../../config/statusd.yaml"
-	productionConfig = "../../../../config/statusd.production.yaml"
+// parse decodes raw as a file is read (decode) and validates it.
+func parse(raw []byte) (*Config, error) {
+	cfg, err := decode(raw)
+	if err != nil {
+		return nil, err
+	}
+	if err := cfg.Validate(); err != nil {
+		return nil, err
+	}
+	return cfg, nil
+}
+
+// load reads the file at path and validates it.
+func load(path string) (*Config, error) {
+	cfg, _, err := Read(path)
+	if err != nil {
+		return nil, err
+	}
+	if err := cfg.Validate(); err != nil {
+		return nil, err
+	}
+	return cfg, nil
+}
+
+var (
+	repoConfig       = testutil.RepoPath("config", "statusd.yaml")
+	productionConfig = testutil.RepoPath("config", "statusd.production.yaml")
 )
 
 // TestShippedConfigIsValid: the catalogue loads; its ids and order are
 // checked against the page's own list in frontend/src/lib/fallbackProducts.test.ts.
 func TestShippedConfigIsValid(t *testing.T) {
 	t.Parallel()
-	cfg, err := Load(repoConfig)
+	cfg, err := load(repoConfig)
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
@@ -52,14 +78,14 @@ func TestShippedConfigIsValid(t *testing.T) {
 // uptime every 5 min, the cadence the page is specified with.
 func TestProductionConfig(t *testing.T) {
 	t.Setenv("FRONT_DOOR_ID", "00000000-0000-0000-0000-000000000001")
-	prod, err := Load(productionConfig)
+	prod, err := load(productionConfig)
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
 	if want := map[string]string{"X-Azure-FDID": "00000000-0000-0000-0000-000000000001"}; !maps.Equal(prod.Server.RequiredHeaders, want) {
 		t.Fatalf("required_headers = %v, want %v", prod.Server.RequiredHeaders, want)
 	}
-	shipped, err := Load(repoConfig)
+	shipped, err := load(repoConfig)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -81,7 +107,7 @@ func TestProductionConfig(t *testing.T) {
 	if err := os.Unsetenv("FRONT_DOOR_ID"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := Load(productionConfig); err == nil || !strings.Contains(err.Error(), "FRONT_DOOR_ID") {
+	if _, err := load(productionConfig); err == nil || !strings.Contains(err.Error(), "FRONT_DOOR_ID") {
 		t.Fatalf("without FRONT_DOOR_ID: err = %v, want the variable named", err)
 	}
 }
@@ -100,7 +126,7 @@ products:
 
 func TestDefaults(t *testing.T) {
 	t.Parallel()
-	cfg, err := Parse([]byte(minimal))
+	cfg, err := parse([]byte(minimal))
 	if err != nil {
 		t.Fatalf("Parse: %v", err)
 	}
@@ -120,11 +146,11 @@ func TestDefaults(t *testing.T) {
 // limits; TestValuesThatCannotWorkAreRejected tests them).
 func TestShippedCacheControlIsTheDefault(t *testing.T) {
 	t.Parallel()
-	shipped, err := Load(repoConfig)
+	shipped, err := load(repoConfig)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defaults, err := Parse([]byte(minimal))
+	defaults, err := parse([]byte(minimal))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -135,7 +161,7 @@ func TestShippedCacheControlIsTheDefault(t *testing.T) {
 
 func TestNewDefaults(t *testing.T) {
 	t.Parallel()
-	cfg, err := Parse([]byte(minimal))
+	cfg, err := parse([]byte(minimal))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -143,35 +169,38 @@ func TestNewDefaults(t *testing.T) {
 		cfg.Reload.Interval() != 10*time.Second || cfg.Backends["b"].Type != "legacy-status-api" {
 		t.Fatalf("defaults: %+v %+v %v", cfg.Server, cfg.Backends["b"], cfg.Reload.Interval())
 	}
-	off, err := Parse([]byte(minimal + "reload: { watch_interval: 0s }\n"))
+	off, err := parse([]byte(minimal + "reload: { watch_interval: 0s }\n"))
 	if err != nil || off.Reload.Interval() != 0 {
 		t.Fatalf("explicit 0s must disable watching: %v %v", err, off)
 	}
 }
 
 func TestEnvironmentReferences(t *testing.T) {
-	t.Setenv("STATUSD_TEST_FDID", "abc-123")
-	cfg, err := Parse([]byte(minimal + "server: { required_headers: { X-Azure-FDID: \"${STATUSD_TEST_FDID}\" } }\n"))
+	t.Setenv("FRONT_DOOR_ID", "abc-123")
+	cfg, err := parse([]byte(minimal + "server: { required_headers: { X-Azure-FDID: \"${FRONT_DOOR_ID}\" } }\n"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	if cfg.Server.RequiredHeaders["X-Azure-FDID"] != "abc-123" {
 		t.Fatalf("required headers = %v", cfg.Server.RequiredHeaders)
 	}
-	_, err = Parse([]byte(minimal + "server: { required_headers: { A: \"${STATUSD_TEST_UNSET_1}\", B: \"${STATUSD_TEST_UNSET_1}\" } }\n"))
-	if err == nil || !strings.Contains(err.Error(), "[STATUSD_TEST_UNSET_1]") {
+	if err := os.Unsetenv("FRONT_DOOR_ID"); err != nil {
+		t.Fatal(err)
+	}
+	_, err = parse([]byte(minimal + "server: { required_headers: { A: \"${FRONT_DOOR_ID}\", B: \"${FRONT_DOOR_ID}\" } }\n"))
+	if err == nil || !strings.Contains(err.Error(), "[FRONT_DOOR_ID]") {
 		t.Fatalf("err = %v, want the unset variable named once", err)
 	}
-	if _, err := Parse([]byte(minimal + "# costs $5, not a reference\n")); err != nil {
+	if _, err := parse([]byte(minimal + "# costs $5, not a reference\n")); err != nil {
 		t.Fatalf("a bare $ must be left alone: %v", err)
 	}
-	if _, err := Parse([]byte(minimal + "# example: \"${STATUSD_TEST_UNSET_2}\"\n")); err != nil {
+	if _, err := parse([]byte(minimal + "# example: \"${HOME}\"\n")); err != nil {
 		t.Fatalf("references in comments must not be expanded: %v", err)
 	}
-	if _, err := Parse([]byte("")); err == nil {
+	if _, err := parse([]byte("")); err == nil {
 		t.Fatal("an empty file must fail validation")
 	}
-	if _, err := Parse([]byte("products: [\n")); err == nil {
+	if _, err := parse([]byte("products: [\n")); err == nil {
 		t.Fatal("malformed YAML must fail")
 	}
 }
@@ -180,14 +209,15 @@ func TestEnvironmentReferences(t *testing.T) {
 // the environment only when its value in the file is one ${NAME} reference
 // and nothing else, quoted or not.
 func TestEnvOptionsRecordWholeReferences(t *testing.T) {
-	t.Setenv("STATUSD_TEST_SECRET", "s3cret")
+	t.Setenv("CSM_CLIENT_SECRET", "s3cret")
+	t.Setenv("CSM_CLIENT_ID", "s3cret")
 	body := strings.Replace(minimal, `b: { base_url: "https://example.test" }`, `b:
     base_url: "https://example.test"
     options:
-      quoted: "${STATUSD_TEST_SECRET}"
-      plain: ${STATUSD_TEST_SECRET}
+      quoted: "${CSM_CLIENT_SECRET}"
+      plain: ${CSM_CLIENT_ID}
       literal: s3cret`, 1)
-	cfg, err := Parse([]byte(body))
+	cfg, err := parse([]byte(body))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -218,7 +248,7 @@ func TestBackendURLsAreHTTPS(t *testing.T) {
 		for _, typ := range []string{"legacy-status-api", "csm-cloud-status"} {
 			body := strings.Replace(minimal, `b: { base_url: "https://example.test" }`,
 				fmt.Sprintf("b: { type: %s, base_url: %q }", typ, url), 1)
-			_, err := Parse([]byte(body))
+			_, err := parse([]byte(body))
 			if want == "" && err != nil {
 				t.Errorf("%s %s: err = %v, want none", typ, url, err)
 			}
@@ -231,64 +261,93 @@ func TestBackendURLsAreHTTPS(t *testing.T) {
 
 // TestEnvironmentReferencesAreConfined: ${NAME} reads the environment only
 // as the whole value of a backend option or a server.required_headers entry,
-// where it stays a string; anywhere else, part of a longer value, or copied
-// by a YAML alias, it is an error that names the place, so whoever can change
-// the file cannot copy a secret into a URL or a published name.
+// naming a variable EnvNames lists for that place, where it stays a string;
+// anywhere else, part of a longer value, another variable, or copied by a
+// YAML alias, it is an error that names the place, so whoever can change the
+// file cannot copy a secret into a URL or a published name, nor send any
+// other variable of the container to a host it names.
 func TestEnvironmentReferencesAreConfined(t *testing.T) {
-	t.Setenv("STATUSD_TEST_SECRET", "s3cret")
-	t.Setenv("STATUSD_TEST_ID", "12345")
-	t.Setenv("STATUSD_TEST_NULL", "null")
-	cfg, err := Parse([]byte(minimal + `server:
+	t.Setenv("CSM_CLIENT_SECRET", "s3cret")
+	t.Setenv("CSM_CLIENT_ID", "s3cret")
+	for _, value := range []string{"12345", "null"} {
+		t.Setenv("FRONT_DOOR_ID", value)
+		cfg, err := parse([]byte(minimal + `server:
   required_headers:
-    A: ${STATUSD_TEST_ID}
-    B: "${STATUSD_TEST_ID}"
-    C: ${STATUSD_TEST_NULL}
+    A: ${FRONT_DOOR_ID}
+    B: "${FRONT_DOOR_ID}"
 `))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if want := map[string]string{"A": "12345", "B": "12345", "C": "null"}; !maps.Equal(cfg.Server.RequiredHeaders, want) {
-		t.Fatalf("required headers = %v, want %v", cfg.Server.RequiredHeaders, want)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if want := map[string]string{"A": value, "B": value}; !maps.Equal(cfg.Server.RequiredHeaders, want) {
+			t.Fatalf("required headers = %v, want %v", cfg.Server.RequiredHeaders, want)
+		}
 	}
 
+	option := func(key, value string) string {
+		return strings.Replace(minimal, `b: { base_url: "https://example.test" }`,
+			`b: { base_url: "https://example.test", options: { `+key+`: "`+value+`" } }`, 1)
+	}
 	for place, body := range map[string]string{
-		"history.days":           minimal + "history:\n  days: ${STATUSD_TEST_ID}\n",
-		"server.max_in_flight":   minimal + "server:\n  max_in_flight: ${STATUSD_TEST_ID}\n",
-		"backends.b.base_url":    strings.Replace(minimal, `"https://example.test"`, `"https://example.test/${STATUSD_TEST_SECRET}"`, 1),
-		"products.0.description": strings.Replace(minimal, "name: P\n", "name: P\n    description: \"${STATUSD_TEST_SECRET}\"\n", 1),
-		"backends.b.options.token_url": strings.Replace(minimal, `b: { base_url: "https://example.test" }`,
-			`b: { base_url: "https://example.test", options: { token_url: "https://t.test/${STATUSD_TEST_SECRET}" } }`, 1),
-		"server.required_headers.D": minimal + "server: { required_headers: { D: \"${STATUSD_TEST_ID}${STATUSD_TEST_ID}\" } }\n",
+		"history.days":                 minimal + "history:\n  days: ${FRONT_DOOR_ID}\n",
+		"server.max_in_flight":         minimal + "server:\n  max_in_flight: ${FRONT_DOOR_ID}\n",
+		"backends.b.base_url":          strings.Replace(minimal, `"https://example.test"`, `"https://example.test/${CSM_CLIENT_SECRET}"`, 1),
+		"products.0.description":       strings.Replace(minimal, "name: P\n", "name: P\n    description: \"${CSM_CLIENT_SECRET}\"\n", 1),
+		"backends.b.options.token_url": option("token_url", "https://t.test/${CSM_CLIENT_SECRET}"),
+		"server.required_headers.D":    minimal + "server: { required_headers: { D: \"${FRONT_DOOR_ID}${FRONT_DOOR_ID}\" } }\n",
+		// Variables the place does not list, set or not.
+		"backends.b.options.client_secret": option("client_secret", "${HOME}"),
+		"backends.b.options.client_id":     option("client_id", "${FRONT_DOOR_ID}"),
+		"server.required_headers.E":        minimal + "server: { required_headers: { E: \"${CSM_CLIENT_SECRET}\" } }\n",
 	} {
-		_, err := Parse([]byte(body))
+		_, err := parse([]byte(body))
 		if err == nil || !strings.Contains(err.Error(), "allowed only as the whole value") || !strings.Contains(err.Error(), place) {
 			t.Errorf("%s: err = %v, want the reference refused there", place, err)
 		}
 	}
 
 	alias := strings.Replace(minimal, `b: { base_url: "https://example.test" }`,
-		`b: { base_url: "https://example.test", options: { client_secret: &s "${STATUSD_TEST_SECRET}" } }`, 1)
+		`b: { base_url: "https://example.test", options: { client_secret: &s "${CSM_CLIENT_SECRET}" } }`, 1)
 	alias = strings.Replace(alias, "name: P\n", "name: P\n    description: *s\n", 1)
-	if _, err := Parse([]byte(alias)); err == nil || !strings.Contains(err.Error(), "aliases are not allowed") {
+	if _, err := parse([]byte(alias)); err == nil || !strings.Contains(err.Error(), "aliases are not allowed") {
 		t.Errorf("alias: err = %v, want aliases refused", err)
+	}
+}
+
+// TestASecondDocumentIsRefused: settings after a "---" line would never
+// apply, so a file with a second YAML document is refused, even an empty
+// one.
+func TestASecondDocumentIsRefused(t *testing.T) {
+	t.Parallel()
+	for name, body := range map[string]string{
+		"settings":      minimal + "---\nhistory: { days: 30 }\n",
+		"empty":         minimal + "---\n",
+		"leading empty": "---\n---\n" + minimal,
+	} {
+		if _, err := parse([]byte(body)); err == nil || !strings.Contains(err.Error(), "more than one YAML document") {
+			t.Errorf("%s: err = %v, want the second document refused", name, err)
+		}
+	}
+	if _, err := parse([]byte("---\n" + minimal)); err != nil {
+		t.Errorf("one document after a leading ---: %v", err)
 	}
 }
 
 func TestEphemeralPortsMayRepeat(t *testing.T) {
 	t.Parallel()
-	if _, err := Parse([]byte(minimal + "server: { addr: \"127.0.0.1:0\", admin_addr: \"127.0.0.1:0\" }\n")); err != nil {
+	if _, err := parse([]byte(minimal + "server: { addr: \"127.0.0.1:0\", admin_addr: \"127.0.0.1:0\" }\n")); err != nil {
 		t.Fatalf("port 0 on both listeners is valid (the OS picks distinct ports): %v", err)
 	}
 }
 
 func TestRestartRequired(t *testing.T) {
 	t.Parallel()
-	a, _ := Parse([]byte(minimal))
-	b, _ := Parse([]byte(minimal + "history: { days: 30 }\n"))
+	a, _ := parse([]byte(minimal))
+	b, _ := parse([]byte(minimal + "history: { days: 30 }\n"))
 	if got := a.RestartRequired(b); len(got) != 0 {
 		t.Fatalf("history change flagged as restart-required: %v", got)
 	}
-	c, _ := Parse([]byte(minimal + "server: { addr: \":9999\" }\nreload: { watch_interval: 1m }\n"))
+	c, _ := parse([]byte(minimal + "server: { addr: \":9999\" }\nreload: { watch_interval: 1m }\n"))
 	if got := a.RestartRequired(c); len(got) != 2 {
 		t.Fatalf("RestartRequired = %v, want server and reload", got)
 	}
@@ -304,7 +363,7 @@ func TestApplyEnvOverrides(t *testing.T) {
 			return ""
 		}
 	}
-	cfg, _ := Parse([]byte(minimal))
+	cfg, _ := parse([]byte(minimal))
 	if cfg.ApplyEnvOverrides(env("")); cfg.Server.Addr != ":8080" {
 		t.Fatalf("no PORT: addr %q", cfg.Server.Addr)
 	}
@@ -312,11 +371,11 @@ func TestApplyEnvOverrides(t *testing.T) {
 		t.Fatalf("PORT=8123: addr %q, err %v", cfg.Server.Addr, cfg.Validate())
 	}
 	// Applied to every load, the override never reads as a restart-only change.
-	again, _ := Parse([]byte(minimal))
+	again, _ := parse([]byte(minimal))
 	if again.ApplyEnvOverrides(env("8123")); len(cfg.RestartRequired(again)) != 0 {
 		t.Fatalf("reloaded with the same PORT: %v", cfg.RestartRequired(again))
 	}
-	clash, _ := Parse([]byte(minimal))
+	clash, _ := parse([]byte(minimal))
 	if clash.ApplyEnvOverrides(env("9090")); clash.Validate() == nil || !strings.Contains(clash.Validate().Error(), "must differ") {
 		t.Fatalf("PORT on the admin port: err = %v", clash.Validate())
 	}
@@ -324,7 +383,7 @@ func TestApplyEnvOverrides(t *testing.T) {
 
 func TestUnknownKeysAreRejected(t *testing.T) {
 	t.Parallel()
-	_, err := Parse([]byte(minimal + "\nhistroy: { days: 30 }\n"))
+	_, err := parse([]byte(minimal + "\nhistroy: { days: 30 }\n"))
 	if err == nil || !strings.Contains(err.Error(), "histroy") {
 		t.Fatalf("err = %v, want the misspelled key named", err)
 	}
@@ -348,7 +407,7 @@ products:
   - id: Bad_ID
     name: Second
 `
-	_, err := Parse([]byte(bad))
+	_, err := parse([]byte(bad))
 	if err == nil {
 		t.Fatal("expected validation errors")
 	}
@@ -422,21 +481,21 @@ func TestValuesThatCannotWorkAreRejected(t *testing.T) {
 		if !strings.Contains(body, "products:") {
 			body = minimal + body + "\n"
 		}
-		if _, err := Parse([]byte(body)); err == nil || !strings.Contains(err.Error(), tc.want) {
+		if _, err := parse([]byte(body)); err == nil || !strings.Contains(err.Error(), tc.want) {
 			t.Errorf("%s: err = %v, want it to name %q", name, err, tc.want)
 		}
 	}
 	for _, addr := range []string{":0", "127.0.0.1:18800", "[::1]:9091", "0.0.0.0:65535"} {
-		if _, err := Parse([]byte(minimal + "server: { addr: \"" + addr + "\" }\n")); err != nil {
+		if _, err := parse([]byte(minimal + "server: { addr: \"" + addr + "\" }\n")); err != nil {
 			t.Errorf("addr %q: %v", addr, err)
 		}
 	}
 	for _, pair := range []string{`addr: "127.0.0.1:18803", admin_addr: "127.0.0.2:18803"`, `addr: ":0", admin_addr: ":0"`} {
-		if _, err := Parse([]byte(minimal + "server: { " + pair + " }\n")); err != nil {
+		if _, err := parse([]byte(minimal + "server: { " + pair + " }\n")); err != nil {
 			t.Errorf("%s: %v", pair, err)
 		}
 	}
-	cfg, err := Parse([]byte(minimal))
+	cfg, err := parse([]byte(minimal))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -451,7 +510,7 @@ func TestValuesThatCannotWorkAreRejected(t *testing.T) {
 // other's data. Backend names are slugs.
 func TestSourceKeysCannotCollide(t *testing.T) {
 	t.Parallel()
-	_, err := Parse([]byte(`
+	_, err := parse([]byte(`
 backends:
   "a/x": { base_url: "https://one.test" }
   a: { base_url: "https://two.test" }
@@ -514,7 +573,7 @@ backends:
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			_, err := Parse([]byte(backends + "products:" + tt.products))
+			_, err := parse([]byte(backends + "products:" + tt.products))
 			if tt.want == "" && err != nil {
 				t.Fatalf("err = %v, want none", err)
 			}
@@ -583,7 +642,7 @@ products:
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			_, err := Parse([]byte(head + tt.regions))
+			_, err := parse([]byte(head + tt.regions))
 			if tt.want == "" && err != nil {
 				t.Fatalf("err = %v, want none", err)
 			}
@@ -612,7 +671,7 @@ func TestTimeoutBounds(t *testing.T) {
 		{"server: { shutdown_timeout: 1m }", ""},
 	}
 	for _, tt := range tests {
-		_, err := Parse([]byte(minimal + tt.set + "\n"))
+		_, err := parse([]byte(minimal + tt.set + "\n"))
 		if tt.want == "" && err != nil {
 			t.Errorf("%s: err = %v, want none", tt.set, err)
 		}
@@ -624,7 +683,7 @@ func TestTimeoutBounds(t *testing.T) {
 
 func TestEmptyConfigNeedsBackendsAndProducts(t *testing.T) {
 	t.Parallel()
-	_, err := Parse([]byte("server: { addr: ':9000' }\n"))
+	_, err := parse([]byte("server: { addr: ':9000' }\n"))
 	if err == nil || !strings.Contains(err.Error(), "at least one backend") || !strings.Contains(err.Error(), "at least one product") {
 		t.Fatalf("err = %v", err)
 	}
@@ -632,14 +691,14 @@ func TestEmptyConfigNeedsBackendsAndProducts(t *testing.T) {
 
 func TestLoadErrors(t *testing.T) {
 	t.Parallel()
-	if _, err := Load(filepath.Join(t.TempDir(), "missing.yaml")); err == nil {
+	if _, err := load(filepath.Join(t.TempDir(), "missing.yaml")); err == nil {
 		t.Fatal("expected an error for a missing file")
 	}
 	path := filepath.Join(t.TempDir(), "bad.yaml")
 	if err := os.WriteFile(path, []byte("products: [\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := Load(path); err == nil {
+	if _, err := load(path); err == nil {
 		t.Fatal("expected a decode error")
 	}
 }

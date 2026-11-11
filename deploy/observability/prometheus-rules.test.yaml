@@ -423,8 +423,8 @@ tests:
               runbook_url: docs/operations/runbook.md#statusdservererrors
               summary: "statusd a answers more than 1% 5xx"
 
-  # A replica that cannot become ready answers its readiness probe with 503
-  # for as long as no upstream has answered; that is not a server error.
+  # A replica answers its readiness probe with 503 until its first poll round
+  # has finished; that is not a server error.
   - name: readiness probe 503s alone do not alert
     interval: 1m
     input_series:

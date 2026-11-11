@@ -17,6 +17,7 @@
 package domain
 
 import (
+	"cmp"
 	"slices"
 	"strings"
 	"time"
@@ -86,6 +87,51 @@ func (i Incident) Active() bool {
 	return i.ResolvedAt == nil
 }
 
+// Later returns the copy of one incident to keep when two records share its
+// ID: an open copy over a resolved one, else the one that ends later; then
+// the more severe EffectiveImpact, the later start, and the title, state and
+// impact as text. The open copy wins so a stale resolved copy never hides an
+// outage. The order is total, so the result does not depend on which copy
+// comes first: a response never changes between polls because two sources
+// or two months were read in another order.
+func Later(a, b Incident) Incident {
+	if keepFirst(a, b) {
+		return a
+	}
+	return b
+}
+
+// keepFirst reports whether a ranks at least as high as b for Later.
+func keepFirst(a, b Incident) bool {
+	if c := compareEnds(a.ResolvedAt, b.ResolvedAt); c != 0 {
+		return c > 0
+	}
+	if c := cmp.Compare(a.EffectiveImpact(), b.EffectiveImpact()); c != 0 {
+		return c > 0
+	}
+	if c := a.StartedAt.Compare(b.StartedAt); c != 0 {
+		return c > 0
+	}
+	return cmp.Or(
+		strings.Compare(a.Title, b.Title),
+		strings.Compare(a.State, b.State),
+		cmp.Compare(a.Impact, b.Impact),
+	) >= 0
+}
+
+// compareEnds orders ends with open (nil) above every time.
+func compareEnds(a, b *time.Time) int {
+	switch {
+	case a == nil && b == nil:
+		return 0
+	case a == nil:
+		return 1
+	case b == nil:
+		return -1
+	}
+	return a.Compare(*b)
+}
+
 // EffectiveImpact is the status the incident counts as in roll-ups and the
 // daily history: its impact, or degraded when the impact is unknown (an
 // incident type we do not recognise). A declared incident never counts as
@@ -99,8 +145,10 @@ func (i Incident) EffectiveImpact() Status {
 
 // Day is one cell of a product's daily history strip.
 type Day struct {
-	Date        string         `json:"date"`
-	Status      Status         `json:"status"`
-	Minutes     map[Status]int `json:"minutes,omitempty"`
-	IncidentIDs []string       `json:"incident_ids,omitempty"`
+	Date    string         `json:"date"`
+	Status  Status         `json:"status"`
+	Minutes map[Status]int `json:"minutes,omitempty"`
+	// IncidentIDs are the incidents that touch the day, in the order
+	// DailyHistory is given them; at most MaxDayIncidents (it says which).
+	IncidentIDs []string `json:"incident_ids,omitempty"`
 }

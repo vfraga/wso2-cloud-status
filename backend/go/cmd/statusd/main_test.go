@@ -34,12 +34,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/wso2/wso2-cloud-status/backend/go/internal/config"
+	"github.com/wso2/wso2-cloud-status/backend/go/internal/config/configtest"
+	"github.com/wso2/wso2-cloud-status/backend/go/internal/testutil"
 )
 
-const (
-	shippedConfig    = "../../../../config/statusd.yaml"
-	productionConfig = "../../../../config/statusd.production.yaml"
+var (
+	shippedConfig    = testutil.RepoPath("config", "statusd.yaml")
+	productionConfig = testutil.RepoPath("config", "statusd.production.yaml")
 )
 
 // check runs statusd with args and returns the exit code and both outputs.
@@ -76,10 +77,7 @@ func writeConfig(t *testing.T, body string) string {
 func TestCheckConfigShippedFiles(t *testing.T) {
 	t.Setenv("FRONT_DOOR_ID", "fdid-placeholder")
 	t.Setenv("PORT", "")
-	cfg, err := config.Load(shippedConfig)
-	if err != nil {
-		t.Fatal(err)
-	}
+	cfg := configtest.Load(t, shippedConfig)
 	n := len(cfg.Products)
 	for path, want := range map[string]string{
 		shippedConfig:    fmt.Sprintf("is valid: %d products, origin lock off\n", n),
@@ -144,18 +142,18 @@ func TestCheckConfigRejects(t *testing.T) {
 // control characters; the check never prints it.
 func TestCheckConfigCSMSecret(t *testing.T) {
 	t.Setenv("PORT", "")
-	t.Setenv("STATUSD_TEST_SECRET", "s3cret")
-	t.Setenv("STATUSD_TEST_SECRET_NEWLINE", "s3cret\n")
 	csm := func(secret string) string {
 		return "backends:\n  b:\n    type: csm-cloud-status\n    base_url: https://csm.example.test\n" +
 			"    options: { token_url: \"https://sts.example.test/token\", client_id: statusd, client_secret: " + secret + " }\n" + product
 	}
-	for secret, want := range map[string]string{
-		`"${STATUSD_TEST_SECRET}"`:         "",
-		`s3cret`:                           "CSM option client_secret must be one ${NAME} reference to the environment, not a value in the file",
-		`"x-${STATUSD_TEST_SECRET}"`:       "allowed only as the whole value of a backend option",
-		`"${STATUSD_TEST_SECRET_NEWLINE}"`: "CSM option client_secret has surrounding spaces or a control character",
+	for _, tt := range []struct{ secret, env, want string }{
+		{`"${CSM_CLIENT_SECRET}"`, "s3cret", ""},
+		{`s3cret`, "s3cret", "CSM option client_secret must be one ${NAME} reference to the environment, not a value in the file"},
+		{`"x-${CSM_CLIENT_SECRET}"`, "s3cret", "allowed only as the whole value of a backend option"},
+		{`"${CSM_CLIENT_SECRET}"`, "s3cret\n", "CSM option client_secret has surrounding spaces or a control character"},
 	} {
+		secret, want := tt.secret, tt.want
+		t.Setenv("CSM_CLIENT_SECRET", tt.env)
 		path := writeConfig(t, csm(secret))
 		code, stdout, stderr := check(t, "-check-config", path)
 		switch {

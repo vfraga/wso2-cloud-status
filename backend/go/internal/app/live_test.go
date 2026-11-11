@@ -28,6 +28,8 @@ import (
 
 	"github.com/wso2/wso2-cloud-status/backend/go/internal/aggregator"
 	"github.com/wso2/wso2-cloud-status/backend/go/internal/config"
+	"github.com/wso2/wso2-cloud-status/backend/go/internal/config/configtest"
+	"github.com/wso2/wso2-cloud-status/backend/go/internal/testutil"
 )
 
 // TestLiveUpstream runs the shipped configuration against the real public
@@ -36,10 +38,7 @@ import (
 // only as a stale kind), and every product must report exactly the regions
 // the configuration names. CI runs it nightly, not on pull requests.
 func TestLiveUpstream(t *testing.T) {
-	cfg, err := config.Load("../../../../config/statusd.yaml")
-	if err != nil {
-		t.Fatal(err)
-	}
+	cfg := configtest.Load(t, testutil.RepoPath("config", "statusd.yaml"))
 	cfg.Server.Addr, cfg.Server.AdminAddr = "127.0.0.1:0", "127.0.0.1:0"
 	a, err := New(cfg, slog.New(slog.DiscardHandler), "live-test")
 	if err != nil {

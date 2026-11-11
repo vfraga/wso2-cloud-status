@@ -60,6 +60,7 @@ type location struct {
 
 type incident struct {
 	ID         string  `json:"id"`
+	ProductID  string  `json:"product_id"`
 	Title      string  `json:"title"`
 	StartedAt  string  `json:"started_at"`
 	ResolvedAt *string `json:"resolved_at"`
@@ -105,6 +106,7 @@ type product struct {
 	ID              string         `json:"id"`
 	Status          string         `json:"status"`
 	AffectedRegions int            `json:"affected_regions"`
+	ActiveIncidents int            `json:"active_incident_count"`
 	DataComplete    bool           `json:"data_complete"`
 	Outdated        bool           `json:"outdated"`
 	CheckedAt       checkedAt      `json:"checked_at"`
@@ -245,10 +247,17 @@ func TestRollUpInvariants(t *testing.T) {
 	}
 	productStatuses := make([]string, 0, len(sum.Products))
 	complete := true
+	historyLen := -1
 	for _, p := range sum.Products {
 		productStatuses = append(productStatuses, p.Status)
 		complete = complete && p.DataComplete && p.Status != "unknown"
-		checkProductInvariants(t, base, p, len(sum.Products[0].History))
+		detail := checkProductInvariants(t, base, p, sum)
+		if historyLen < 0 {
+			historyLen = len(detail.History)
+		}
+		if len(detail.History) != historyLen {
+			t.Errorf("%s: history length %d, want %d like every product", p.ID, len(detail.History), historyLen)
+		}
 	}
 	// The overall status fails closed: unknown when data is missing and no
 	// problem is known, otherwise the worst known product status.
@@ -265,13 +274,11 @@ func TestRollUpInvariants(t *testing.T) {
 	}
 }
 
-func checkProductInvariants(t *testing.T, base string, p product, historyLen int) {
+// checkProductInvariants checks one summary row against the product's own
+// route, which it returns.
+func checkProductInvariants(t *testing.T, base string, p product, sum summary) product {
 	t.Helper()
-	var detail product
-	r := call(t, http.MethodGet, base+"/api/v1/products/"+p.ID, nil)
-	if err := json.Unmarshal(r.body, &detail); err != nil {
-		t.Fatal(err)
-	}
+	detail := productDetail(t, base, p.ID)
 	checkFeeds(t, p.ID+" (summary row)", p)
 	checkFeeds(t, p.ID, detail)
 	statuses := make([]string, 0, len(p.Regions))
@@ -289,9 +296,7 @@ func checkProductInvariants(t *testing.T, base string, p product, historyLen int
 	if complete := dataComplete(detail.RegionDetails); p.AffectedRegions != affected || p.DataComplete != complete {
 		t.Errorf("%s: affected=%d complete=%v, want %d %v (complete: every region and component known)", p.ID, p.AffectedRegions, p.DataComplete, affected, complete)
 	}
-	if len(p.History) != historyLen {
-		t.Errorf("%s: history length %d, want %d like every product", p.ID, len(p.History), historyLen)
-	}
+	checkActiveIncidents(t, p, detail, sum)
 	for i, inc := range detail.Incidents {
 		if inc.ResolvedAt == nil {
 			statuses = append(statuses, effectiveImpact(inc.Impact))
@@ -310,6 +315,50 @@ func checkProductInvariants(t *testing.T, base string, p product, historyLen int
 		t.Errorf("%s: detail disagrees with the summary row", p.ID)
 	}
 	checkLocations(t, p, detail.RegionDetails)
+	return detail
+}
+
+// productDetail reads a product's own route, failing with its status when
+// it does not answer 200 (a product the summary names but the route does
+// not serve, after a catalogue change).
+func productDetail(t *testing.T, base, id string) product {
+	t.Helper()
+	r := call(t, http.MethodGet, base+"/api/v1/products/"+id, nil)
+	if r.code != http.StatusOK {
+		t.Fatalf("GET /api/v1/products/%s: %d, want 200", id, r.code)
+	}
+	var detail product
+	if err := json.Unmarshal(r.body, &detail); err != nil {
+		t.Fatal(err)
+	}
+	return detail
+}
+
+// maxSummaryIncidents is how many of one product's active incidents the
+// summary lists (api/openapi.yaml, Summary.active_incidents).
+const maxSummaryIncidents = 10
+
+// checkActiveIncidents: the product's active_incident_count counts the
+// active incidents its route lists, and the summary lists the newest of
+// them, at most maxSummaryIncidents.
+func checkActiveIncidents(t *testing.T, p, detail product, sum summary) {
+	t.Helper()
+	var active []string
+	for _, inc := range detail.Incidents {
+		if inc.ResolvedAt == nil {
+			active = append(active, inc.ID)
+		}
+	}
+	var listed []string
+	for _, inc := range sum.ActiveIncidents {
+		if inc.ProductID == p.ID {
+			listed = append(listed, inc.ID)
+		}
+	}
+	if p.ActiveIncidents != len(active) || !slices.Equal(listed, active[:min(len(active), maxSummaryIncidents)]) {
+		t.Errorf("%s: active_incident_count %d, summary lists %v; want %d and the newest %d of %v",
+			p.ID, p.ActiveIncidents, listed, len(active), maxSummaryIncidents, active)
+	}
 }
 
 // checkLocations: every region's location is one of the product's, each
@@ -952,9 +1001,16 @@ func configuredRegions(t *testing.T) map[string]int {
 // smaller id, and the history refers to that id only.
 func checkCollapsedIncidents(t *testing.T, base string) {
 	t.Helper()
-	var detail product
-	if err := json.Unmarshal(call(t, http.MethodGet, base+"/api/v1/products/developer-platform", nil).body, &detail); err != nil {
+	detail := productDetail(t, base, "developer-platform")
+	var list struct {
+		Incidents []incident `json:"incidents"`
+	}
+	if err := json.Unmarshal(call(t, http.MethodGet, base+"/api/v1/incidents", nil).body, &list); err != nil {
 		t.Fatal(err)
+	}
+	inList := map[string]bool{}
+	for _, inc := range list.Incidents {
+		inList[inc.ID] = true
 	}
 	listed := map[string]bool{}
 	for _, inc := range detail.Incidents {
@@ -987,10 +1043,11 @@ func checkCollapsedIncidents(t *testing.T, base string) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		inWindow := ended.After(windowStart)
-		if !inWindow {
-			t.Logf("%s ended before the history window (%s); only its duplicate's absence is checked", pair.kept, detail.History[0].Date)
+		// The incident list keeps every incident, whatever the date.
+		if !inList[pair.kept] || inList[pair.dropped] {
+			t.Errorf("the incident list has %s: %v and %s: %v; want only the first of the pair", pair.kept, inList[pair.kept], pair.dropped, inList[pair.dropped])
 		}
+		inWindow := ended.After(windowStart)
 		if listed[pair.kept] != inWindow || listed[pair.dropped] || referenced[pair.dropped] {
 			t.Errorf("developer-platform lists %s: %v (in the window: %v) and %s: %v (history refers to it: %v); want only the first of the pair, while in the window",
 				pair.kept, listed[pair.kept], inWindow, pair.dropped, listed[pair.dropped], referenced[pair.dropped])
@@ -1006,47 +1063,53 @@ func TestEdgeScenario(t *testing.T) {
 	if os.Getenv("CONTRACT_SCENARIO") != "edge" {
 		t.Skip("CONTRACT_SCENARIO != edge")
 	}
-	products := map[string]product{}
+	details := map[string]product{}
 	var sum summary
 	if err := json.Unmarshal(call(t, http.MethodGet, base+"/api/v1/summary", nil).body, &sum); err != nil {
 		t.Fatal(err)
 	}
 	for _, p := range sum.Products {
-		var detail product
-		if err := json.Unmarshal(call(t, http.MethodGet, base+"/api/v1/products/"+p.ID, nil).body, &detail); err != nil {
-			t.Fatal(err)
+		details[p.ID] = productDetail(t, base, p.ID)
+	}
+	// The scenario names products by id: one the catalogue no longer has
+	// fails here, by name.
+	products := func(id string) product {
+		t.Helper()
+		p, ok := details[id]
+		if !ok {
+			t.Fatalf("product %s is not in the summary; the edge scenario expects it", id)
 		}
-		products[p.ID] = detail
+		return p
 	}
 	t.Run("colliding and empty region keys get unique ids", func(t *testing.T) {
-		checkEdgeRegions(t, products["moesif"])
+		checkEdgeRegions(t, products("moesif"))
 	})
 	t.Run("a null or missing component status is unknown", func(t *testing.T) {
-		checkEdgeComponents(t, products["moesif"])
+		checkEdgeComponents(t, products("moesif"))
 		if sum.DataComplete {
 			t.Error("summary data_complete = true while moesif's data is incomplete")
 		}
 	})
 	t.Run("an unrecognised incident type counts as degraded", func(t *testing.T) {
-		checkEdgeIncident(t, products["api-platform"], sum)
+		checkEdgeIncident(t, products("api-platform"), sum)
 	})
 	t.Run("a source that returns {} for incidents hides neither the other's incidents nor the gap", func(t *testing.T) {
-		checkEdgeMerge(t, products["developer-platform"])
+		checkEdgeMerge(t, products("developer-platform"))
 	})
 	t.Run("outage, maintenance and degraded regions are affected, and an unconfigured region comes last", func(t *testing.T) {
-		checkEdgeAgentRegions(t, products["agent-platform"])
+		checkEdgeAgentRegions(t, products("agent-platform"))
 	})
 	t.Run("a Maintenance incident has impact maintenance", func(t *testing.T) {
-		checkEdgeMaintenance(t, products["integration-platform"], sum)
+		checkEdgeMaintenance(t, products("integration-platform"), sum)
 	})
 	t.Run("every status value occurs in some region", func(t *testing.T) {
 		checkEveryStatus(t, sum)
 	})
 	t.Run("a silent source of a multi-source product leaves only its own regions unknown", func(t *testing.T) {
-		checkEdgeSilentSibling(t, products["developer-platform"])
+		checkEdgeSilentSibling(t, products("developer-platform"))
 	})
 	t.Run("checked_at is null and stale is true exactly for the kinds never answered", func(t *testing.T) {
-		checkEdgeFeeds(t, products)
+		checkEdgeFeeds(t, details)
 	})
 }
 

@@ -61,8 +61,8 @@ func (a *App) watchConfig(ctx context.Context) {
 	}
 	last, _ := fileHash(a.configPath)
 	valid := true
-	var tick <-chan time.Time
-	if every := a.cfg.Reload.Interval(); every > 0 {
+	tick := a.ticks
+	if every := a.cfg.Reload.Interval(); every > 0 && tick == nil {
 		ticker := time.NewTicker(every)
 		defer ticker.Stop()
 		tick = ticker.C

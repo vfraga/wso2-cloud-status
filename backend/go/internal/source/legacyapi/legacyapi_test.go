@@ -33,11 +33,12 @@ import (
 	"github.com/wso2/wso2-cloud-status/backend/go/internal/config"
 	"github.com/wso2/wso2-cloud-status/backend/go/internal/domain"
 	"github.com/wso2/wso2-cloud-status/backend/go/internal/source"
+	"github.com/wso2/wso2-cloud-status/backend/go/internal/testutil"
 )
 
 // fixtureDir holds responses captured from the real public API on 2026-10-20,
 // shared with the contract harness.
-const fixtureDir = "../../../../../testdata/upstream"
+var fixtureDir = testutil.RepoPath("testdata", "upstream")
 
 // fixtureServer serves <fixtureDir>/<cloud>.<endpoint>.json.
 func fixtureServer(t *testing.T) *httptest.Server {
@@ -300,6 +301,50 @@ func TestEndTimeResolves(t *testing.T) {
 	}
 }
 
+// TestRepeatedIncidentIDIsOneIncident: a record listed twice in one answer
+// (under two months, say) is one incident, whichever month holds which
+// copy: the open copy over a resolved one, else the one that ends later.
+func TestRepeatedIncidentIDIsOneIncident(t *testing.T) {
+	t.Parallel()
+	const (
+		open  = `{"id":"a","begin":"2026-09-30 00:00:00","type":"Outage","status":"Investigating"}`
+		early = `{"id":"a","begin":"2026-09-30 00:00:00","end":"2026-09-30 01:00:00","type":"Outage","status":"Resolved"}`
+		late  = `{"id":"a","begin":"2026-09-30 00:00:00","end":"2026-10-01 01:00:00","type":"Outage","status":"Resolved"}`
+	)
+	const milder = `{"id":"a","begin":"2026-09-30 00:00:00","type":"Degraded","status":"Investigating"}`
+	tests := []struct {
+		name, sept, oct string
+		wantEnd         *time.Time
+		wantImpact      domain.Status
+	}{
+		{"open in the later month", early, open, nil, domain.StatusOutage},
+		{"open in the earlier month", open, early, nil, domain.StatusOutage},
+		{"later end in the later month", early, late, new(time.Date(2026, 10, 1, 1, 0, 0, 0, time.UTC)), domain.StatusOutage},
+		{"later end in the earlier month", late, early, new(time.Date(2026, 10, 1, 1, 0, 0, 0, time.UTC)), domain.StatusOutage},
+		{"two open copies, the worse in the earlier month", open, milder, nil, domain.StatusOutage},
+		{"two open copies, the worse in the later month", milder, open, nil, domain.StatusOutage},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			body := `{"2026-9":{"incidents":[` + tt.sept + `]},"2026-10":{"incidents":[` + tt.oct + `]}}`
+			got, err := NewSource(newTestClient(t, serveJSON(t, http.StatusOK, body).URL, nil), "c").Incidents(t.Context())
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(got.Items) != 1 {
+				t.Fatalf("%d incidents, want 1", len(got.Items))
+			}
+			if end := got.Items[0].ResolvedAt; (end == nil) != (tt.wantEnd == nil) || end != nil && !end.Equal(*tt.wantEnd) {
+				t.Errorf("resolved at %v, want %v", end, tt.wantEnd)
+			}
+			if impact := got.Items[0].Impact; impact != tt.wantImpact {
+				t.Errorf("impact %v, want %v", impact, tt.wantImpact)
+			}
+		})
+	}
+}
+
 func TestMalformedUpstreamDataFails(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
@@ -312,8 +357,6 @@ func TestMalformedUpstreamDataFails(t *testing.T) {
 		{"bad month key", `{"October":{"incidents":[]}}`, incidentsCall},
 		{"no id", `{"2026-10":{"incidents":[{"begin":"2026-10-01 00:00:00","status":"Investigating"}]}}`, incidentsCall},
 		{"blank id", `{"2026-10":{"incidents":[{"id":" ","begin":"2026-10-01 00:00:00","status":"Investigating"}]}}`, incidentsCall},
-		{"repeated id", `{"2026-10":{"incidents":[{"id":"a","begin":"2026-10-01 00:00:00","type":"Outage","status":"Investigating"}]},
-			"2026-9":{"incidents":[{"id":"a","begin":"2026-09-30 00:00:00","type":"Degraded","status":"Investigating"}]}}`, incidentsCall},
 		{"not json", `<html>`, componentsCall},
 		// A value of the wrong JSON type fails the fetch, so the last good
 		// data stays and goes stale: types change for a whole backend.

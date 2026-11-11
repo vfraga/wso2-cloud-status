@@ -1,9 +1,9 @@
 # WSO2 Cloud Status
 
-The status page for the WSO2 Cloud products: Agent Platform, API Platform,
-Integration Platform, Identity Platform, Developer Platform and Moesif. One
-summary page with each product's status per region, a page per product with
-its history, regions and incidents, and an incident history by month.
+The status page for the WSO2 Cloud products, as `config/statusd.yaml` lists
+them. One summary page with each product's status per region, a page per
+product with its history, regions and incidents, and an incident history by
+month.
 
 ## Repository structure
 
@@ -77,9 +77,7 @@ hadolint, actionlint, self-tests of the external check, the gate scripts and
 the frontend image's headers, CodeQL, and a nightly live smoke test. Every
 action is pinned by commit SHA and kept current by Dependabot, with a 7-day
 cooldown for version updates; tools run from images are pinned by digest.
-Releases are `v*` tags: `.github/workflows/release.yml` runs CI on the
-tagged commit and publishes scanned, signed images with provenance and
-SBOMs once a registry is set (see `CHANGELOG.md`). Dependency review and
+Dependency review and
 CodeQL need a public repository, or GitHub Code Security on a private one;
 the repository variable `ADVANCED_SECURITY=off` skips them on a private
 repository without it.

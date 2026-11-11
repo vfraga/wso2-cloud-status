@@ -244,6 +244,29 @@ describe("history text", () => {
     );
   });
 
+  it("counts every incident of the shown days, also beyond the ids a day names", () => {
+    // A day names at most 20 incidents; the product's list holds all 25.
+    const listed = Array.from({ length: 25 }, (_, i) =>
+      incident({ id: `i${String(i)}`, startedAt: new Date(Date.UTC(2026, 9, 20, 1, i)) }),
+    );
+    const d = days(30, {
+      29: { status: "degraded", incidentIds: listed.slice(0, 20).map((i) => i.id) },
+    });
+    const outside = incident({
+      id: "old",
+      startedAt: new Date("2026-08-01T08:00:00Z"),
+      resolvedAt: new Date("2026-08-01T09:00:00Z"),
+    });
+    // Ended as the first shown day began: it touches none of them.
+    const atStart = incident({
+      id: "edge",
+      startedAt: new Date("2026-09-20T23:00:00Z"),
+      resolvedAt: new Date("2026-09-21T00:00:00Z"),
+    });
+    const byId = new Map([...listed, outside, atStart].map((i) => [i.id, i]));
+    expect(summariseHistory(d, byId).incidents).toBe(25);
+  });
+
   it("builds a day label with minutes and titles", () => {
     const d = days(1, {
       0: {
@@ -272,8 +295,7 @@ describe("history text", () => {
     expect(dayDetail(today, filed, new Date("2026-10-21T01:00:00Z")).note).toBeNull();
   });
 
-  it("times a day from its incidents on the page's clock, so the strip and the list agree", () => {
-    const now = new Date("2026-10-20T10:30:40Z");
+  it("times a day by the API's minutes, whichever of its incidents the page holds", () => {
     const open = incident({
       id: "open",
       impact: "unknown",
@@ -292,8 +314,9 @@ describe("history text", () => {
       startedAt: new Date("2026-10-19T23:00:00Z"),
       resolvedAt: new Date("2026-10-20T00:20:30Z"),
     });
-    const map = new Map([open, overlap, outage].map((i) => [i.id, i]));
-    // The API rounded up when it built the day (1h 31m); the list floors (1h 30m).
+    // By the page's clock these give 20m of outage and 2h of degraded at
+    // 10:30:40; the API's whole minutes (21 and 121) are what the strip shows.
+    const all = new Map([open, overlap, outage].map((i) => [i.id, i]));
     const day = days(1, {
       0: {
         status: "outage",
@@ -301,42 +324,17 @@ describe("history text", () => {
         incidentIds: ["open", "overlap", "outage"],
       },
     })[0]!;
-    const detail = dayDetail(day, map, now);
-    // Degraded: 08:30 to 10:30:40, overlaps once, an unknown impact counting as degraded.
-    // Outage: midnight to 00:20:30, the part of the incident on this UTC day.
-    expect(detail.minutes).toEqual([
-      { label: "Service outage", text: "20m" },
-      { label: "Degraded performance", text: "2h" },
-    ]);
-    expect(formatDuration(incidentDuration(open, now))).toBe("1h 30m");
-    // An incident not at hand, or one this clock places on another day: the API's minutes.
-    const partial = { ...day, incidentIds: ["open", "missing"] };
-    expect(dayDetail(partial, map, now).minutes[0]).toEqual({
-      label: "Service outage",
-      text: "21m",
-    });
-    expect(dayDetail(day, map, new Date("2026-10-20T00:10:00Z")).minutes[1]).toEqual({
-      label: "Degraded performance",
-      text: "2h 1m",
-    });
-  });
-
-  it("times an open incident only up to the last fetch when its feed stopped", () => {
-    const open = incident({
-      id: "open",
-      impact: "outage",
-      startedAt: new Date("2026-10-20T08:00:00Z"),
-      resolvedAt: null,
-    });
-    const day = days(1, {
-      0: { status: "outage", minutes: { outage: 60 }, incidentIds: ["open"] },
-    })[0]!;
-    const now = new Date("2026-10-20T20:00:00Z");
-    const map = new Map([["open", open]]);
-    expect(dayDetail(day, map, now).minutes).toEqual([{ label: "Service outage", text: "12h" }]);
-    expect(dayDetail(day, map, now, new Date("2026-10-20T09:15:00Z")).minutes).toEqual([
-      { label: "Service outage", text: "1h 15m" },
-    ]);
+    const want = [
+      { label: "Service outage", text: "21m" },
+      { label: "Degraded performance", text: "2h 1m" },
+    ];
+    // Every incident at hand, some, or none; any clock, a stopped feed or not.
+    for (const map of [all, new Map([["open", open]]), new Map<string, typeof open>()]) {
+      for (const now of [new Date("2026-10-20T10:30:40Z"), new Date("2026-10-20T00:10:00Z")]) {
+        expect(dayDetail(day, map, now).minutes).toEqual(want);
+        expect(dayDetail(day, map, now, new Date("2026-10-20T09:15:00Z")).minutes).toEqual(want);
+      }
+    }
   });
 
   it("captions the strip with the first date and Today only for today's UTC date", () => {

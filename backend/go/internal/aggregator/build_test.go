@@ -30,9 +30,11 @@ import (
 	"time"
 
 	"github.com/wso2/wso2-cloud-status/backend/go/internal/config"
+	"github.com/wso2/wso2-cloud-status/backend/go/internal/config/configtest"
 	"github.com/wso2/wso2-cloud-status/backend/go/internal/domain"
 	"github.com/wso2/wso2-cloud-status/backend/go/internal/source"
 	"github.com/wso2/wso2-cloud-status/backend/go/internal/source/legacyapi"
+	"github.com/wso2/wso2-cloud-status/backend/go/internal/testutil"
 )
 
 func TestAllHealthy(t *testing.T) {
@@ -42,7 +44,7 @@ func TestAllHealthy(t *testing.T) {
 		t.Fatalf("summary = %v complete=%v ready=%v", b.Summary.Status, b.Summary.DataComplete, b.Ready)
 	}
 	for _, p := range b.Summary.Products {
-		if p.Status != domain.StatusOperational || p.AffectedRegions != 0 || !p.DataComplete || p.Outdated || len(p.History) != 7 {
+		if p.Status != domain.StatusOperational || p.AffectedRegions != 0 || !p.DataComplete || p.Outdated || len(b.Products[p.ID].History) != 7 {
 			t.Fatalf("product %s = %+v", p.ID, p)
 		}
 	}
@@ -641,7 +643,7 @@ func TestIncidentListHoldsEveryHistoryIncident(t *testing.T) {
 		own[inc.ID] = true
 	}
 	referenced := map[string]bool{}
-	for _, p := range b.Summary.Products {
+	for _, p := range b.Products {
 		for _, d := range p.History {
 			for _, id := range d.IncidentIDs {
 				referenced[id] = true
@@ -790,42 +792,225 @@ func TestDuplicateIncidentsAreAFunctionOfTheirTimes(t *testing.T) {
 	}
 }
 
-// TestIncidentCollapseAtTheCapIsCheap: a build where every source holds as
-// many incident records as one answer may (legacyapi.MaxIncidents), all of
-// one event or all of distinct events, takes far less than a poll interval.
-// It runs alone, not in parallel, so its time is its own.
-func TestIncidentCollapseAtTheCapIsCheap(t *testing.T) {
-	const budget = 2 * time.Second
+// atTheCap gives every source as many incident records as one answer may
+// hold (legacyapi.MaxIncidents), each from record(source, i).
+func atTheCap(record func(key string, i int) domain.Incident) map[string]sourceState {
+	st := freshState()
+	for _, key := range []string{"b/s1", "b/s2", "b/s3"} {
+		items := make([]domain.Incident, legacyapi.MaxIncidents)
+		for i := range items {
+			items[i] = record(key, i)
+		}
+		s := st[key]
+		s.incidents.data.Items = items
+		st[key] = s
+	}
+	return st
+}
+
+// collapseAtTheCap is every source at the cap with records of one event
+// (spacing 0) or of distinct events.
+func collapseAtTheCap(spacing time.Duration) map[string]sourceState {
+	return atTheCap(func(key string, i int) domain.Incident {
+		start := t0.Add(-48*time.Hour + time.Duration(i)*spacing)
+		return domain.Incident{
+			ID: fmt.Sprintf("%s-%d", key, i), Title: "Outage", Impact: domain.StatusOutage,
+			StartedAt: start, ResolvedAt: resolved(start.Add(time.Hour)),
+		}
+	})
+}
+
+// TestIncidentCollapseAtTheCap: at the cap, records of one event are one
+// incident and records of distinct events stay apart. How long that takes
+// is BenchmarkBuildAtTheCap's to measure, not a test's to time.
+func TestIncidentCollapseAtTheCap(t *testing.T) {
+	t.Parallel()
 	n := legacyapi.MaxIncidents
 	for _, tt := range []struct {
 		name    string
 		spacing time.Duration
 		want    int
 	}{{"one event", 0, 1}, {"distinct events", 2 * collapseWindow, n}} {
-		st := freshState()
-		for _, key := range []string{"b/s1", "b/s2", "b/s3"} {
-			items := make([]domain.Incident, n)
-			for i := range items {
-				start := t0.Add(-48*time.Hour + time.Duration(i)*tt.spacing)
-				items[i] = domain.Incident{
-					ID: fmt.Sprintf("%s-%d", key, i), Title: "Outage", Impact: domain.StatusOutage,
-					StartedAt: start, ResolvedAt: resolved(start.Add(time.Hour)),
-				}
-			}
-			s := st[key]
-			s.incidents.data.Items = items
-			st[key] = s
-		}
-		start := time.Now()
-		b := build(params(st, t0))
-		took := time.Since(start)
-		t.Logf("%s: %d records per source built in %v", tt.name, n, took)
+		b := build(params(collapseAtTheCap(tt.spacing), t0))
 		if one, two := len(b.Products["one"].Incidents), len(b.Products["two"].Incidents); one != tt.want || two != tt.want {
 			t.Errorf("%s: one lists %d incidents, two lists %d; want %d each", tt.name, one, two, tt.want)
 		}
-		if took > budget {
-			t.Errorf("%s: build took %v, want under %v", tt.name, took, budget)
+	}
+}
+
+// BenchmarkBuildAtTheCap: one build with every source at the cap. Each
+// record is compared only with the records that start within
+// collapseWindow of it, so even one event of MaxIncidents records builds in
+// milliseconds.
+func BenchmarkBuildAtTheCap(b *testing.B) {
+	for _, bb := range []struct {
+		name    string
+		spacing time.Duration
+	}{{"one event", 0}, {"distinct events", 2 * collapseWindow}} {
+		st := collapseAtTheCap(bb.spacing)
+		b.Run(bb.name, func(b *testing.B) {
+			for b.Loop() {
+				build(params(st, t0))
+			}
+		})
+	}
+}
+
+// TestResponseSizesAtTheCaps: with every source at the cap of open
+// incidents, each with an id as long as one may be and spanning the whole
+// history, the summary stays small (MaxSummaryIncidents per product, no
+// history), a product's route grows with its own records only
+// (MaxDayIncidents ids per day), and the incident list grows with the
+// records. A faulty source therefore cannot make every reader's poll a
+// download of megabytes.
+func TestResponseSizesAtTheCaps(t *testing.T) {
+	t.Parallel()
+	const days = 90
+	st := atTheCap(func(key string, i int) domain.Incident {
+		id := fmt.Sprintf("%s-%d-", key, i)
+		return domain.Incident{
+			ID: id + strings.Repeat("x", legacyapi.MaxID-len(id)), Title: fmt.Sprintf("Outage %s %d", key, i),
+			Impact: domain.StatusOutage, State: "investigating", StartedAt: t0.AddDate(0, 0, -days-10),
 		}
+	})
+	p := params(st, t0)
+	p.days = days
+	b := build(p)
+	size := func(v any) int {
+		raw, err := json.Marshal(v)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return len(raw)
+	}
+	n := legacyapi.MaxIncidents
+	if got := len(b.Summary.ActiveIncidents); got != 2*MaxSummaryIncidents {
+		t.Errorf("summary lists %d active incidents, want %d per product", got, MaxSummaryIncidents)
+	}
+	for _, sp := range b.Summary.Products {
+		if want := n * len(sourcesByProduct[sp.ID]); sp.ActiveIncidentCount != want {
+			t.Errorf("%s: active_incident_count %d, want %d", sp.ID, sp.ActiveIncidentCount, want)
+		}
+	}
+	if got, most := size(b.Summary), 64<<10; got > most {
+		t.Errorf("summary is %d bytes, more than %d", got, most)
+	}
+	for id, d := range b.Products {
+		for _, day := range d.History {
+			if len(day.IncidentIDs) != domain.MaxDayIncidents {
+				t.Fatalf("%s %s lists %d incident ids, want %d", id, day.Date, len(day.IncidentIDs), domain.MaxDayIncidents)
+			}
+		}
+		if got, most := size(d), 1<<20; got > most {
+			t.Errorf("%s is %d bytes, more than %d", id, got, most)
+		}
+	}
+	if got, most := size(b.Incidents), 3*n*300; got > most {
+		t.Errorf("incident list is %d bytes, more than %d (300 per record)", got, most)
+	}
+}
+
+// sourcesByProduct is testConfig's sources per product.
+var sourcesByProduct = map[string][]string{"one": {"b/s1"}, "two": {"b/s2", "b/s3"}}
+
+// TestSummaryListsAFewActiveIncidentsPerProduct: the summary lists a
+// product's newest MaxSummaryIncidents active incidents and counts them
+// all; the product's own route lists every one.
+func TestSummaryListsAFewActiveIncidentsPerProduct(t *testing.T) {
+	t.Parallel()
+	st := freshState()
+	s1 := st["b/s1"]
+	total := MaxSummaryIncidents + 5
+	for i := range total {
+		s1.incidents.data.Items = append(s1.incidents.data.Items, domain.Incident{
+			ID: fmt.Sprintf("open-%02d", i), Title: fmt.Sprintf("Outage %d", i), Impact: domain.StatusDegraded,
+			StartedAt: t0.Add(-time.Duration(i+1) * time.Hour),
+		})
+	}
+	st["b/s1"] = s1
+	b := build(params(st, t0))
+	if got := len(b.Summary.ActiveIncidents); got != MaxSummaryIncidents {
+		t.Fatalf("summary lists %d, want %d", got, MaxSummaryIncidents)
+	}
+	if newest, last := b.Summary.ActiveIncidents[0].ID, b.Summary.ActiveIncidents[MaxSummaryIncidents-1].ID; newest != "open-00" || last != fmt.Sprintf("open-%02d", MaxSummaryIncidents-1) {
+		t.Errorf("summary lists %s to %s, want the newest", newest, last)
+	}
+	if got := b.Summary.Products[0].ActiveIncidentCount; got != total {
+		t.Errorf("active_incident_count %d, want %d", got, total)
+	}
+	if got := len(b.Products["one"].Incidents); got != total {
+		t.Errorf("the product's route lists %d, want every one, %d", got, total)
+	}
+}
+
+// TestSharedIDKeepsTheOpenCopy: when two sources of one product hold the
+// same incident id, the open copy is kept whichever source holds it, and
+// of two resolved copies the one that ends later.
+func TestSharedIDKeepsTheOpenCopy(t *testing.T) {
+	t.Parallel()
+	start := t0.Add(-2 * time.Hour)
+	open := domain.Incident{ID: "shared", Title: "Outage", Impact: domain.StatusOutage, StartedAt: start}
+	early, late := open, open
+	early.ResolvedAt, late.ResolvedAt = resolved(t0.Add(-time.Hour)), resolved(t0.Add(-time.Minute))
+	tests := []struct {
+		name   string
+		s2, s3 domain.Incident
+		want   *time.Time
+	}{
+		{"resolved first", early, open, nil},
+		{"open first", open, early, nil},
+		{"later end second", early, late, late.ResolvedAt},
+		{"later end first", late, early, late.ResolvedAt},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			st := freshState()
+			for key, inc := range map[string]domain.Incident{"b/s2": tt.s2, "b/s3": tt.s3} {
+				s := st[key]
+				s.incidents.data.Items = []domain.Incident{inc}
+				st[key] = s
+			}
+			b := build(params(st, t0))
+			listed := b.Products["two"].Incidents
+			if len(listed) != 1 {
+				t.Fatalf("two lists %d incidents, want 1", len(listed))
+			}
+			if got := listed[0].ResolvedAt; (got == nil) != (tt.want == nil) || got != nil && !got.Equal(*tt.want) {
+				t.Errorf("kept the copy resolved at %v, want %v", got, tt.want)
+			}
+			wantStatus := domain.StatusOperational
+			if tt.want == nil {
+				wantStatus = domain.StatusOutage
+			}
+			if got := b.Products["two"].Status; got != wantStatus {
+				t.Errorf("two is %v, want %v", got, wantStatus)
+			}
+		})
+	}
+}
+
+// TestIncidentNotStartedYetIsLeftOut: an open incident whose start is ahead
+// is in no view (no status, no active list, no history, no list) until its
+// start, and then counts at once.
+func TestIncidentNotStartedYetIsLeftOut(t *testing.T) {
+	t.Parallel()
+	st := freshState()
+	s1 := st["b/s1"]
+	s1.incidents.data.Items = []domain.Incident{{
+		ID: "ahead", Title: "Maintenance", Impact: domain.StatusMaintenance, State: "scheduled", StartedAt: t0.Add(48 * time.Hour),
+	}}
+	st["b/s1"] = s1
+	b := build(params(st, t0))
+	one := b.Products["one"]
+	if one.Status != domain.StatusOperational || one.ActiveIncidentCount != 0 || len(one.Incidents) != 0 ||
+		len(b.Summary.ActiveIncidents) != 0 || len(b.Incidents.Incidents) != 0 || b.Summary.Status != domain.StatusOperational {
+		t.Fatalf("before its start: status %v, count %d, listed %d, summary %v with %d active, list %d",
+			one.Status, one.ActiveIncidentCount, len(one.Incidents), b.Summary.Status, len(b.Summary.ActiveIncidents), len(b.Incidents.Incidents))
+	}
+	b = build(params(st, t0.Add(48*time.Hour)))
+	if one := b.Products["one"]; one.Status != domain.StatusMaintenance || len(b.Summary.ActiveIncidents) != 1 {
+		t.Fatalf("at its start: status %v, %d active", one.Status, len(b.Summary.ActiveIncidents))
 	}
 }
 
@@ -1090,14 +1275,14 @@ func TestAnsweredSourcesIncidentsShowWhileAnotherHasNone(t *testing.T) {
 	}
 }
 
-// TestEmptyStateIsNotReadyAndHasNoNulls: before any source answers, the
-// only nulls in a body are checked_at values, where null means "never
-// checked", and the incident list's covered_from, "never answered".
-func TestEmptyStateIsNotReadyAndHasNoNulls(t *testing.T) {
+// TestEmptyStateHasNoNulls: before any source answers, the only nulls in a
+// body are checked_at values, where null means "never checked", and the
+// incident list's covered_from, "never answered".
+func TestEmptyStateHasNoNulls(t *testing.T) {
 	t.Parallel()
 	b := build(params(map[string]sourceState{"b/s1": {}, "b/s2": {}, "b/s3": {}}, t0))
-	if b.Ready || b.Summary.Status != domain.StatusUnknown {
-		t.Fatalf("ready=%v status=%v", b.Ready, b.Summary.Status)
+	if b.Summary.Status != domain.StatusUnknown {
+		t.Fatalf("status=%v", b.Summary.Status)
 	}
 	for _, v := range []any{b.Summary, b.Products["two"], b.Incidents} {
 		raw, err := json.Marshal(v)
@@ -1241,6 +1426,40 @@ func TestUnmatchedRegionFollowsTheLocations(t *testing.T) {
 	}
 }
 
+// TestCopiesOfTheResponseLimits: the API contract, the READMEs and the
+// contract tests state MaxSummaryIncidents and domain.MaxDayIncidents in
+// words; each copy must say what the code does.
+func TestCopiesOfTheResponseLimits(t *testing.T) {
+	t.Parallel()
+	read := func(parts ...string) string {
+		raw, err := os.ReadFile(testutil.RepoPath(parts...))
+		if err != nil {
+			t.Fatal(err)
+		}
+		// Prose wraps anywhere: compare with single spaces.
+		return strings.Join(strings.Fields(string(raw)), " ")
+	}
+	summary, day := strconv.Itoa(MaxSummaryIncidents), strconv.Itoa(domain.MaxDayIncidents)
+	for file, copies := range map[string][]string{
+		"api/openapi.yaml": {
+			"maxItems: " + day,
+			"At most " + day + ": when more touch it",
+			"The summary lists at most " + summary + " of them",
+			"at most " + summary + " per product",
+		},
+		"backend/go/README.md":            {"the " + summary + " newest per product"},
+		"frontend/README.md":              {"at most the " + summary + " newest per product"},
+		"tests/contract/contract_test.go": {"const maxSummaryIncidents = " + summary},
+	} {
+		text := read(strings.Split(file, "/")...)
+		for _, want := range copies {
+			if !strings.Contains(text, want) {
+				t.Errorf("%s does not say %q", file, want)
+			}
+		}
+	}
+}
+
 // TestCopiesOfTheStalenessMatchTheShippedConfiguration: the alert rules and
 // the external check hold the staleness budgets as fixed numbers, because
 // they run where the configuration is not. They must equal what the shipped
@@ -1249,10 +1468,7 @@ func TestUnmatchedRegionFollowsTheLocations(t *testing.T) {
 // data stale.
 func TestCopiesOfTheStalenessMatchTheShippedConfiguration(t *testing.T) {
 	t.Parallel()
-	cfg, err := config.Load("../../../../config/statusd.yaml")
-	if err != nil {
-		t.Fatal(err)
-	}
+	cfg := configtest.Load(t, testutil.RepoPath("config", "statusd.yaml"))
 	limits := stalenessOf(cfg.Polling)
 	read := func(path string) string {
 		raw, err := os.ReadFile(path)
@@ -1261,7 +1477,7 @@ func TestCopiesOfTheStalenessMatchTheShippedConfiguration(t *testing.T) {
 		}
 		return string(raw)
 	}
-	rules := read("../../../../deploy/observability/prometheus-rules.yaml")
+	rules := read(testutil.RepoPath("deploy", "observability", "prometheus-rules.yaml"))
 	if limits.components != limits.incidents {
 		t.Fatalf("the rules give components and incidents one threshold; the configuration gives %s and %s", limits.components, limits.incidents)
 	}
@@ -1279,7 +1495,7 @@ func TestCopiesOfTheStalenessMatchTheShippedConfiguration(t *testing.T) {
 			t.Errorf("prometheus-rules.yaml %s: %s s, want %s", pattern, m[1], want)
 		}
 	}
-	m := regexp.MustCompile(`MAX_AGE_SECONDS:-(\d+)`).FindStringSubmatch(read("../../../../scripts/ops/synthetic-check.sh"))
+	m := regexp.MustCompile(`MAX_AGE_SECONDS:-(\d+)`).FindStringSubmatch(read(testutil.RepoPath("scripts", "ops", "synthetic-check.sh")))
 	if m == nil {
 		t.Fatal("synthetic-check.sh: no default MAX_AGE_SECONDS")
 	}

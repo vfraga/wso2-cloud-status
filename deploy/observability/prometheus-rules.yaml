@@ -54,13 +54,13 @@ groups:
             {{ if eq $labels.kind "components" }}Its regions now show 'unknown' on the status page.{{ else if eq $labels.kind "incidents" }}The page keeps its last known incidents, says when they were last updated, and shows the days since then as 'No data'.{{ else }}The page keeps its last known uptime figures and says when they were last updated.{{ end }}
 
       # The page shows no status for most products. One shared upstream
-      # (today api.status.cloudservices.wso2.com serves five of the six), a
-      # gateway or token issuer, or statusd's own egress or DNS causes it;
+      # (api.status.cloudservices.wso2.com serves most of them), a gateway or
+      # token issuer, or statusd's own egress or DNS causes it;
       # statusd keeps publishing, so no other critical alert fires.
       # statusd_product_status{status="unknown"} is 1 for each product shown
       # as unknown and 0 for the others, so its average is the share shown as
-      # unknown. Critical above half (4 or more of 6), where the external
-      # check fails too; warning for any. Products read unknown once their
+      # unknown. Critical above half, where the external check fails too;
+      # warning for any. Products read unknown once their
       # component data is stale (5 min with the shipped settings) unless an
       # open incident sets their status, so these fire about 10 minutes after
       # the sources stop answering, and 5 minutes after a start at which none
@@ -106,10 +106,9 @@ groups:
           summary: "{{ $labels.product }} has shown unknown statuses for 15 minutes while its sources answer"
           description: "Its sources return component statuses, but some region or component reads unknown. Most likely an upstream region key no longer matches the configuration: see statusd_source_region_keys and the 'upstream region keys differ' log line."
 
-      # Probe routes are left out of both sides: a replica that cannot become
-      # ready (no upstream answered yet) answers GET /readyz with 503 by
-      # design, and when probes are its only traffic that would read as
-      # 100% errors. Shed requests have their own alert.
+      # Probe routes are left out of both sides: a replica answers GET /readyz
+      # with 503 by design until its first poll round has finished, and when
+      # probes are its only traffic that would read as 100% errors. Shed requests have their own alert.
       - alert: StatusdServerErrors
         expr: |
           sum by (instance) (rate(statusd_http_requests_total{code=~"5..", route!~"shed|GET /readyz|GET /healthz"}[5m]))

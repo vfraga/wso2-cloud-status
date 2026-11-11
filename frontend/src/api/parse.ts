@@ -223,9 +223,14 @@ function toProduct(r: Rec): ProductSummary | null {
     freshness: toFreshness(r),
     locations,
     regions,
-    history: records(r.history).map(toDay).filter(nonNull),
+    activeIncidentCount: count(r.active_incident_count),
     ...optionalString("description", r.description),
   };
+}
+
+/** A count the API sent, or 0. */
+function count(v: unknown): number {
+  return typeof v === "number" && Number.isInteger(v) && v > 0 ? v : 0;
 }
 
 /** The freshness of a product whose incidents count as not received: stale, with no time. */
@@ -297,6 +302,7 @@ export function parseProductDetail(raw: unknown): ProductDetail | null {
     freshness: allReadable(raw.incidents)
       ? product.freshness
       : incidentsNotReceived(product.freshness),
+    history: records(raw.history).map(toDay).filter(nonNull),
     regionDetails: records(raw.region_details).map(toRegionDetail).filter(nonNull),
     incidents: parseIncidents(raw.incidents),
   };

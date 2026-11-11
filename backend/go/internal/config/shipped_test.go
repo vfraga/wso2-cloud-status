@@ -22,8 +22,9 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/wso2/wso2-cloud-status/backend/go/internal/config"
+	"github.com/wso2/wso2-cloud-status/backend/go/internal/config/configtest"
 	"github.com/wso2/wso2-cloud-status/backend/go/internal/source/legacyapi"
+	"github.com/wso2/wso2-cloud-status/backend/go/internal/testutil"
 )
 
 // TestThrottleEndsBeforeDataGoesStale: a 429 holds a CSM backend for at
@@ -31,15 +32,12 @@ import (
 // every shipped file, or a long throttle would leave the page without data.
 func TestThrottleEndsBeforeDataGoesStale(t *testing.T) {
 	t.Setenv("FRONT_DOOR_ID", "00000000-0000-0000-0000-000000000001")
-	files, err := filepath.Glob("../../../../config/*.yaml")
+	files, err := filepath.Glob(testutil.RepoPath("config", "*.yaml"))
 	if err != nil || len(files) < 2 {
 		t.Fatalf("shipped files = %v, %v; want both in config/", files, err)
 	}
 	for _, path := range files {
-		cfg, err := config.Load(path)
-		if err != nil {
-			t.Fatal(err)
-		}
+		cfg := configtest.Load(t, path)
 		if legacyapi.MaxRetryAfter >= cfg.Polling.StaleAfter {
 			t.Errorf("%s: polling.stale_after %s is not above legacyapi.MaxRetryAfter %s",
 				path, cfg.Polling.StaleAfter, legacyapi.MaxRetryAfter)

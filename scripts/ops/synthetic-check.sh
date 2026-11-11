@@ -373,7 +373,7 @@ describe() {
   [ "$code" = 200 ] || return 0
   jq -r '
     def ago: if . == null then "never" else "\((now | floor) - fromdateiso8601)s ago" end;
-    "data_complete \(if has("data_complete") then .data_complete else "(not sent)" end), \(.active_incidents | length) active incident(s)",
+    "data_complete \(if has("data_complete") then .data_complete else "(not sent)" end), \(if any(.products[]?; has("active_incident_count")) then ([.products[]?.active_incident_count // 0] | add) else (.active_incidents | length) end) active incident(s)",
     (.products[]?
       | select(.status == "unknown" or .data_complete == false or .outdated == true
           or ((.stale // {}) | to_entries | any(.value == true)))

@@ -135,5 +135,5 @@ func freshState() map[string]sourceState {
 
 func params(state map[string]sourceState, now time.Time) buildParams {
 	cfg := testConfig()
-	return buildParams{products: cfg.Products, state: state, now: now, stale: stalenessOf(cfg.Polling), days: cfg.History.Days}
+	return buildParams{products: cfg.Products, state: state, now: now, stale: stalenessOf(cfg.Polling), days: cfg.History.Days, polled: true}
 }

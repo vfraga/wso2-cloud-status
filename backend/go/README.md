@@ -30,7 +30,7 @@ incident.
  Azure Front Door (cache, WAF)  ---->  status page (nginx, frontend/)
           |
           v
- statusd :8080  <---- polls ----  status sources (CSM, or the public status API)
+ statusd :8080  <---- polls ----  status sources (the public status API, or CSM when configured)
  statusd :9090  ----> metrics and probes (private)
 ```
 
@@ -41,7 +41,7 @@ incident.
 | Inbound | Front Door | Plain HTTP on the public port (`server.addr`, 8080). With the origin lock on, a request without the CDN's header (`server.required_headers`) gets 403. |
 | Inbound | Monitoring | Prometheus metrics and probes on the admin port (`server.admin_addr`, 9090), never routed through the public ingress. |
 | Outbound | Public status API | HTTPS GET, no credentials (`legacy-status-api` backends). |
-| Outbound | CSM | HTTPS GET through CSM's API gateway with an OAuth2 client-credentials token from its issuer (`csm-cloud-status` backends). |
+| Outbound | CSM | HTTPS GET through CSM's API gateway with an OAuth2 client-credentials token from its issuer (`csm-cloud-status` backends). Optional; the shipped configuration does not use it. |
 
 Every outbound request carries its own `X-Request-ID`, which the log line of
 a failed fetch names. No request follows a redirect: a 3xx is a failed fetch
@@ -172,9 +172,11 @@ The image holds both and reads the production file unless
   exits 0 when it would start, 1 when it would not (the reasons on stderr)
   and 2 for a wrong command line. CI checks every file in `config/`.
 - `${NAME}` reads the environment, only as the whole value of a backend
-  option (a credential) or of a `server.required_headers` entry (the origin
-  lock's ID). Anywhere else it is an error, as is a YAML alias; an unset
-  variable fails validation. Keep secrets out of the file.
+  option (a credential: `CSM_CLIENT_ID` or `CSM_CLIENT_SECRET`) or of a
+  `server.required_headers` entry (the origin lock's ID: `FRONT_DOOR_ID`).
+  Anywhere else, or naming another variable, it is an error, as is a YAML
+  alias or a second YAML document; an unset variable fails validation. Keep
+  secrets out of the file.
 - statusd reloads the file when its content changes (checked every
   `reload.watch_interval`, 10 s) or on SIGHUP. An invalid file is rejected
   whole and the running configuration stays. `server`, `reload` and every
@@ -188,7 +190,9 @@ The image holds both and reads the production file unless
 Environment: `STATUSD_CONFIG` (the file), `PORT` (overrides the public
 port), `STATUSD_LOG_LEVEL` (debug, info, warn, error), and every `${NAME}`
 the file references (`FRONT_DOOR_ID` in the production file, a CSM
-backend's client secret).
+backend's `CSM_CLIENT_ID` and `CSM_CLIENT_SECRET`). statusd ignores the
+proxy variables (`HTTPS_PROXY` and the like): it reaches every status
+source and token issuer directly.
 
 ## Adding a product
 
@@ -234,10 +238,10 @@ reads. Register it in `internal/app/sources.go` under a backend `type`.
 
 | Endpoint | Purpose |
 |---|---|
-| `GET /api/v1/summary` | the overall status, each product's status per location and region, active incidents |
+| `GET /api/v1/summary` | the overall status, each product's status per location and region, and the active incidents (the 10 newest per product, with a count of all) |
 | `GET /api/v1/products/{id}` | one product: regions, component groups, uptime, 90-day history and its incidents |
 | `GET /api/v1/incidents` | every incident the sources keep, with each product's coverage and freshness |
-| `GET /healthz`, `GET /readyz` | probes, on both ports |
+| `GET /healthz`, `GET /readyz` | probes, on both ports; ready once every source has been polled once, whether it answered or not |
 | `GET /metrics` | Prometheus metrics, admin port only |
 
 `api/openapi.yaml` is the contract. Responses carry a strong ETag and a

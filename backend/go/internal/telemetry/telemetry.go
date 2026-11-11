@@ -45,12 +45,7 @@ const (
 	labelState   = "state"
 )
 
-var (
-	_ aggregator.Observer        = (*Metrics)(nil)
-	_ aggregator.SourceObserver  = (*Metrics)(nil)
-	_ aggregator.ProductObserver = (*Metrics)(nil)
-	_ aggregator.DataObserver    = (*Metrics)(nil)
-)
+var _ aggregator.Observer = (*Metrics)(nil)
 
 // Metrics implements aggregator.Observer and httpapi.RequestObserver on a
 // private registry, so tests and multiple instances never share state.
@@ -175,7 +170,7 @@ func (m *Metrics) FetchDone(source string, kind aggregator.Kind, took time.Durat
 	m.fetchTime.WithLabelValues(source, string(kind)).Observe(took.Seconds())
 }
 
-// SourceBound implements aggregator.SourceObserver. A new source's
+// SourceBound implements aggregator.Observer. A new source's
 // last-success series start at the time it was bound, so a source that
 // never answers alerts like one that stopped answering; a changed source's
 // keep the fetch time of the data it still serves.
@@ -185,7 +180,7 @@ func (m *Metrics) SourceBound(source string, lastSuccess map[aggregator.Kind]tim
 	}
 }
 
-// SourceRemoved implements aggregator.SourceObserver. A removed source's
+// SourceRemoved implements aggregator.Observer. A removed source's
 // series go with it, so it cannot alert after it is gone.
 func (m *Metrics) SourceRemoved(source string) {
 	labels := prometheus.Labels{labelSource: source}
@@ -227,14 +222,14 @@ func (m *Metrics) OriginLock(enabled bool) {
 	m.originLock.Set(0)
 }
 
-// ProductStatus implements aggregator.ProductObserver.
+// ProductStatus implements aggregator.Observer.
 func (m *Metrics) ProductStatus(product string, status domain.Status) {
 	m.products.mu.Lock()
 	defer m.products.mu.Unlock()
 	m.products.status[product] = status
 }
 
-// ProductRemoved implements aggregator.ProductObserver. A removed product's
+// ProductRemoved implements aggregator.Observer. A removed product's
 // series go with it.
 func (m *Metrics) ProductRemoved(product string) {
 	m.products.mu.Lock()
@@ -247,7 +242,7 @@ func (m *Metrics) ProductRemoved(product string) {
 	m.productSource.DeletePartialMatch(labels)
 }
 
-// ProductData implements aggregator.DataObserver.
+// ProductData implements aggregator.Observer.
 func (m *Metrics) ProductData(product string, complete bool, sources []string) {
 	m.productMu.Lock()
 	defer m.productMu.Unlock()
@@ -262,7 +257,7 @@ func (m *Metrics) ProductData(product string, complete bool, sources []string) {
 	}
 }
 
-// SourceRegionKeys implements aggregator.DataObserver.
+// SourceRegionKeys implements aggregator.Observer.
 func (m *Metrics) SourceRegionKeys(source string, missing, unmatched int) {
 	m.regionKeys.WithLabelValues(source, "missing").Set(float64(missing))
 	m.regionKeys.WithLabelValues(source, "unmatched").Set(float64(unmatched))

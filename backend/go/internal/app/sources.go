@@ -114,10 +114,14 @@ func fingerprint(b config.Backend, cloud string) string {
 // upstreamClient is shared by every adapter. Each poll's context carries
 // polling.request_timeout as its deadline, so a reloaded timeout applies at
 // the next poll; the transport keeps net/http's defaults rather than a copy
-// of the timeout taken at startup. It follows no redirect (refuseRedirect).
+// of the timeout taken at startup. It follows no redirect (refuseRedirect)
+// and uses no proxy: HTTPS_PROXY and the other proxy variables are ignored,
+// so the environment cannot route upstream reads and the CSM token request,
+// with its client secret, through another host.
 func upstreamClient() *http.Client {
 	t := http.DefaultTransport.(*http.Transport).Clone() //nolint:forcetypeassert // DefaultTransport is always *http.Transport.
 	t.MaxIdleConnsPerHost = 8
+	t.Proxy = nil
 	return &http.Client{Transport: t, CheckRedirect: refuseRedirect}
 }
 

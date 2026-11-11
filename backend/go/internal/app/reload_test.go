@@ -35,6 +35,8 @@ import (
 
 	"github.com/wso2/wso2-cloud-status/backend/go/internal/aggregator"
 	"github.com/wso2/wso2-cloud-status/backend/go/internal/config"
+	"github.com/wso2/wso2-cloud-status/backend/go/internal/config/configtest"
+	"github.com/wso2/wso2-cloud-status/backend/go/internal/testutil"
 )
 
 type reloadCounter struct{ applied, failed chan struct{} }
@@ -95,10 +97,7 @@ func TestConfigFileValidityIsCheckedEveryTick(t *testing.T) {
 	if err := os.WriteFile(path, []byte(text), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	cfg, err := config.Load(path)
-	if err != nil {
-		t.Fatal(err)
-	}
+	cfg := configtest.Load(t, path)
 	var logs lockedBuffer
 	a, err := New(cfg, slog.New(slog.NewTextHandler(&logs, nil)), "test")
 	if err != nil {
@@ -107,6 +106,8 @@ func TestConfigFileValidityIsCheckedEveryTick(t *testing.T) {
 	seen := &validity{}
 	a.reloadObs = seen
 	a.EnableReload(path, nil)
+	ticks := make(chan time.Time)
+	a.ticks = ticks
 	ctx, cancel := context.WithCancel(t.Context())
 	done := make(chan struct{})
 	go func() {
@@ -117,25 +118,31 @@ func TestConfigFileValidityIsCheckedEveryTick(t *testing.T) {
 		cancel()
 		<-done
 	})
+	tick := func() { ticks <- time.Time{} }
 
+	tick()
 	n := seen.await(t, 0, 1, true)
 	if err := os.WriteFile(path, []byte(text+"histroy: {}\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	// The reload that rejects it, then at least one tick with the file
-	// unchanged.
+	// The reload that rejects it, then a tick with the file unchanged.
+	tick()
+	tick()
 	n = seen.await(t, n, 2, false)
 	if err := os.WriteFile(path, []byte(text), 0o600); err != nil {
 		t.Fatal(err)
 	}
+	tick()
 	n = seen.await(t, n, 1, true)
 	if err := os.Remove(path); err != nil {
 		t.Fatal(err)
 	}
+	tick()
 	n = seen.await(t, n, 1, false)
 	if err := os.WriteFile(path, []byte(text), 0o600); err != nil {
 		t.Fatal(err)
 	}
+	tick()
 	seen.await(t, n, 1, true)
 	if out := logs.String(); !strings.Contains(out, "a restart would fail with it") || !strings.Contains(out, "valid again") {
 		t.Fatalf("the changes found by a tick must be logged:\n%s", out)
@@ -143,10 +150,11 @@ func TestConfigFileValidityIsCheckedEveryTick(t *testing.T) {
 }
 
 // configText is the shipped configuration pointed at the fixture upstream,
-// on ephemeral ports, watched every second.
+// on ephemeral ports, with watching on (tests that watch send the ticks,
+// App.ticks).
 func configText(t *testing.T, upstreamURL string) string {
 	t.Helper()
-	raw, err := os.ReadFile("../../../../config/statusd.yaml")
+	raw, err := os.ReadFile(testutil.RepoPath("config", "statusd.yaml"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -186,10 +194,7 @@ func TestReloadFromFileAndSignal(t *testing.T) {
 	if err := os.WriteFile(path, []byte(text), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	cfg, err := config.Load(path)
-	if err != nil {
-		t.Fatal(err)
-	}
+	cfg := configtest.Load(t, path)
 	a, err := New(cfg, slog.New(slog.DiscardHandler), "test")
 	if err != nil {
 		t.Fatal(err)
@@ -198,6 +203,8 @@ func TestReloadFromFileAndSignal(t *testing.T) {
 	a.reloadObs = counter
 	hup := make(chan os.Signal, 1)
 	a.EnableReload(path, hup)
+	ticks := make(chan time.Time)
+	a.ticks = ticks
 	if err := a.Listen(t.Context()); err != nil {
 		t.Fatal(err)
 	}
@@ -221,6 +228,7 @@ func TestReloadFromFileAndSignal(t *testing.T) {
 	if err := os.WriteFile(path, []byte(withoutLast), 0o600); err != nil {
 		t.Fatal(err)
 	}
+	ticks <- time.Time{}
 	waitFor(t, counter.applied, "the file change to apply")
 	if got := productIDs(t, base); len(got) != n-1 || got[len(got)-1] != before {
 		t.Fatalf("products after removing %s = %v", last, got)
@@ -233,6 +241,7 @@ func TestReloadFromFileAndSignal(t *testing.T) {
 	if err := os.WriteFile(path, []byte(withoutLast+"histroy: {}\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
+	ticks <- time.Time{}
 	waitFor(t, counter.failed, "the invalid file to be rejected")
 	if got := productIDs(t, base); len(got) != n-1 {
 		t.Fatalf("an invalid file changed the catalogue: %v", got)
@@ -264,10 +273,7 @@ func TestReloadKeepsTheLastSuccessOfKeptData(t *testing.T) {
 	if err := os.WriteFile(path, []byte(text), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	cfg, err := config.Load(path)
-	if err != nil {
-		t.Fatal(err)
-	}
+	cfg := configtest.Load(t, path)
 	a, err := New(cfg, slog.New(slog.DiscardHandler), "test")
 	if err != nil {
 		t.Fatal(err)
@@ -327,10 +333,7 @@ func TestReloadKeepsThePortOverride(t *testing.T) {
 		}
 		return ""
 	}
-	cfg, err := config.Load(path)
-	if err != nil {
-		t.Fatal(err)
-	}
+	cfg := configtest.Load(t, path)
 	cfg.ApplyEnvOverrides(getenv)
 	var logs strings.Builder
 	a, err := New(cfg, slog.New(slog.NewTextHandler(&logs, nil)), "test")
@@ -360,10 +363,7 @@ func TestReloadNamesSettingsAwaitingARestart(t *testing.T) {
 	if err := os.WriteFile(path, []byte(text), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	cfg, err := config.Load(path)
-	if err != nil {
-		t.Fatal(err)
-	}
+	cfg := configtest.Load(t, path)
 	var logs lockedBuffer
 	a, err := New(cfg, slog.New(slog.NewTextHandler(&logs, nil)), "test")
 	if err != nil {
@@ -401,10 +401,7 @@ func TestReloadRejectsRestartOnlyConflicts(t *testing.T) {
 	if err := os.WriteFile(path, []byte(text), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	cfg, err := config.Load(path)
-	if err != nil {
-		t.Fatal(err)
-	}
+	cfg := configtest.Load(t, path)
 	var logs lockedBuffer
 	a, err := New(cfg, slog.New(slog.NewTextHandler(&logs, nil)), "test")
 	if err != nil {
@@ -422,9 +419,8 @@ func TestReloadRejectsRestartOnlyConflicts(t *testing.T) {
 	if err := os.WriteFile(path, []byte(changed), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := config.Load(path); err != nil {
-		t.Fatalf("the new file must be valid on its own: %v", err)
-	}
+	// The new file must be valid on its own.
+	configtest.Load(t, path)
 	if err := a.Reload(t.Context()); !errors.Is(err, errNeedsRestart) {
 		t.Fatalf("Reload = %v, want it rejected as needing a restart", err)
 	}
@@ -460,10 +456,7 @@ func TestReloadDuringShutdown(t *testing.T) {
 	if err := os.WriteFile(path, []byte(text), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	cfg, err := config.Load(path)
-	if err != nil {
-		t.Fatal(err)
-	}
+	cfg := configtest.Load(t, path)
 	a, err := New(cfg, slog.New(slog.DiscardHandler), "test")
 	if err != nil {
 		t.Fatal(err)

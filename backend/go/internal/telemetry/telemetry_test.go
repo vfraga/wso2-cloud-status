@@ -28,6 +28,7 @@ import (
 
 	"github.com/wso2/wso2-cloud-status/backend/go/internal/aggregator"
 	"github.com/wso2/wso2-cloud-status/backend/go/internal/domain"
+	"github.com/wso2/wso2-cloud-status/backend/go/internal/testutil"
 )
 
 func TestMetricsExposition(t *testing.T) {
@@ -266,7 +267,7 @@ func TestAlertRulesMatchTheExporter(t *testing.T) {
 
 	named := 0
 	for _, file := range []string{"prometheus-rules.yaml", "prometheus-rules.test.yaml"} {
-		raw, err := os.ReadFile("../../../../deploy/observability/" + file)
+		raw, err := os.ReadFile(testutil.RepoPath("deploy", "observability", file))
 		if err != nil {
 			t.Fatal(err)
 		}

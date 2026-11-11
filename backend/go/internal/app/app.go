@@ -66,6 +66,8 @@ type App struct {
 
 	configPath string
 	hup        <-chan os.Signal
+	// ticks, when set, replaces the watch ticker (tests send the ticks).
+	ticks <-chan time.Time
 }
 
 // Load reads the configuration file at path with the default adapters, as

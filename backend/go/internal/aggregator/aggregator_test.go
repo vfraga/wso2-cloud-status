@@ -34,6 +34,7 @@ import (
 )
 
 type recorder struct {
+	nopObserver
 	mu     sync.Mutex
 	builds []Built
 	errs   atomic.Int64
@@ -61,7 +62,7 @@ func (r *recorder) FetchDone(_ string, _ Kind, _ time.Duration, err error) {
 
 func (r *recorder) Published(time.Time) { r.pubs.Add(1) }
 
-// sourceRecorder also implements the optional SourceObserver.
+// sourceRecorder also records the source calls.
 type sourceRecorder struct {
 	recorder
 	mu      sync.Mutex
@@ -123,6 +124,31 @@ func TestNewValidates(t *testing.T) {
 	delete(srcs, "b/s3")
 	if _, err := New(testConfig(), srcs, Options{Publish: func(Built) error { return nil }}); err == nil {
 		t.Fatal("expected an error for a missing source")
+	}
+}
+
+// TestReadyAfterTheFirstRound: builds are ready once every source has been
+// polled once, even when none answered (every product then reads unknown,
+// which is what the service must serve while its upstream is down), and
+// not before.
+func TestReadyAfterTheFirstRound(t *testing.T) {
+	t.Parallel()
+	srcs, raw := fakes()
+	for _, f := range raw {
+		f.set(func(f *fakeSource) { f.fail = true })
+	}
+	rec := &recorder{}
+	a, err := New(testConfig(), srcs, Options{Publish: rec.publish, Clock: func() time.Time { return t0 }})
+	if err != nil {
+		t.Fatal(err)
+	}
+	a.Rebuild()
+	if rec.last().Ready {
+		t.Fatal("ready before any source was polled")
+	}
+	a.RefreshAll(context.Background())
+	if b := rec.last(); !b.Ready || b.Summary.Status != domain.StatusUnknown || b.Summary.DataComplete {
+		t.Fatalf("after the first round: ready %v, status %v, data_complete %v; want ready, unknown, incomplete", b.Ready, b.Summary.Status, b.Summary.DataComplete)
 	}
 }
 
@@ -198,7 +224,7 @@ func TestNextDelayBacksOffAndCaps(t *testing.T) {
 		want     time.Duration
 	}{{0, 30 * time.Second}, {1, time.Second}, {2, 2 * time.Second}, {3, 4 * time.Second}, {6, 30 * time.Second}, {100, 30 * time.Second}}
 	for _, c := range cases {
-		if got := nextDelay(30*time.Second, c.failures); !within(got, c.want) {
+		if got := nextDelay(30*time.Second, c.failures, time.Second); !within(got, c.want) {
 			t.Errorf("nextDelay(30s, %d) = %v, want about %v", c.failures, got, c.want)
 		}
 	}
@@ -210,7 +236,7 @@ func TestFailedSourceRecoversBeforeTheInterval(t *testing.T) {
 	raw["b/s1"].set(func(f *fakeSource) { f.fail = true })
 	cfg := slowConfig()
 	rec := &recorder{}
-	a, err := New(cfg, srcs, Options{Publish: rec.publish, Observer: rec})
+	a, err := New(cfg, srcs, Options{Publish: rec.publish, Observer: rec, RetryBase: 10 * time.Millisecond})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -511,7 +537,7 @@ func TestPollFromReplacedSourceIsDiscarded(t *testing.T) {
 	}
 }
 
-func TestSourceObserverFollowsBindings(t *testing.T) {
+func TestObserverFollowsSourceBindings(t *testing.T) {
 	t.Parallel()
 	bindings, _ := fakes()
 	rec := &sourceRecorder{}
@@ -715,7 +741,7 @@ func TestBuildAfterTheContextEndsIsSkipped(t *testing.T) {
 	}
 }
 
-// productRecorder also implements the optional ProductObserver.
+// productRecorder also records the product calls.
 type productRecorder struct {
 	recorder
 	mu     sync.Mutex
@@ -830,8 +856,7 @@ func TestFailedPublishIsNotObserved(t *testing.T) {
 	}
 }
 
-// dataRecorder implements SourceObserver and DataObserver and records their
-// calls in order.
+// dataRecorder records the source removals and the data calls, in order.
 type dataRecorder struct {
 	recorder
 	mu     sync.Mutex
@@ -865,7 +890,7 @@ func (r *dataRecorder) take() []string {
 
 // TestRegionKeyDriftIsReportedOncePerChange: a source whose answer lacks a
 // configured region key, or holds one no product configures, is logged at
-// warn and reported to a DataObserver once per change, with the product's
+// warn and reported to the Observer once per change, with the product's
 // data_complete; a source that matches again is logged at info. A removed
 // source gets no report after its removal.
 func TestRegionKeyDriftIsReportedOncePerChange(t *testing.T) {

@@ -37,6 +37,7 @@ import (
 	"github.com/wso2/wso2-cloud-status/backend/go/internal/config"
 	"github.com/wso2/wso2-cloud-status/backend/go/internal/domain"
 	"github.com/wso2/wso2-cloud-status/backend/go/internal/source"
+	"github.com/wso2/wso2-cloud-status/backend/go/internal/testutil"
 )
 
 var checked = time.Date(2026, 10, 20, 12, 0, 0, 0, time.UTC)
@@ -173,7 +174,7 @@ func acceptEncodingCases(t *testing.T) []struct {
 	Gzip   bool   `json:"gzip"`
 } {
 	t.Helper()
-	raw, err := os.ReadFile("../../../../testdata/http/accept-encoding.json")
+	raw, err := os.ReadFile(testutil.RepoPath("testdata", "http", "accept-encoding.json"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -895,7 +896,7 @@ func TestProbeRouteLabels(t *testing.T) {
 	if !slices.Equal(obs.seen, want) {
 		t.Fatalf("observed %q, want %q", obs.seen, want)
 	}
-	rules, err := os.ReadFile("../../../../deploy/observability/prometheus-rules.yaml")
+	rules, err := os.ReadFile(testutil.RepoPath("deploy", "observability", "prometheus-rules.yaml"))
 	if err != nil {
 		t.Fatal(err)
 	}

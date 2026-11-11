@@ -20,6 +20,8 @@ import { Box, Typography } from "@wso2/oxygen-ui";
 import type { Incident, ProductSummary } from "../api/types";
 import { usePageNow } from "../hooks/useNow";
 import { lastKnownAt } from "../lib/dataNotes";
+import { Link } from "../lib/router";
+import { moreActiveIncidents } from "../lib/status";
 import { CARD_RADIUS } from "../theme/shape";
 import { IncidentItem } from "./IncidentMeta";
 
@@ -32,7 +34,27 @@ interface ActiveIncidentsProps {
   knownUntil?: Date | null;
 }
 
-/** Each incident names its product and links the product's page here, unless `linked` is false. */
+/**
+ * The products with more active incidents than `incidents` holds (the
+ * summary lists a few per product), with how many more, in the products'
+ * order.
+ */
+function unlisted(
+  incidents: readonly Incident[],
+  products: ReadonlyMap<string, ProductSummary>,
+): { product: ProductSummary; more: number }[] {
+  return [...products.values()].flatMap((product) => {
+    const more =
+      product.activeIncidentCount - incidents.filter((i) => i.productId === product.id).length;
+    return more > 0 ? [{ product, more }] : [];
+  });
+}
+
+/**
+ * Each incident names its product and links the product's page here, unless
+ * `linked` is false; a product with more active incidents than are listed
+ * gets a line linking its page, where every one is.
+ */
 export function ActiveIncidents({
   incidents,
   products,
@@ -40,7 +62,8 @@ export function ActiveIncidents({
   knownUntil = null,
 }: ActiveIncidentsProps) {
   const now = usePageNow();
-  if (incidents.length === 0) return null;
+  const more = linked ? unlisted(incidents, products) : [];
+  if (incidents.length === 0 && more.length === 0) return null;
   return (
     <Box
       component="section"
@@ -78,6 +101,11 @@ export function ActiveIncidents({
             />
           );
         })}
+        {more.map(({ product, more: n }) => (
+          <Box component="li" key={`more-${product.id}`} sx={{ py: 1.5, listStyle: "none" }}>
+            <Link to={`/products/${product.id}`}>{moreActiveIncidents(n, product.name)}</Link>
+          </Box>
+        ))}
       </Box>
     </Box>
   );

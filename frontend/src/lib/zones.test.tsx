@@ -37,13 +37,13 @@ describe(`UTC days and local times, in ${zone}`, () => {
   // 23:30 UTC: the next day east of UTC, the same day west of it.
   const late = new Date("2026-10-20T23:30:00Z");
 
-  it("counts an incident's minutes on its UTC day in the strip", () => {
+  it("shows the API's minutes for an incident's UTC day, in any zone", () => {
     const resolved = new Date(late.getTime() + 20 * 60_000);
     const item = incident({ id: "late", startedAt: late, resolvedAt: resolved });
-    // The API's figure differs, so only a day cut at UTC midnight gives 20 minutes;
-    // a day cut at local midnight east of UTC holds none of the incident.
+    // The page does not cut days itself: a day cut at local midnight east of
+    // UTC would hold none of the incident.
     const strip = days(1, {
-      0: { date: utcDayKey(late), incidentIds: ["late"], minutes: { degraded: 5 } },
+      0: { date: utcDayKey(late), incidentIds: ["late"], minutes: { degraded: 20 } },
     })[0]!;
     const detail = dayDetail(strip, new Map([["late", item]]), resolved);
     expect(detail.titles).toEqual(["Elevated latency"]);

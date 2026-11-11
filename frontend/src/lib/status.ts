@@ -137,6 +137,11 @@ export function count(n: number, singular: string, plural = `${singular}s`): str
   return `${String(n)} ${n === 1 ? singular : plural}`;
 }
 
+/** The active incidents of a product the summary does not list, linked to its page. */
+export function moreActiveIncidents(n: number, name: string): string {
+  return `${count(n, "more active incident")} for ${name}`;
+}
+
 /** "A", "A and B", "A, B and C". */
 export function listNames(names: readonly string[]): string {
   if (names.length <= 1) return names.join("");

@@ -37,15 +37,38 @@ interface HistorySummary {
   withoutData: number;
 }
 
+const DAY = 24 * 60 * 60_000;
+
+/**
+ * Whether the incident touches [from, to) as the API's history counts it: it
+ * overlaps the span, or it is zero-length inside it; an open incident runs on.
+ */
+function touches(incident: Incident, from: number, to: number): boolean {
+  const start = incident.startedAt.getTime();
+  if (start >= to) return false;
+  if (incident.resolvedAt === null) return true;
+  const end = incident.resolvedAt.getTime();
+  return end > from || (end === start && start >= from);
+}
+
 /**
  * Counts incidents, not days: one that crosses UTC midnight colours two days
- * but is one incident, as the incident list shows it.
+ * but is one incident, as the incident list shows it. A day names at most a
+ * few incidents (the API keeps the most severe), so the count also takes
+ * every incident of the product's list that touches these days.
  */
 export function summariseHistory(
   days: readonly Day[],
   incidents: ReadonlyMap<string, Incident>,
 ): HistorySummary {
   const ids = new Set(days.flatMap((d) => d.incidentIds));
+  const first = days[0];
+  const last = days.at(-1);
+  if (first && last) {
+    const from = Date.parse(`${first.date}T00:00:00Z`);
+    const to = Date.parse(`${last.date}T00:00:00Z`) + DAY;
+    for (const [id, incident] of incidents) if (touches(incident, from, to)) ids.add(id);
+  }
   const maintenance = [...ids].filter((id) => incidents.get(id)?.impact === "maintenance").length;
   return {
     incidents: ids.size - maintenance,
@@ -75,58 +98,17 @@ export interface DayDetail {
 
 const MINUTE_ORDER: Status[] = ["outage", "degraded", "maintenance"];
 const MINUTE = 60_000;
-const DAY = 24 * 60 * MINUTE;
 
-/** Time the half-open spans [from, to) cover, overlaps counted once. */
-function union(spans: [number, number][]): number {
-  const sorted = [...spans].sort((a, b) => a[0] - b[0]);
-  let total = 0;
-  let end = -Infinity;
-  for (const [from, to] of sorted) {
-    if (to <= end) continue;
-    total += to - Math.max(from, end);
-    end = to;
-  }
-  return total;
-}
-
-function apiTimes(day: Day): Partial<Record<Status, number>> {
+/**
+ * Time of each impact during the day, in milliseconds: the API's minutes,
+ * which count every incident of the day (overlaps once, an open incident up
+ * to the snapshot's minute or to when its feed stopped). One source, so the
+ * figure never depends on which of the day's incidents the page holds.
+ */
+function impactTimes(day: Day): Partial<Record<Status, number>> {
   return Object.fromEntries(
     Object.entries(day.minutes).map(([status, minutes]) => [status, minutes * MINUTE]),
   );
-}
-
-/**
- * Time of each impact during the day, in milliseconds. When every incident
- * of the day is at hand, it is computed here the way the API does (the union
- * per impact, an unknown impact counting as degraded, an open incident up to
- * `now`, or up to `completeUntil` when its feed stopped), so the strip and the
- * incident list show the same duration from the same clock. Otherwise the
- * API's whole minutes are used.
- */
-function impactTimes(
-  day: Day,
-  incidents: ReadonlyMap<string, Incident>,
-  now: Date,
-  completeUntil: Date | null,
-): Partial<Record<Status, number>> {
-  const known = day.incidentIds.flatMap((id) => {
-    const incident = incidents.get(id);
-    return incident ? [incident] : [];
-  });
-  if (known.length === 0 || known.length < day.incidentIds.length) return apiTimes(day);
-  const start = Date.parse(`${day.date}T00:00:00Z`);
-  const end = Math.min(start + DAY, now.getTime());
-  const spans = new Map<Status, [number, number][]>();
-  for (const incident of known) {
-    const from = Math.max(incident.startedAt.getTime(), start);
-    const to = Math.min((incident.resolvedAt ?? completeUntil ?? now).getTime(), end);
-    // An incident that does not overlap the day by this clock: keep the API's figures.
-    if (to <= from) return apiTimes(day);
-    const impact = incident.impact === "unknown" ? "degraded" : incident.impact;
-    spans.set(impact, [...(spans.get(impact) ?? []), [from, to]]);
-  }
-  return Object.fromEntries([...spans].map(([status, list]) => [status, union(list)]));
 }
 
 /**
@@ -172,7 +154,7 @@ export function dayDetail(
   now: Date,
   completeUntil: Date | null = null,
 ): DayDetail {
-  const times = impactTimes(day, incidents, now, completeUntil);
+  const times = impactTimes(day);
   const partial = completeUntil !== null && utcDayKey(completeUntil) === day.date;
   const notes = [
     ...(aheadOfIncidents(day, incidents, now) ? [notYetReported(STATUS_LABEL[day.status])] : []),

@@ -119,7 +119,7 @@ paths:
     get:
       operationId: getSummary
       summary: Overall status, one row per product, and active incidents.
-      description: The summary page in one request, including each product's daily history.
+      description: The summary page in one request. Each product's daily history is on its own route.
       tags: [status]
       parameters:
         - $ref: "#/components/parameters/IfNoneMatch"
@@ -143,7 +143,7 @@ paths:
     get:
       operationId: getProduct
       summary: One product with region, component group and uptime detail.
-      description: A product's regions, components, uptime and the incidents of its history's days, from the same data the summary uses.
+      description: A product's regions, components, uptime, daily history and the incidents of its history's days, from the same data the summary uses.
       tags: [status]
       parameters:
         - name: id
@@ -215,7 +215,11 @@ paths:
     get:
       operationId: getReadiness
       summary: Readiness probe.
-      description: 200 once at least one source has answered; 503 before that.
+      description: >-
+        200 once every source has been polled once, whether it answered or
+        not (a source that did not reads "unknown", which is what the
+        service must serve while its upstream is down); 503 during that
+        first round, which takes at most the request timeout.
       tags: [probes]
       responses:
         "200":
@@ -406,7 +410,13 @@ components:
         id: { $ref: "#/components/schemas/RegionId" }
         location: { $ref: "#/components/schemas/LocationId" }
         name: { type: string }
-        status: { $ref: "#/components/schemas/Status" }
+        status:
+          $ref: "#/components/schemas/Status"
+          description: >-
+            The most severe known status of its components; a component
+            whose status is unknown is skipped, as the product skips an
+            unknown region, and makes the product's "data_complete" false.
+            "unknown" when no component's status is known.
         uptime:
           type: array
           description: The same figures as the region's entry in "region_details".
@@ -465,6 +475,12 @@ components:
           additionalProperties: { type: integer, minimum: 0 }
         incident_ids:
           type: array
+          maxItems: 20
+          description: >-
+            The incidents that touch the day, newest first. At most 20: when
+            more touch it, the most severe are kept (newest first among
+            equals), so the incident that sets the day's status is always
+            named; "status" and "minutes" count every incident.
           items: { type: string }
 
     Incident:
@@ -477,7 +493,11 @@ components:
         (two open records end together), directly or through other such
         records, are one incident, listed once under the smallest of their
         ids; the history's incident_ids refer to that
-        id only, and each is in the incident list.
+        id only, and each is in the incident list. When two of a product's
+        sources hold the same id, the open copy is kept, else the one that
+        ends later, then the more severe impact, so the choice does not
+        depend on the order the sources are read in. An incident whose start is still ahead (planned work
+        recorded in advance) is in no response until it starts.
       required: [id, product_id, title, impact, state, started_at, resolved_at]
       properties:
         id: { type: string }
@@ -500,7 +520,7 @@ components:
 
     ProductSummary:
       type: object
-      required: [id, name, status, extent, affected_regions, data_complete, outdated, checked_at, stale, locations, regions, history]
+      required: [id, name, status, extent, affected_regions, active_incident_count, data_complete, outdated, checked_at, stale, locations, regions]
       properties:
         id: { $ref: "#/components/schemas/Slug" }
         name: { type: string }
@@ -524,6 +544,12 @@ components:
           type: integer
           minimum: 0
           description: Regions whose status is maintenance, degraded or outage.
+        active_incident_count:
+          type: integer
+          minimum: 0
+          description: >-
+            The product's active incidents. The summary lists at most 10 of
+            them, the newest; the product's route lists every one.
         data_complete:
           type: boolean
           description: >-
@@ -547,17 +573,18 @@ components:
             Each location's regions together, in the order of "locations" and
             by name within one, then the regions without a location.
           items: { $ref: "#/components/schemas/RegionSummary" }
-        history:
-          type: array
-          items: { $ref: "#/components/schemas/Day" }
 
     ProductDetail:
       allOf:
         - $ref: "#/components/schemas/ProductSummary"
         - type: object
-          required: [generated_at, region_details, incidents]
+          required: [generated_at, history, region_details, incidents]
           properties:
             generated_at: { $ref: "#/components/schemas/GeneratedAt" }
+            history:
+              type: array
+              description: One day per UTC calendar day of the history's length, oldest first, ending today.
+              items: { $ref: "#/components/schemas/Day" }
             region_details:
               type: array
               items: { $ref: "#/components/schemas/RegionDetail" }
@@ -604,6 +631,9 @@ components:
             unevaluatedProperties: false
         active_incidents:
           type: array
+          description: >-
+            Active incidents, newest first, at most 10 per product (the
+            newest); each product's "active_incident_count" counts them all.
           items: { $ref: "#/components/schemas/Incident" }
 
     IncidentList:

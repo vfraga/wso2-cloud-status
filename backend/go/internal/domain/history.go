@@ -17,12 +17,19 @@
 package domain
 
 import (
+	"cmp"
 	"math"
 	"slices"
 	"time"
 )
 
 const day = 24 * time.Hour
+
+// MaxDayIncidents is how many incident IDs one day lists. An incident is
+// listed on every day it touches, so without a limit a source with many
+// long incidents would repeat each ID up to the history's length; real days
+// hold a handful.
+const MaxDayIncidents = 20
 
 // Coverage is the span a product's incident history is complete for. From
 // is the earliest instant the sources hold incidents from. Until, when it is
@@ -49,6 +56,11 @@ type Coverage struct {
 // sources has never answered, or holds nothing that old) and the day that
 // contains coverage.Until are partly covered: they take the impact of the
 // incidents known for them, and are unknown when none are.
+//
+// A day's status and minutes count every incident that touches it. Its
+// IncidentIDs, in the order of incidents, hold at most MaxDayIncidents:
+// when more touch it, those with the most severe EffectiveImpact, newest
+// first among equals, so the worst incident of a day is always named.
 func DailyHistory(incidents []Incident, days int, coverage Coverage, now time.Time) []Day {
 	now = now.UTC()
 	today := now.Truncate(day)
@@ -101,7 +113,8 @@ func dayStatus(incidents []Incident, start time.Time, coverage Coverage, now tim
 	}
 	end := minTime(start.Add(day), now)
 	spans := map[Status][]span{}
-	for _, inc := range incidents {
+	var touching []int
+	for i, inc := range incidents {
 		s, touches := clip(inc, start, end, known)
 		if !touches {
 			continue
@@ -109,8 +122,9 @@ func dayStatus(incidents []Incident, start time.Time, coverage Coverage, now tim
 		impact := inc.EffectiveImpact()
 		spans[impact] = append(spans[impact], s)
 		d.Status = Worst(d.Status, impact)
-		d.IncidentIDs = append(d.IncidentIDs, inc.ID)
+		touching = append(touching, i)
 	}
+	d.IncidentIDs = dayIDs(incidents, touching)
 	if len(spans) > 0 {
 		d.Minutes = make(map[Status]int, len(spans))
 		for impact, ss := range spans {
@@ -118,6 +132,28 @@ func dayStatus(incidents []Incident, start time.Time, coverage Coverage, now tim
 		}
 	}
 	return d
+}
+
+// dayIDs lists the IDs of incidents[i] for i in touching (in incidents'
+// order), keeping at most MaxDayIncidents: the most severe first, then the
+// earliest in that order.
+func dayIDs(incidents []Incident, touching []int) []string {
+	if len(touching) > MaxDayIncidents {
+		kept := slices.Clone(touching)
+		slices.SortStableFunc(kept, func(a, b int) int {
+			return cmp.Compare(incidents[b].EffectiveImpact(), incidents[a].EffectiveImpact())
+		})
+		touching = kept[:MaxDayIncidents]
+		slices.Sort(touching)
+	}
+	ids := make([]string, 0, len(touching))
+	for _, i := range touching {
+		ids = append(ids, incidents[i].ID)
+	}
+	if len(ids) == 0 {
+		return nil
+	}
+	return ids
 }
 
 // span is a half-open interval [from, to).
