@@ -58,6 +58,8 @@ export default tseslint.config(
         { property: "innerHTML", message: "Set text, never HTML." },
         { property: "outerHTML", message: "Set text, never HTML." },
         { property: "insertAdjacentHTML", message: "Insert nodes, never HTML." },
+        { property: "createContextualFragment", message: "Build nodes, never parse HTML." },
+        { property: "parseFromString", message: "Build nodes, never parse HTML." },
         { object: "document", property: "write", message: "Never write HTML into the document." },
       ],
     },

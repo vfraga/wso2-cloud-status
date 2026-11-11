@@ -14,8 +14,9 @@
 # has a location, or none does.
 #
 # ${NAME} reads the environment variable NAME, only as the whole value of a
-# backend option or a server.required_headers entry; anywhere else it is an
-# error, as is a YAML alias. An unset variable fails validation. A backend
+# backend's client_id (CSM_CLIENT_ID) or client_secret (CSM_CLIENT_SECRET)
+# option or of a server.required_headers entry (FRONT_DOOR_ID); anywhere else
+# it is an error, as is a YAML alias. An unset variable fails validation. A backend
 # that reads the environment changes only on restart. Keep secrets out of
 # this file.
 

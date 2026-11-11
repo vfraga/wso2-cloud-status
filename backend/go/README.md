@@ -175,11 +175,12 @@ The image holds both and reads the production file unless
   `statusd -check-config <file>` reads a file the way a start would and
   exits 0 when it would start, 1 when it would not (the reasons on stderr)
   and 2 for a wrong command line. CI checks every file in `config/`.
-- `${NAME}` reads the environment, only as the whole value of a backend
-  option (a credential: `CSM_CLIENT_ID` or `CSM_CLIENT_SECRET`) or of a
-  `server.required_headers` entry (the origin lock's ID: `FRONT_DOOR_ID`).
-  Anywhere else, or naming another variable, it is an error, as is a YAML
-  alias or a second YAML document; an unset variable fails validation. Keep
+- `${NAME}` reads the environment, only as the whole value of a backend's
+  `client_id` option (`CSM_CLIENT_ID`), its `client_secret` option
+  (`CSM_CLIENT_SECRET`) or a `server.required_headers` entry (the origin
+  lock's ID: `FRONT_DOOR_ID`). Anywhere else, or naming another variable, it
+  is an error, as is a YAML alias or a second YAML document; an unset
+  variable fails validation, and no error shows the value it refuses. Keep
   secrets out of the file.
 - statusd reloads the file when its content changes (checked every
   `reload.watch_interval`, 10 s) or on SIGHUP. An invalid file is rejected

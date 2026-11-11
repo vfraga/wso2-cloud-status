@@ -263,8 +263,8 @@ func TestBackendURLsAreHTTPS(t *testing.T) {
 }
 
 // TestEnvironmentReferencesAreConfined: ${NAME} reads the environment only
-// as the whole value of a backend option or a server.required_headers entry,
-// naming a variable EnvNames lists for that place, where it stays a string;
+// as the whole value of a backend's client_id or client_secret option or a
+// server.required_headers entry, naming the variable EnvNames lists for it, where it stays a string;
 // anywhere else, part of a longer value, another variable, or copied by a
 // YAML alias, it is an error that names the place, so whoever can change the
 // file cannot copy a secret into a URL or a published name, nor send any
