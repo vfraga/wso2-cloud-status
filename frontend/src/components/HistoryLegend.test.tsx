@@ -23,7 +23,7 @@ import { wrap } from "../test/render";
 import { HistoryLegend } from "./HistoryLegend";
 
 describe("HistoryLegend", () => {
-  it("names every colour and describes it on focus, hover and tap, closing on Escape", async () => {
+  it("names every colour and describes it on focus, Enter and hover, closing on Escape", async () => {
     const user = userEvent.setup();
     wrap(<HistoryLegend />);
     const entries = [

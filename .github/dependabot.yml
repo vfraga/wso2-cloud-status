@@ -52,8 +52,7 @@ updates:
     cooldown:
       default-days: 7
       # GitHub does not say which form of an image's name the list matches,
-      # so both are given; the first Dependabot pull requests show whether
-      # the exclusion holds.
+      # so both are given.
       exclude: ["distroless/static-debian13", "gcr.io/distroless/static-debian13", "nginxinc/nginx-unprivileged"]
     ignore:
       - dependency-name: "node"

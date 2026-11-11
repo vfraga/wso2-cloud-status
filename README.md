@@ -9,16 +9,16 @@ month.
 
 ```text
 wso2-cloud-status/
-├── backend/go/            # statusd: the status API (Go)
-├── frontend/              # the status page (React, WSO2 Oxygen UI) and its nginx image
-├── api/openapi.yaml       # the API contract
-├── config/                # statusd's configuration: the product catalogue and the sources
-├── tests/contract/        # black-box contract tests, and a fake upstream that replays recorded answers
-├── testdata/              # recorded upstream answers, normal and edge cases
-├── deploy/observability/  # Prometheus alert rules and their unit tests
-├── scripts/               # contract runner, fixture capture, gate scripts, pre-push hook
-│   └── ops/               # the external synthetic check, its notifier, the image self-test
-└── .github/               # CI, CodeQL, release and synthetic-check workflows; Dependabot; issue forms
+  backend/go/            statusd: the status API (Go)
+  frontend/              the status page (React, WSO2 Oxygen UI) and its nginx image
+  api/openapi.yaml       the API contract
+  config/                statusd's configuration: the product catalogue and the sources
+  tests/contract/        black-box contract tests, and a fake upstream that replays recorded answers
+  testdata/              recorded upstream answers, normal and edge cases
+  deploy/observability/  Prometheus alert rules and their unit tests
+  scripts/               contract runner, fixture capture, gate scripts, pre-push hook
+    ops/                 the external synthetic check, its notifier, the image self-test
+  .github/               CI, CodeQL and synthetic-check workflows; Dependabot; issue forms
 ```
 
 ## Components
@@ -49,7 +49,7 @@ cd frontend && nvm use && npm ci && npm run dev   # http://localhost:5173, proxi
 | Target | What it does |
 |---|---|
 | `make verify` | every local gate, in order; `make -k verify` reports every failure. Only CI runs gitleaks, Trivy and the statusd image build and smoke test |
-| `make hooks` | once per clone: a pre-push hook that runs both unit test suites for any change but Markdown, and the lint and image checks for the folders a push changes (about a minute when everything changed); `git push --no-verify` skips it |
+| `make hooks` | once per clone: a pre-push hook (it replaces any other in the clone) that runs both unit test suites for any change but Markdown, and the lint and image checks for the folders a push changes (about a minute when everything changed); `git push --no-verify` skips it |
 | `make ci` | the CI go job: lint (backend and contract tests), cover, vuln, licenses, check-config, contract, contract-edge, contract-csm, synthetic-selftest, gates-selftest |
 | `make lint` | vet, staticcheck, gosec, cyclomatic (10) and cognitive (15) complexity, license headers |
 | `make test` | unit and integration tests with the race detector |

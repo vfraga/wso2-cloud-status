@@ -27,7 +27,7 @@ ACTIONLINT   := rhysd/actionlint:1.7.12@sha256:b1934ee5f1c509618f2508e6eb47ee0d3
 VERSION      ?= $(shell git describe --tags --match 'v*' --always --dirty 2>/dev/null || echo dev)
 REVISION     ?= $(shell git rev-parse HEAD 2>/dev/null || echo unknown)
 CREATED      ?= $(shell TZ=UTC0 git log -1 --date=format-local:%Y-%m-%dT%H:%M:%SZ --format=%cd 2>/dev/null)
-SOURCE       ?= https://github.com/wso2/wso2-cloud-status
+SOURCE       ?= $(shell git remote get-url origin 2>/dev/null | sed -E 's|^git@([^:]+):|https://\1/|; s|\.git$$||')
 IMAGE        ?= wso2-cloud-statusd:$(VERSION)
 IMAGE_ARGS   := --build-arg VERSION=$(VERSION) --build-arg REVISION=$(REVISION) --build-arg CREATED=$(CREATED) --build-arg SOURCE=$(SOURCE)
 # Every ${NAME} the files in config/ use, set to a placeholder for check-config.

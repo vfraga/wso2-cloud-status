@@ -428,7 +428,7 @@ writable="$(docker exec "$name" sh -c '
 verdict "the runtime user cannot change nginx's configuration" \
   "the runtime user can change: $(tr '\n' ' ' <<<"$writable")" [ -z "$writable" ]
 
-# A deployment with nothing in front of the page (local runs, the Choreo demo)
+# A deployment with nothing in front of the page (a local run, a test deployment)
 # turns the lock off and, outside production, indexing too; one that also
 # has nothing to route /api replaces /etc/nginx/api.conf. The file is copied
 # in rather than mounted, so this runs the same under act.

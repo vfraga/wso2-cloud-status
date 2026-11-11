@@ -14,10 +14,9 @@
 #
 # VERSION, REVISION (the full commit id), CREATED (the commit time, RFC 3339
 # in UTC) and SOURCE (the repository URL) become the OCI labels; make
-# web-docker sets them. SOURCE defaults to the repository's planned home, the
-# Go module's path. CREATED also dates /.well-known/security.txt: it
-# expires 364 days later, under the year RFC 9116 recommends (the build time
-# when CREATED is empty).
+# web-docker sets them, SOURCE from the clone's origin. CREATED also dates
+# /.well-known/security.txt: it expires 364 days later, under the year RFC
+# 9116 recommends (the build time when CREATED is empty).
 FROM node:24.22.2-alpine@sha256:8a32c8cf649a49915a66e81e7a609223c708d0adabf288ee3f4077d765542f85 AS build
 WORKDIR /app
 COPY package.json package-lock.json .npmrc ./
@@ -44,7 +43,7 @@ FROM nginxinc/nginx-unprivileged:stable-alpine@sha256:f5116ed4606f3eb015dd4a8e28
 ARG VERSION=dev
 ARG REVISION=unknown
 ARG CREATED=""
-ARG SOURCE=https://github.com/wso2/wso2-cloud-status
+ARG SOURCE=unknown
 LABEL org.opencontainers.image.title="wso2-cloud-status-web" \
       org.opencontainers.image.description="WSO2 Cloud status page, static build served by nginx" \
       org.opencontainers.image.licenses="Apache-2.0" \

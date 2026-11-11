@@ -8,8 +8,8 @@
 #             statusd -version, statusd_build_info and the version label
 #   REVISION  the full commit id (label)
 #   CREATED   the commit time, RFC 3339 in UTC (label)
-#   SOURCE    the repository URL (label); the default is its planned home,
-#             the Go module's path
+#   SOURCE    the repository URL (label); make docker passes the clone's
+#             origin
 
 FROM golang:1.27.4-alpine@sha256:0a5f7fe796599ff487605987432e7619ae45beeb2fba4c2ce0b907879932aebf AS build
 WORKDIR /src
@@ -24,7 +24,7 @@ FROM gcr.io/distroless/static-debian13:nonroot@sha256:18f4cc26c9ffa7f20a359298be
 ARG VERSION=dev
 ARG REVISION=unknown
 ARG CREATED=""
-ARG SOURCE=https://github.com/wso2/wso2-cloud-status
+ARG SOURCE=unknown
 LABEL org.opencontainers.image.title="wso2-cloud-statusd" \
       org.opencontainers.image.description="WSO2 Cloud status aggregation API" \
       org.opencontainers.image.licenses="Apache-2.0" \
@@ -35,8 +35,8 @@ LABEL org.opencontainers.image.title="wso2-cloud-statusd" \
 COPY --from=build /out/statusd /statusd
 # The default configuration is the production one, with the origin lock on:
 # without FRONT_DOOR_ID it fails validation and statusd does not start.
-# Local runs and the demo set STATUSD_CONFIG=/etc/statusd/statusd.yaml, the
-# same file with the lock off.
+# Outside production, set STATUSD_CONFIG=/etc/statusd/statusd.yaml, the same
+# file with the lock off.
 COPY config/statusd.yaml /etc/statusd/statusd.yaml
 COPY config/statusd.production.yaml /etc/statusd/statusd.production.yaml
 ENV STATUSD_CONFIG=/etc/statusd/statusd.production.yaml

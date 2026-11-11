@@ -1,7 +1,7 @@
 # WSO2 Cloud Status, frontend
 
 The status page for the WSO2 Cloud products. The home page is the current status:
-one banner, the active incidents, and a table of each product's status per region.
+one banner, the active incidents, and a table of each product's status per location (US, EU).
 Each product's page has its 90-day history, regions with uptime, and incidents; the
 incident history lists every incident the API holds, by month. It reads the status
 API in `../backend/go` (contract: `../api/openapi.yaml`).
@@ -17,7 +17,8 @@ npm run lint           # eslint (zero warnings), a check that it lints every tra
                        # and prettier
 npm run typecheck
 npm test               # vitest in UTC with the coverage gates in vitest.config.ts, then
-                       # again in Asia/Colombo and America/Sao_Paulo
+                       # again in Asia/Colombo and America/Sao_Paulo, and the locale
+                       # test in German
 npm run build          # dist/
 npm run e2e:install    # once: downloads Chromium for Playwright
 npm run e2e            # builds the backend and site, runs Playwright against the real backend
@@ -105,6 +106,13 @@ port 8080, security headers, one-year cache for hashed assets, `no-cache` for
 `index.html`, a 404 for paths the page does not have, `/healthz`). Both base images are pinned by digest. Route `/api` to the
 status API at the ingress. Build: `docker build -t wso2-cloud-status-web frontend`.
 
+The image does not start without `FRONT_DOOR_ID`, the Front Door profile ID that every
+request but `/healthz` must carry in `X-Azure-FDID` (`docker/origin-lock.sh`). Outside
+production set `ORIGIN_LOCK=off`, and `INDEXING=off` to send `X-Robots-Tag: noindex`:
+`docker run --rm -p 8080:8080 -e ORIGIN_LOCK=off -e INDEXING=off wso2-cloud-status-web`.
+The image answers `/api/` with a 404; with nothing in front of it to route `/api`, mount a
+replacement `/etc/nginx/api.conf` whose `location /api/` forwards to statusd.
+
 `public/` holds the icons, the WSO2 pulse glyph from the brand pack: `icon.svg`,
 and `favicon.ico` and `apple-touch-icon.png`, which `node scripts/icons.mjs`
 renders from it. The header logo is `src/components/Wso2Logo.tsx`, the brand
@@ -137,7 +145,7 @@ pack's paths unchanged.
 - `node scripts/transfer.mjs <url>` lists what a page requests on its first load,
   with each file's gzip size (raw for fonts) and the total. It needs Playwright's Chromium
   (`npm run e2e:install`) and a running site, such as `npm run preview`.
-- Routing is 60 lines of History API code: the current `react-router` requires
+- Routing is a small History API router (`src/lib/router.tsx`): the current `react-router` requires
   React 19.2.7 or later, and Oxygen UI pins React 19.2.3 exactly.
 - The page is public and reads a public API, so it has no sign-in, no
   authentication provider and no API client library: `src/api/client.ts`

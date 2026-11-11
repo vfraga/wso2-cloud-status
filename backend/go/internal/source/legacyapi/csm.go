@@ -227,7 +227,7 @@ func (c *csmClient) read(req *http.Request, kind, cloud, token string, out any) 
 	defer func() { _ = resp.Body.Close() }()
 	body := io.LimitReader(resp.Body, maxBody)
 	if err := c.check(resp, body, token); err != nil {
-		return fmt.Errorf("GET cloud-status/%s?cloud=%s: %w", kind, cloud, err)
+		return fmt.Errorf("legacyapi: GET cloud-status/%s?cloud=%s: %w", kind, cloud, err)
 	}
 	return unwrap(body, kind, cloud, out)
 }

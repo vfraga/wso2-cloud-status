@@ -61,8 +61,7 @@ backends:
   asgardeo:
     type: legacy-status-api
     base_url: https://api.status.asgardeo.io
-    # Taken to be UTC like the other; no source states it. Each backend's
-    # zone is checked against a known incident on staging before go-live.
+    # Read as UTC, like the other backend; the API does not state its zone.
     timezone: UTC
   # CSM's cloud-status API (csm-integration-service behind Choreo's API
   # gateway) serves every cloud once a client exists for it; point a

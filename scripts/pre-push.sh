@@ -24,7 +24,7 @@
 # make verify runs them all here. It checks the working tree, so commit or
 # stash other changes first. git push --no-verify skips the hook.
 set -euo pipefail
-cd "$(git rev-parse --show-toplevel)"
+cd "$(dirname "$(readlink -f "$0")")/.."
 
 # Git sends one line per ref: <local ref> <local sha> <remote ref> <remote sha>.
 changed=""
@@ -35,7 +35,7 @@ while read -r _ local_sha _ remote_sha; do
     # A new branch, or a remote commit not fetched: compare with main.
     base=$(git merge-base "$local_sha" origin/main 2>/dev/null) || base=$(git rev-list --max-parents=0 "$local_sha" | tail -n 1)
   fi
-  changed+=$(git diff --name-only "$base" "$local_sha")$'\n'
+  changed+=$(git diff --name-only --relative "$base" "$local_sha")$'\n'
 done
 touches() { grep -qE "$1" <<<"$changed"; }
 

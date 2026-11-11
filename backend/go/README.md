@@ -107,18 +107,18 @@ write (10 s) and idle (60 s) timeouts and caps request headers.
 
 ```text
 backend/go/
-├── cmd/statusd/          # Entry point: flags, -check-config, signals, listeners
-├── internal/
-│   ├── app/              # Wires configuration, sources, aggregator and listeners; live reload
-│   ├── config/           # Strict YAML, defaults, ${NAME} references, validation
-│   ├── source/           # The source interface and registry
-│   │   └── legacyapi/    # Both adapters: the public status API and CSM (token, envelope, 429 hold)
-│   ├── aggregator/       # Polling loops, last good data, staleness, build() of every view
-│   ├── domain/           # Statuses, roll-ups, the daily history; no I/O
-│   ├── httpapi/          # Snapshot store, handlers, middleware, probes
-│   └── telemetry/        # Prometheus metrics on a private registry
-├── Dockerfile            # Distroless, non-root image; both configuration files inside
-└── .golangci.yml         # Lint, complexity and license-header rules
+  cmd/statusd/          Entry point: flags, -check-config, signals, listeners
+  internal/
+    app/                Wires configuration, sources, aggregator and listeners; live reload
+    config/             Strict YAML, defaults, ${NAME} references, validation
+    source/             The source interface and registry
+      legacyapi/        Both adapters: the public status API and CSM (token, envelope, 429 hold)
+    aggregator/         Polling loops, last good data, staleness, build() of every view
+    domain/             Statuses, roll-ups, the daily history; no I/O
+    httpapi/            Snapshot store, handlers, middleware, probes
+    telemetry/          Prometheus metrics on a private registry
+  Dockerfile            Distroless, non-root image; both configuration files inside
+  .golangci.yml         Lint, complexity and license-header rules
 ```
 
 ## Developer guide
@@ -140,6 +140,10 @@ make run          # serves :8080 (API) and :9090 (metrics, probes) against the p
 curl -s localhost:8080/api/v1/summary | jq '.status, [.products[] | {id, status}]'
 make docker       # the image, with version labels
 ```
+
+`make run` uses `config/statusd.yaml`, which has no origin lock, so statusd logs an
+ERROR "origin lock off" at start. That is expected locally; in production the lock is
+on, and the StatusdOriginLockOff alert pages SRE if it ever is not.
 
 ### Test
 

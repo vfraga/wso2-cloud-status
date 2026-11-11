@@ -111,8 +111,8 @@ jobs:
         run: scripts/ops/synthetic-selftest.sh
       - name: Gate scripts self-test (licences, coverage)
         run: scripts/gates-selftest.sh
-      # Reports only. Skipped under act, whose artifact server a Rancher
-      # Desktop job container cannot reach.
+      # Reports only. Skipped under act, whose artifact server a local job
+      # container cannot reach.
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: ${{ !env.ACT }}
         with:

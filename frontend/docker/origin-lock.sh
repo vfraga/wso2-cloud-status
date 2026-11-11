@@ -24,9 +24,9 @@
 #                  WAF and cache, as statusd is (its origin lock). Required
 #                  unless ORIGIN_LOCK=off.
 #   ORIGIN_LOCK    on (default) or off. Off answers requests that did not come
-#                  through Front Door: local runs and the Choreo demo only.
+#                  through Front Door: local runs and test deployments only.
 #   INDEXING       on (default) or off. Off sends X-Robots-Tag: noindex, for
-#                  staging and the demo, so search engines list only
+#                  every deployment but production, so search engines list only
 #                  production.
 set -eu
 
